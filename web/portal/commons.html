@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Commons — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar commons-compose">
+      <label>You <input id="me" value="aj" autocomplete="username"/></label>
+      <label class="grow">Title <input id="title" placeholder="Optional title" maxlength="120"/></label>
+      <button type="button" id="refresh">Refresh</button>
+    </section>
+    <form id="composer" class="wp-card app-panel commons-composer">
+      <label class="sr-only" for="body">New post</label>
+      <textarea id="body" rows="3" maxlength="4000" placeholder="Share something with the community…" required></textarea>
+      <div class="commons-composer__actions">
+        <span class="muted" id="hint">Local feed on the Station · progressive over Waylink later</span>
+        <button type="submit">Post</button>
+      </div>
+    </form>
+
+    <div class="wp-card app-panel">
+      <ul id="feed" class="commons-feed" aria-live="polite"></ul>
+    </div>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "commons",
+      user: "AJ",
+      title: "Commons",
+      subtitle: "Community feed on the Station"
+    });
+  </script>
+  <script src="/static/commons.js"></script>
+</body>
+</html>

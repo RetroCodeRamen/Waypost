@@ -1,0 +1,15 @@
+---
+description: Always read and update the Cursor↔Claude handoff document
+alwaysApply: true
+---
+
+# Agent coordination
+
+Before starting work after a new user direction, and before ending a session:
+
+1. Read `AGENT_HANDOFF.md`
+2. Claim or update the Active work slot you are using
+3. Append a short note to the Message board when you finish or hand off
+4. Never commit secrets (`.env`, Pi passwords, Wi‑Fi PSK)
+
+Canonical plan: `docs/roadmap.md`. Freezes: `docs/priority-review.md`.

@@ -1,0 +1,34 @@
+# Waypost — Docker Compose base (application services)
+# Host networking (hostapd/dnsmasq/openNDS) stays on the Pi via systemd.
+#
+# Default: API only (local SQLite Postbox + Dispatch).
+# Optional: docker compose --profile mail up  (Stalwart stub — not wired yet)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    container_name: waypost-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WAYPOST_DATA_DIR: /var/lib/waypost/data
+      WAYPOST_SQLITE_PATH: /var/lib/waypost/data/waypost.db
+      WAYPOST_TRANSPORT: mock
+    volumes:
+      - waypost-data:/var/lib/waypost/data
+      - ./web/portal:/app/web/portal:ro
+    ports:
+      - "8000:8000"
+
+  # Stalwart will become the production Postbox backend (JMAP/OIDC).
+  # Image/config intentionally minimal until the adapter is implemented.
+  # stalwart:
+  #   image: stalwartlabs/mail-server:latest
+  #   profiles: ["mail"]
+  #   ...
+
+volumes:
+  waypost-data:

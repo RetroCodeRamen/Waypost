@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Postbox — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar">
+      <label>Mailbox <input id="mailbox" value="aj"/></label>
+      <div class="folders" id="folders">
+        <button type="button" data-folder="INBOX" class="active">Inbox</button>
+        <button type="button" data-folder="OUTBOX">Outbox</button>
+        <button type="button" data-folder="SENT">Sent</button>
+      </div>
+      <button type="button" id="refresh">Refresh</button>
+      <button type="button" id="flush-outbox" hidden>Flush outbox</button>
+      <button type="button" id="compose-btn">Compose</button>
+    </section>
+    <p class="meta" id="status-line">Local mail · progressive over Waylink</p>
+
+    <div class="app-layout">
+      <aside class="app-sidebar">
+        <ul id="mail-list" class="mail-list"></ul>
+      </aside>
+      <section class="app-reader">
+        <div id="empty" class="muted">Select a message. Over LoRa, only headers cross until you open one.</div>
+        <article id="detail" hidden>
+          <h2 id="d-subj"></h2>
+          <p class="meta" id="d-meta"></p>
+          <pre id="d-body"></pre>
+          <p id="d-att" class="att muted" hidden></p>
+          <form id="reply-form" class="reply">
+            <textarea id="reply-body" rows="3" placeholder="Reply…"></textarea>
+            <button type="submit">Reply</button>
+          </form>
+        </article>
+      </section>
+    </div>
+
+    <dialog id="compose" class="wp-dialog">
+      <form method="dialog" id="compose-form">
+        <h2>New message</h2>
+        <label>To <input id="c-to" placeholder="bob@waypost" required/></label>
+        <label>Subject <input id="c-subj"/></label>
+        <label>Body <textarea id="c-body" rows="6" required></textarea></label>
+        <div class="actions">
+          <button type="submit" value="send">Send</button>
+          <button type="submit" value="queue">Queue</button>
+          <button type="submit" value="cancel" formnovalidate>Cancel</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "postbox",
+      user: "AJ",
+      title: "Postbox",
+      subtitle: "Canonical mailbox on the Station · progressive over Waylink"
+    });
+  </script>
+  <script src="/static/postbox.js"></script>
+</body>
+</html>

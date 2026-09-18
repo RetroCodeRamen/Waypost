@@ -1,0 +1,20 @@
+# Caddy for Waypost Station — template
+# Local CA / offline TLS strategy documented in docs/security.md
+
+{
+    # auto_https off  # enable intentional HTTP-only bootstrap if needed
+}
+
+waypost.home.arpa, waypost {
+    encode gzip
+    root * /opt/waypost/web/portal
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /~* {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle {
+        reverse_proxy 127.0.0.1:8000
+    }
+}

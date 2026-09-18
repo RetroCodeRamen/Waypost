@@ -1,0 +1,20 @@
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY server/requirements.txt /app/server/requirements.txt
+RUN pip install --no-cache-dir -r /app/server/requirements.txt
+
+COPY server /app/server
+COPY shared /app/shared
+COPY web /app/web
+
+ENV PYTHONPATH=/app
+ENV WAYPOST_DATA_DIR=/var/lib/waypost/data
+ENV WAYPOST_SQLITE_PATH=/var/lib/waypost/data/waypost.db
+
+EXPOSE 8000
+CMD ["uvicorn", "server.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

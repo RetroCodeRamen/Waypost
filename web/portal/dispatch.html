@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Dispatch — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar" aria-label="Identity">
+      <label>
+        You
+        <input id="me" value="aj" autocomplete="username"/>
+      </label>
+      <button type="button" id="refresh-list">Refresh</button>
+      <button type="button" id="new-dm">New DM</button>
+      <button type="button" id="new-room">New room</button>
+    </section>
+
+    <div class="app-layout">
+      <aside class="app-sidebar">
+        <ul id="conv-list" class="conv-list"></ul>
+      </aside>
+
+      <section class="app-chat">
+        <div id="meta" class="meta muted">Select or create a conversation.</div>
+        <ol id="messages" class="thread" aria-live="polite"></ol>
+        <form id="composer" class="app-composer">
+          <input id="body" type="text" maxlength="4000" placeholder="Message…" disabled autocomplete="off"/>
+          <button type="submit" disabled>Send</button>
+        </form>
+        <p class="hint">
+          Mock Pocket: <code>python -m tools.simulator.mock_pocket --user bob --peer aj</code>
+        </p>
+      </section>
+    </div>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "dispatch",
+      user: "AJ",
+      title: "Dispatch",
+      subtitle: "Same conversation over Wi‑Fi or Waylink"
+    });
+  </script>
+  <script src="/static/dispatch.js"></script>
+</body>
+</html>

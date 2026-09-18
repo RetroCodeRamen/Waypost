@@ -1,0 +1,24 @@
+# Waypost LoRa USB serial aliases
+#
+# Heltec WiFi LoRa 32 boards often use Silicon Labs CP2102 (10c4:ea60).
+# Many share USB serial "0001", so prefer ID_PATH / by-path over by-id.
+#
+# Install:
+#   sudo cp deploy/raspberry-pi/udev/99-waypost-lora.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   ls -l /dev/waypost-lora*
+#
+# Update the ID_PATH lines if you move cables to different USB ports:
+#   udevadm info -q property -n /dev/ttyUSB0 | grep ID_PATH=
+
+# Numbered aliases (ttyUSB index — can change after replug)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="waypost-lora-%n", MODE="0660", GROUP="dialout", TAG+="uaccess"
+
+# Stable by-path aliases for the development host ports observed 2026-09-18
+# ttyUSB0 ← hub port …-usb-0:2.3:1.0  → /dev/waypost-lora  (Station radio)
+# ttyUSB1 ← hub port …-usb-0:3:1.0    → /dev/waypost-lora-b (peer)
+SUBSYSTEM=="tty", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:2.3:1.0", SYMLINK+="waypost-lora", MODE="0660", GROUP="dialout"
+SUBSYSTEM=="tty", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:3:1.0", SYMLINK+="waypost-lora-b", MODE="0660", GROUP="dialout"
+
+# Classic CH340-style RNode placeholder — verify VID/PID before relying on it
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="waypost-rnode", MODE="0660", GROUP="dialout"

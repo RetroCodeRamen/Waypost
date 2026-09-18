@@ -1,0 +1,48 @@
+/* Waypost design tokens — community network appliance */
+
+:root {
+  /* Brand / chrome — aligned with Waypost logo greens */
+  --wp-sidebar: #14261f;
+  --wp-sidebar-mid: #1a3028;
+  --wp-sidebar-hover: #243f36;
+  --wp-sidebar-active: #2d5545;
+  --wp-teal-dark: #1f4147;
+  --wp-green: #2d5a42;
+  --wp-green-deep: #1a3026;
+  --wp-green-soft: rgba(45, 90, 66, 0.14);
+  --wp-moon: #bccdc5;
+  --wp-path: #f4f6f2;
+
+  /* Surfaces */
+  --wp-bg: #f5f6f4;
+  --wp-card: #ffffff;
+  --wp-border: #dfe4e3;
+  --wp-border-soft: #e8eceb;
+
+  /* Text */
+  --wp-ink: #1b252c;
+  --wp-muted: #6b747a;
+  --wp-faint: #8a9399;
+
+  /* Accents (use sparingly) */
+  --wp-accent-dispatch: #367a68;
+  --wp-accent-postbox: #3d6f91;
+  --wp-accent-commons: #4a8f62;
+  --wp-accent-notice: #c2783a;
+  --wp-accent-beacon: #c8504d;
+  --wp-positive: #3fa66b;
+  --wp-warning: #d7a33d;
+  --wp-critical: #c8504d;
+
+  /* Shape / elevation */
+  --wp-radius: 10px;
+  --wp-radius-sm: 8px;
+  --wp-shadow: 0 1px 2px rgba(23, 43, 53, 0.04), 0 1px 3px rgba(23, 43, 53, 0.03);
+  --wp-sidebar-width: 15.5rem;
+  --wp-header-h: 4.25rem;
+
+  /* Type */
+  --wp-font: "Segoe UI", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+  --wp-font-brand: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --wp-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Rollcall — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar">
+      <label>You <input id="me" value="aj"/></label>
+      <label>Status <input id="status" placeholder="At the reservoir"/></label>
+      <button type="button" id="set-status">Update</button>
+    </section>
+
+    <div class="wp-card app-panel">
+      <ul id="people" class="people"></ul>
+    </div>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "rollcall",
+      user: "AJ",
+      title: "Rollcall",
+      subtitle: "Who’s on the network"
+    });
+  </script>
+  <script src="/static/rollcall.js"></script>
+</body>
+</html>

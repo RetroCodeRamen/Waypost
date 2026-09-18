@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Sign in — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <style>
+    .auth-wrap {
+      max-width: 22rem;
+      margin: 10vh auto 2rem;
+      padding: 0 1.25rem;
+    }
+    .auth-wrap h1 {
+      font-family: var(--font-display, Georgia, serif);
+      font-size: 1.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .auth-wrap .lede {
+      color: var(--muted, #666);
+      margin: 0 0 1.5rem;
+      font-size: 0.95rem;
+    }
+    .auth-wrap label {
+      display: block;
+      font-size: 0.8rem;
+      margin: 0.75rem 0 0.25rem;
+    }
+    .auth-wrap input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border, #ccc);
+      border-radius: 4px;
+      font: inherit;
+    }
+    .auth-wrap .actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+    .auth-wrap button {
+      flex: 1;
+      padding: 0.6rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    .auth-wrap .err {
+      color: #a33;
+      font-size: 0.85rem;
+      margin-top: 0.75rem;
+      min-height: 1.2em;
+    }
+    .auth-wrap .hint {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--muted, #666);
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-wrap">
+    <h1>Waypost</h1>
+    <p class="lede">Sign in with your Station account. The same username and password work on Waypost Pocket over Wi‑Fi.</p>
+    <form id="auth-form">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required pattern="[a-zA-Z0-9_\-]+"/>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8"/>
+      <label for="display_name" id="display-label" hidden>Display name</label>
+      <input id="display_name" name="display_name" hidden/>
+      <div class="actions">
+        <button type="submit" id="btn-login">Sign in</button>
+        <button type="button" id="btn-register">Create account</button>
+      </div>
+      <p class="err" id="err"></p>
+    </form>
+    <p class="hint">Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script>
+    (function () {
+      var form = document.getElementById("auth-form");
+      var err = document.getElementById("err");
+      var mode = "login";
+      var display = document.getElementById("display_name");
+      var displayLabel = document.getElementById("display-label");
+
+      function setMode(m) {
+        mode = m;
+        var show = m === "register";
+        display.hidden = !show;
+        displayLabel.hidden = !show;
+        if (show) display.required = false;
+      }
+
+      document.getElementById("btn-register").addEventListener("click", function () {
+        if (mode !== "register") {
+          setMode("register");
+          err.textContent = "Fill username + password (8+ chars), then Create account again.";
+          return;
+        }
+        form.requestSubmit();
+      });
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        err.textContent = "";
+        var body = {
+          username: document.getElementById("username").value.trim(),
+          password: document.getElementById("password").value,
+        };
+        if (mode === "register") {
+          var dn = display.value.trim();
+          if (dn) body.display_name = dn;
+        }
+        var path = mode === "register" ? "/api/auth/register" : "/api/auth/login";
+        fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(body),
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              return { ok: r.ok, status: r.status, body: j };
+            });
+          })
+          .then(function (res) {
+            if (!res.ok) {
+              err.textContent = (res.body && res.body.detail) || "Sign-in failed";
+              return;
+            }
+            if (res.body.token) {
+              WaypostAuth.setToken(res.body.token);
+            }
+            var next = new URLSearchParams(location.search).get("next") || "/";
+            location.href = next;
+          })
+          .catch(function () {
+            err.textContent = "Network error";
+          });
+      });
+
+      WaypostAuth.me().then(function (u) {
+        if (u && u.username) location.href = "/";
+      });
+    })();
+  </script>
+</body>
+</html>

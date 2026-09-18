@@ -1,0 +1,21 @@
+"""Dispatch protocol operations."""
+
+from __future__ import annotations
+
+# Keep in sync with docs/protocol.md
+OP_MSG_SEND = "MSG_SEND"
+OP_MSG_LIST = "MSG_LIST"
+OP_MSG_ACK = "MSG_ACK"
+OP_MSG_SYNC = "MSG_SYNC"
+OP_MSG_PUSH = "MSG_PUSH"
+
+DELIVERY_QUEUED = "QUEUED"
+DELIVERY_SENT = "SENT"
+DELIVERY_ROUTED = "ROUTED"
+DELIVERY_DELIVERED = "DELIVERED"
+DELIVERY_READ = "READ"
+DELIVERY_EXPIRED = "EXPIRED"
+
+TRANSPORT_WIFI = "wifi"
+TRANSPORT_LORA = "lora"
+TRANSPORT_MOCK = "mock"

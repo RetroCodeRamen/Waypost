@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Beacon — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar">
+      <label>You <input id="me" value="aj" autocomplete="username"/></label>
+      <label>Severity
+        <select id="severity">
+          <option value="emergency">Emergency</option>
+          <option value="urgent">Urgent</option>
+          <option value="advisory">Advisory</option>
+        </select>
+      </label>
+      <button type="button" id="refresh">Refresh</button>
+      <button type="button" id="push-btn">Push Beacon</button>
+      <button type="button" id="clear-btn" class="secondary">Clear active</button>
+    </section>
+    <p class="meta muted">Emergency broadcast — not a Noticeboard bulletin. One active Beacon at a time.</p>
+
+    <div id="active-panel" class="wp-card app-panel beacon-active is-clear">
+      <p class="beacon-kicker">Active Beacon</p>
+      <h2 id="a-title">No active Beacon</h2>
+      <p class="meta" id="a-meta">Network is clear.</p>
+      <pre id="a-body" hidden></pre>
+    </div>
+
+    <div class="wp-card app-panel">
+      <h3 class="wp-card__title" style="margin-top:0">Recent history</h3>
+      <ul id="history" class="beacon-history"></ul>
+    </div>
+
+    <dialog id="compose" class="wp-dialog">
+      <form method="dialog" id="compose-form">
+        <h3>Push Beacon</h3>
+        <p class="muted">Use only for real emergencies or urgent community alerts.</p>
+        <label>Title <input id="c-title" required maxlength="120"/></label>
+        <label>Message <textarea id="c-body" rows="4" required maxlength="2000"></textarea></label>
+        <div class="actions">
+          <button type="submit" value="push">Push</button>
+          <button type="submit" value="cancel" formnovalidate>Cancel</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "beacon",
+      user: "AJ",
+      title: "Beacon",
+      subtitle: "Emergency / high-priority alerts"
+    });
+  </script>
+  <script src="/static/beacon.js"></script>
+</body>
+</html>

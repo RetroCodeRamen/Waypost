@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Signal — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar">
+      <label>Probe destination <input id="dest" value="pocket-bob" placeholder="node id"/></label>
+      <button type="button" id="probe">Probe route</button>
+      <button type="button" id="airtest">Air test</button>
+      <button type="button" id="refresh">Refresh</button>
+    </section>
+
+    <div class="signal-grid">
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">Station</h2>
+        <dl id="station" class="signal-dl"></dl>
+      </article>
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">Waylink</h2>
+        <dl id="waylink" class="signal-dl"></dl>
+      </article>
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">Sync</h2>
+        <dl id="sync" class="signal-dl"></dl>
+      </article>
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">Network</h2>
+        <dl id="network" class="signal-dl"></dl>
+      </article>
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">Services</h2>
+        <ul id="services" class="signal-services"></ul>
+      </article>
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">USB radios</h2>
+        <ul id="radios" class="signal-services"></ul>
+      </article>
+    </div>
+
+    <article class="wp-card app-panel" style="margin-top:1rem">
+      <h2 class="wp-card__title">Route probe</h2>
+      <pre id="route" class="signal-route muted">No probe yet.</pre>
+    </article>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "signal",
+      user: "AJ",
+      title: "Signal",
+      subtitle: "Radio and network diagnostics"
+    });
+  </script>
+  <script src="/static/signal.js"></script>
+</body>
+</html>
