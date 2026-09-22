@@ -101,15 +101,13 @@ transport proof → resilient messaging → identity/presence → shared sync
 Full analysis: **[priority-review.md](priority-review.md)**.  
 Foundational designs (implement later): [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md).
 
-### Active milestone — **M2e Production radio crypto** 🟡
+### Just finished — **M2e Production radio crypto** ✅
 
 **Goal:** Encrypt LoRa Waylink (Reticulum/RNode). N2 username/password auth is ✅.
 
-**Just finished — N2 Account auth:** Register/login on Station; same credentials for Pocket over Wi‑Fi; session-protected APIs; passwords never over LoRa.
+**M2e:** `ReticulumTransport` + Dispatch-over-RNS (`dispatch_rns_airtest` PASS on TCP lab). `RNodeInterface` config (`WAYPOST_RNS_INTERFACE=rnode` + validated radio params), `dispatch_rns_airtest --rnode`, and Signal shows link security. **Over-air PASS 2026-09-22:** encrypted Dispatch (send, portal history, `MSG_PUSH` reply) between two Heltec V3 boards flashed as RNodes ([radio-dev](radio-dev.md#encrypted-over-real-lora-rnode)). Remaining: run as the default on the Pi Station (M1b) and retire plaintext Heltec from anything user-facing.
 
-**M2e so far:** `ReticulumTransport` + Dispatch-over-RNS (`dispatch_rns_airtest` PASS on TCP lab). Remaining: RNode air interface.
-
-**Also required:** Wi‑Fi TLS = M1b / deploy (laptop HTTP OK for lab). Heltec remains **lab plaintext** until RNode cutover.
+**Next:** M1b Pi AP + TLS (waits on Pi SSH); Wi‑Fi TLS is the remaining "all communications encrypted" gap. Heltec bridge firmware stays **lab plaintext** only.
 
 **Still freeze:** new portal apps; Atlas; Workshop.
 
@@ -152,7 +150,7 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 | **M2b** Bidirectional air + `PING`/`PONG` | ✅ | `tools.radio.airtest` + `peer_pong`/`ping` succeed on two V3 boards |
 | **M2c** Dispatch over Heltec link | ✅ | Peer Heltec → portal Dispatch; portal reply → peer `MSG_PUSH` |
 | **M2d** Radio-dev runbook | ✅ | [radio-dev.md](radio-dev.md); Signal shows live radio state |
-| **M2e** RNode + Reticulum path | ⬜ Tier 2 | `ReticulumTransport` replaces Heltec without app changes |
+| **M2e** RNode + Reticulum path | ✅ | `ReticulumTransport` replaces Heltec without app changes; over-air PASS on RNode-flashed V3 |
 
 **Stand-in exit:** Bidirectional Dispatch over Heltec — **met**. Production mesh = M2e / Tier 2.
 
@@ -182,13 +180,13 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 ---
 
-### M2e — Production radio crypto (elevated) 🟡 **← current**
+### M2e — Production radio crypto (elevated) ✅
 
 **Goal:** Replace Heltec plaintext stand-in with **encrypted** Waylink (Reticulum/RNode or accepted equivalent).
 
 **Exit criteria:** App-level Dispatch unchanged; air traffic not readable as clear CBOR; documented in security.md.
 
-**Progress:** `ReticulumTransport` + encrypted Dispatch E2E over TCP lab (`dispatch_rns_airtest` PASS). RNode LoRa interface still open.
+**Progress:** Exit criteria met 2026-09-22 — encrypted Dispatch E2E over TCP lab and over LoRa (`dispatch_rns_airtest --rnode` PASS, Heltec V3 as RNode, RNode firmware 1.86).
 
 **Why elevated:** “All communications encrypted” cannot be claimed on Heltec bridge alone.
 
@@ -279,8 +277,8 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 ## Near-term queue (do in order)
 
-1. **M2e** radio transport crypto (or explicit interim crypto ADR) — **now** (N2 ✅)  
-2. **M3** mesh/sim peer + shared sync adoption  
+1. ~~**M2e** radio transport crypto~~ ✅ (over-air PASS 2026-09-22)  
+2. **M3** mesh/sim peer + shared sync adoption — sim ✅; hardware with Pocket firmware  
 3. **Hardware spikes (parallel):** MakerHawk GPIO; T-Deck Plus  
 4. **M1b Pi AP + TLS** when camp Wi‑Fi is the blocker  
 5. Then M4 Stalwart → M5 → M6/M7  

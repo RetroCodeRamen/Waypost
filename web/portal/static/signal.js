@@ -42,14 +42,33 @@
           ["Domain", "domain"],
           ["Registration", "registration_mode"],
         ]);
-        waylinkEl.innerHTML = dl(data.waylink || {}, [
+        var wl = Object.assign({}, data.waylink || {});
+        if (wl.rnode) {
+          wl.rnode_summary =
+            wl.rnode.frequency_mhz + " MHz · " +
+            wl.rnode.bandwidth_khz + " kHz · SF" +
+            wl.rnode.spreadingfactor + " · CR4/" +
+            wl.rnode.codingrate + " · " +
+            wl.rnode.txpower_dbm + " dBm";
+        }
+        var keys = [
           ["Transport", "transport"],
+          ["Security", "security"],
+        ];
+        if (wl.encrypted) {
+          keys.push(["RNS interface", "rns_interface"], ["RNS hash", "rns_hash"]);
+          if (wl.rnode) keys.push(["RNode radio", "rnode_summary"]);
+        }
+        keys.push(
           ["Device", "device"],
           ["Gateway", "gateway_running"],
           ["Handlers", "handlers"],
           ["Radios found", "radios_detected"],
-          ["Note", "note"],
-        ]);
+          ["Note", "note"]
+        );
+        waylinkEl.innerHTML = dl(wl, keys);
+        var secDd = waylinkEl.querySelectorAll("dd")[1];
+        if (secDd) secDd.className = wl.encrypted ? "sec-ok" : wl.transport === "mock" ? "" : "sec-warn";
         var radios = (data.waylink && data.waylink.radios) || [];
         var radioBox = document.getElementById("radios");
         if (radioBox) {

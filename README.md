@@ -24,7 +24,7 @@ That is the goal. **It is not there yet.**
 | Have today | Don’t have yet |
 |------------|----------------|
 | Laptop Station API + portal prototypes | Plug-and-play Pi Station / Waygate Wi‑Fi |
-| Heltec Dispatch over air (M2c) + [radio-dev](docs/radio-dev.md) | Production RNode LoRa (**M2e** partial: encrypted Dispatch over RNS TCP lab ✅) |
+| Heltec Dispatch over air (M2c) + [radio-dev](docs/radio-dev.md); **M2e** encrypted Dispatch over LoRa (Reticulum on RNode-flashed Heltec V3) ✅ | Encrypted radio on the Pi Station by default |
 | **N1** opportunistic queue + Signal/Today sync | Mesh peer path without Station (**M3** 🟡: peer↔peer + multi-hop courier + `MSG_SYNC` + Wi‑Fi↔LoRa failover in sim ✅; hardware pending) |
 | **N2** username/password (portal + Pocket Wi‑Fi) ✅ | Stalwart/OIDC; TLS on camp Wi‑Fi (**M1b**) |
 

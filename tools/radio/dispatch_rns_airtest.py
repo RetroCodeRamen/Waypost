@@ -1,6 +1,6 @@
-"""M2e Dispatch-over-Reticulum airtest (TCP lab path, no RNode required).
+"""M2e Dispatch-over-Reticulum airtest — TCP lab path, or real LoRa via RNode.
 
-Prerequisites:
+TCP lab prerequisites:
   Terminal A — Station:
     WAYPOST_TRANSPORT=reticulum WAYPOST_RNS_INTERFACE=tcp_server \\
       WAYPOST_RNS_TCP_PORT=4242 WAYPOST_RNS_CONFIG=/tmp/wp-rns-station \\
@@ -9,6 +9,7 @@ Prerequisites:
 
 Usage:
   python -m tools.radio.dispatch_rns_airtest
+  python -m tools.radio.dispatch_rns_airtest --rnode /dev/ttyUSB1   # see docs/radio-dev.md
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ if str(ROOT) not in sys.path:
 
 from server.services.dispatch.constants import OP_MSG_PUSH  # noqa: E402
 from server.transports.base import TransportPacket  # noqa: E402
-from server.transports.reticulum import ReticulumTransport  # noqa: E402
+from server.transports.reticulum import ReticulumTransport, RNodeRadio  # noqa: E402
 from shared.protocol.envelope import (  # noqa: E402
     SVC_DISPATCH,
     Envelope,
@@ -47,13 +48,24 @@ async def run(args) -> int:
     token = uuid.uuid4().hex[:8]
     body = f"m2e rns {token}"
 
-    transport = ReticulumTransport(
-        config_dir=args.config,
-        control_port=args.port,
-        node_id=node_id,
-        interface="tcp_client",
-        tcp_port=args.tcp_port,
-    )
+    if args.rnode:
+        transport = ReticulumTransport(
+            device_path=args.rnode,
+            config_dir=args.config or Path("/tmp/wp-rns-peer-rnode"),
+            control_port=args.port,
+            node_id=node_id,
+            interface="rnode",
+            rnode=RNodeRadio.from_env(args.rnode),
+        )
+    else:
+        transport = ReticulumTransport(
+            config_dir=args.config or Path("/tmp/wp-rns-peer"),
+            control_port=args.port,
+            node_id=node_id,
+            interface="tcp_client",
+            tcp_port=args.tcp_port,
+        )
+    path_label = f"RNode LoRa {args.rnode}" if args.rnode else "TCP lab"
     await transport.start()
     my_hash = transport.destination_hash_hex
     assert my_hash
@@ -147,7 +159,7 @@ async def run(args) -> int:
             print("FAIL: no MSG_PUSH with portal reply", file=sys.stderr)
             return 1
 
-        print("PASS: M2e Dispatch over Reticulum (encrypted TCP lab)")
+        print(f"PASS: M2e Dispatch over Reticulum (encrypted, {path_label})")
         return 0
     finally:
         await transport.stop()
@@ -159,9 +171,14 @@ def main() -> int:
     p.add_argument("--user", default="bob")
     p.add_argument("--peer", default="aj")
     p.add_argument("--password", default="waypost1")
-    p.add_argument("--config", type=Path, default=Path("/tmp/wp-rns-peer"))
+    p.add_argument("--config", type=Path, default=None)
     p.add_argument("--port", type=int, default=37821)
     p.add_argument("--tcp-port", type=int, default=4242)
+    p.add_argument(
+        "--rnode",
+        default="",
+        help="Serial port of an RNode-flashed board (e.g. /dev/ttyUSB1); uses real LoRa",
+    )
     p.add_argument("--station-hash", default="")
     args = p.parse_args()
     return asyncio.run(run(args))

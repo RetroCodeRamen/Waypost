@@ -50,7 +50,7 @@ Receiving a valid radio packet does **not** authorize:
 | Browser / Pocket ↔ Station (Wi‑Fi) | **TLS** (Waypost local CA or equivalent) | Required for real deployments; laptop HTTP OK for lab only |
 | Station Wi‑Fi air | **WPA2/WPA3** | Pi / hostapd (M1b) |
 | LoRa via Heltec USB bridge | **Not encrypted** — development stand-in only | Must not be treated as production privacy |
-| LoRa production Waylink | **Transport crypto** (Reticulum/LXMF per ADR 0002) | M2e — `ReticulumTransport` + AutoInterface lab path; RNode for production LoRa |
+| LoRa production Waylink | **Transport crypto** (Reticulum/LXMF per ADR 0002) | M2e — encrypted Dispatch over LoRa **passed** on RNode-flashed Heltec V3 (2026-09-22). Signal labels plaintext Heltec links as "lab only" |
 | Outposts | Forward ciphertext; must not hold user passwords or private mail plaintext |
 | Dispatch / Postbox bodies at rest | Station disk; protect Station physically; backups warn on keys |
 

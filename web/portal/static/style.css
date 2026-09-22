@@ -641,6 +641,15 @@ button.secondary {
 .signal-dl dd {
   margin: 0;
   font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.signal-dl dd.sec-ok {
+  color: var(--wp-green);
+}
+
+.signal-dl dd.sec-warn {
+  color: #b91c1c;
 }
 
 .signal-services {

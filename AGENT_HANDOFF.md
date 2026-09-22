@@ -40,15 +40,16 @@ Related truth sources (do not duplicate long plans here):
 
 **Date:** 2026-09-22  
 
-**Active milestone:** **M3** Dispatch mesh semantics 🟡 (sim complete ✅; hardware pending); **M2e** RNode still open  
-**Just finished:** M3 Wi‑Fi↔LoRa failover + durable pending for bound devices (this session)
+**Active milestone:** none unblocked in software — **M1b** Pi waits on SSH; **M3** hardware waits on Pocket firmware  
+**Just finished:** **M2e ✅** — encrypted Dispatch over real LoRa (both Heltec V3 boards now run RNode firmware)
 
 **Have today**
 
 - Laptop Station API + SQLite + portal (auth-gated)
 - N2: register/login, PBKDF2 hashes, session cookie + Bearer; lab users `aj`/`bob` password `waypost1` (lab only)
-- N1 opportunistic Dispatch; Heltec M2c air path (plaintext stand-in)
-- M2e: `ReticulumTransport`, `dispatch_rns_airtest` PASS on encrypted TCP lab; bind `transport_dest` for `rns-*` pushes
+- N1 opportunistic Dispatch; Heltec M2c air path (plaintext stand-in — **boards no longer carry that firmware**, see below)
+- M2e ✅: `ReticulumTransport`; `dispatch_rns_airtest` PASS on TCP lab **and over LoRa** (`--rnode`, 915 MHz, SF8/125 kHz); bind `transport_dest` for `rns-*` pushes; Signal shows security + RNode settings
+- **Hardware state:** `/dev/ttyUSB0` and `/dev/ttyUSB1` (Heltec V3, CP2102) flashed with RNode firmware 1.86 on 2026-09-22. `WAYPOST_TRANSPORT=serial` (Heltec plaintext) will not work until `firmware/heltec` is reflashed
 - M3 (sim): `PeerDispatchNode` — peer↔peer, `MSG_SYNC` (+ authz), **multi-hop** `handoff_to` (aj→bob→carol), **Wi‑Fi↔LoRa failover**; `test_mesh_dispatch.py`
 - Dispatch pending is durable for every recipient until a device confirms (outbox poll, `MSG_ACK`, `MSG_PUSH` reply, or `MSG_SYNC`); state is `SENT` until then, not `DELIVERED`
 - Deploy templates under `deploy/raspberry-pi/` — **not validated on hardware**
@@ -56,7 +57,7 @@ Related truth sources (do not duplicate long plans here):
 **Don’t have yet**
 
 - Pi AP product path (M1b): hostapd + dnsmasq + Waygate + Caddy on real Pi
-- RNode production LoRa interface (finish M2e)
+- Wi‑Fi TLS (M1b) — the remaining gap for "all communications encrypted"
 - Pocket/Outpost firmware (M6/M7); M3 on real hardware
 - Stalwart/OIDC (M4)
 
@@ -72,11 +73,11 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 
 | Slot | Agent | Status | Branch / notes |
 |------|-------|--------|----------------|
-| M2e RNode LoRa | — | open | Needs RNode hardware |
+| M2e RNode LoRa | Cursor | **done** | Over-air PASS 2026-09-22 |
 | M1b Pi stack | — | waiting on human | SSH install once Pi is online |
 | M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
 
-**Cursor last session:** M3 Wi‑Fi↔LoRa failover + durable pending; prior: multi-hop courier + MSG_SYNC authz.  
+**Cursor last session:** Flashed both boards as RNodes, M2e over-air PASS; prior: M3 failover + durable pending.  
 **Claude last session:** M3 sim slice — peer-to-peer Dispatch + `MSG_SYNC` carry-forward (see message board).
 
 ---
@@ -84,7 +85,14 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 ## Environment cheat sheet (lab)
 
 ```bash
-# Laptop Station (Heltec plaintext lab)
+# Laptop Station (encrypted LoRa — current board state)
+WAYPOST_TRANSPORT=reticulum WAYPOST_RNS_INTERFACE=rnode \
+  WAYPOST_LORA_DEVICE=/dev/ttyUSB0 WAYPOST_RNS_CONFIG=/tmp/wp-rns-station-rnode \
+  uvicorn server.api.main:app --host 127.0.0.1 --port 8000
+# Peer over LoRa on board 2
+python -m tools.radio.dispatch_rns_airtest --rnode /dev/ttyUSB1
+
+# Laptop Station (Heltec plaintext lab — needs firmware/heltec reflashed first)
 WAYPOST_TRANSPORT=serial WAYPOST_LORA_DEVICE=/dev/ttyUSB0 \
   uvicorn server.api.main:app --host 127.0.0.1 --port 8000
 
@@ -108,6 +116,22 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-22 — Cursor (M2e over-air ✅)
+
+**Re:** Human plugged in both boards and asked the agent to flash them.  
+**Did:** `rnodeconf /dev/ttyUSBx --autoinstall` on both Heltec V3 boards (answers `8`, Enter, `3` = 915 MHz, `y`; no button presses needed). RNode firmware 1.86, signatures validated. Stopped a 4-day-old TCP-lab Station on :8000 and started Station with `WAYPOST_RNS_INTERFACE=rnode` on ttyUSB0. `dispatch_rns_airtest --rnode /dev/ttyUSB1` → **PASS** (send, portal history, `MSG_PUSH` reply) in ~13 s. Signal reports `encrypted (Reticulum)` + RNode settings. Roadmap: M2e ✅.  
+**Heads-up:** Station is left running on the RNode config (background uvicorn on :8000). Plaintext Heltec `serial` lab needs a PlatformIO reflash to come back.  
+**Next:** M1b Pi (Wi‑Fi TLS) when the human shares SSH; T-Deck Pocket firmware (M7) so M3 can run on hardware.  
+**Blocked:** Pi SSH; T-Deck.
+
+### 2026-09-22 — Cursor (M2e RNode software)
+
+**Re:** "Yes" — M2e software polish.  
+**Did:** `RNodeRadio` (validated freq/bw/txpower/SF/CR, env `WAYPOST_RNS_*`) + `WAYPOST_RNS_INTERFACE=rnode` writes an `RNodeInterface` config. `dispatch_rns_airtest --rnode /dev/ttyUSBx` for over-air runs. Signal reports `security` / `rns_interface` / `rnode` and the portal colours plaintext Heltec as a warning. Runbook in `docs/radio-dev.md`. **84 passed**.  
+**Key finding:** Heltec LoRa32 V3 (our lab boards) is on the official RNode firmware list — M2e over-air may **not** need new hardware. Flashing replaces the Waypost Heltec bridge firmware (reversible with PlatformIO), so it waits on the human.  
+**Next:** Human flashes boards (or OKs an agent to) → run the airtest over LoRa. Otherwise M1b when Pi is online.  
+**Blocked:** Physical access to boards / Pi.
 
 ### 2026-09-22 — Cursor (failover)
 

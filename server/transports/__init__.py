@@ -7,7 +7,7 @@ from typing import Optional
 
 from server.transports.base import Transport
 from server.transports.mock import MockMesh, MockTransport, MockTransportConfig
-from server.transports.reticulum import ReticulumTransport
+from server.transports.reticulum import ReticulumTransport, RNodeRadio
 from server.transports.serial_bridge import SerialBridgeTransport
 
 # Process-wide mock mesh for single-process Station + tests
@@ -49,5 +49,6 @@ def create_transport(
             interface=iface,
             tcp_host=tcp_host,
             tcp_port=tcp_port,
+            rnode=RNodeRadio.from_env(path) if iface == "rnode" else None,
         )
     raise ValueError(f"Unknown WAYPOST_TRANSPORT: {kind}")

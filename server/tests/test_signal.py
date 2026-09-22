@@ -23,6 +23,14 @@ def client(tmp_path: Path):
         yield c
 
 
+def test_signal_reports_link_security_for_mock(client: TestClient):
+    wl = client.get("/api/signal").json()["waylink"]
+    assert wl["encrypted"] is False
+    assert wl["security"].startswith("none")
+    assert wl["rns_interface"] is None
+    assert wl["rnode"] is None
+
+
 def test_signal_status(client: TestClient):
     r = client.get("/api/signal")
     assert r.status_code == 200

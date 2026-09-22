@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
@@ -29,6 +31,54 @@ logger = logging.getLogger("waypost.transport.reticulum")
 APP_NAME = "waypost"
 ASPECT = "waylink"
 
+_RNODE_BANDWIDTHS = (
+    7_800, 10_400, 15_600, 20_800, 31_250, 41_700, 62_500, 125_000, 250_000, 500_000,
+)
+
+
+@dataclass(frozen=True)
+class RNodeRadio:
+    """LoRa parameters for an RNode. Every node on a mesh must match exactly.
+
+    Frequency and TX power are regulated per region — defaults target the
+    US 902–928 MHz ISM band; override via ``WAYPOST_RNS_*`` env vars elsewhere.
+    """
+
+    port: str = "/dev/waypost-lora"
+    frequency: int = 915_000_000
+    bandwidth: int = 125_000
+    txpower: int = 14
+    spreadingfactor: int = 8
+    codingrate: int = 5
+
+    def __post_init__(self) -> None:
+        if not 137_000_000 <= self.frequency <= 3_000_000_000:
+            raise ValueError(f"RNode frequency out of range: {self.frequency}")
+        if self.bandwidth not in _RNODE_BANDWIDTHS:
+            raise ValueError(f"RNode bandwidth must be one of {_RNODE_BANDWIDTHS}")
+        if not 0 <= self.txpower <= 22:
+            raise ValueError(f"RNode txpower must be 0–22 dBm, got {self.txpower}")
+        if not 5 <= self.spreadingfactor <= 12:
+            raise ValueError("RNode spreadingfactor must be 5–12")
+        if not 5 <= self.codingrate <= 8:
+            raise ValueError("RNode codingrate must be 5–8")
+
+    @classmethod
+    def from_env(cls, port: str) -> "RNodeRadio":
+        def _int(name: str, default: int) -> int:
+            raw = os.getenv(name)
+            return int(raw) if raw else default
+
+        d = cls()
+        return cls(
+            port=port,
+            frequency=_int("WAYPOST_RNS_FREQUENCY", d.frequency),
+            bandwidth=_int("WAYPOST_RNS_BANDWIDTH", d.bandwidth),
+            txpower=_int("WAYPOST_RNS_TXPOWER", d.txpower),
+            spreadingfactor=_int("WAYPOST_RNS_SF", d.spreadingfactor),
+            codingrate=_int("WAYPOST_RNS_CR", d.codingrate),
+        )
+
 
 def _default_config(
     config_dir: Path,
@@ -37,19 +87,37 @@ def _default_config(
     interface: str = "auto",
     tcp_host: str = "127.0.0.1",
     tcp_port: int = 4242,
+    rnode: Optional[RNodeRadio] = None,
 ) -> None:
     """Write a Reticulum config if missing.
 
     ``interface``:
       - ``auto`` — AutoInterface (one instance per host / LAN discovery)
       - ``tcp_server`` / ``tcp_client`` — same-host encrypted lab path (M2e ping)
+      - ``rnode`` — RNode LoRa radio over USB serial (production Waylink)
+
+    An existing config is never overwritten; delete it to regenerate.
     """
     config_dir.mkdir(parents=True, exist_ok=True)
     cfg = config_dir / "config"
     if cfg.exists():
         return
 
-    if interface == "tcp_server":
+    if interface == "rnode":
+        r = rnode or RNodeRadio()
+        iface = f"""
+[interfaces]
+  [[RNode LoRa]]
+    type = RNodeInterface
+    enabled = Yes
+    port = {r.port}
+    frequency = {r.frequency}
+    bandwidth = {r.bandwidth}
+    txpower = {r.txpower}
+    spreadingfactor = {r.spreadingfactor}
+    codingrate = {r.codingrate}
+"""
+    elif interface == "tcp_server":
         iface = f"""
 [interfaces]
   [[TCP Server]]
@@ -107,8 +175,12 @@ class ReticulumTransport(Transport):
         interface: str = "auto",
         tcp_host: str = "127.0.0.1",
         tcp_port: int = 4242,
+        rnode: Optional[RNodeRadio] = None,
     ) -> None:
         self.device_path = device_path
+        if interface == "rnode" and rnode is None:
+            rnode = RNodeRadio(port=device_path)
+        self.rnode = rnode
         self.config_dir = Path(config_dir) if config_dir else Path("data/reticulum")
         self.identity_path = (
             Path(identity_path) if identity_path else self.config_dir / "identity"
@@ -165,6 +237,7 @@ class ReticulumTransport(Transport):
             interface=self.interface,
             tcp_host=self.tcp_host,
             tcp_port=self.tcp_port,
+            rnode=self.rnode,
         )
         self._rns = RNS.Reticulum(str(self.config_dir))
 

@@ -77,6 +77,28 @@ class SignalService:
         if transport is not None and hasattr(transport, "destination_hash_hex"):
             rns_hash = getattr(transport, "destination_hash_hex", None)
 
+        encrypted = transport_name in ("reticulum", "rns", "lora")
+        rns_interface = getattr(transport, "interface", None) if encrypted else None
+        if encrypted:
+            security = "encrypted (Reticulum)"
+        elif transport_name == "mock":
+            security = "none (mock, no radio)"
+        else:
+            security = "PLAINTEXT — lab only, not private"
+        rnode = getattr(transport, "rnode", None) if rns_interface == "rnode" else None
+        rnode_info = (
+            {
+                "port": rnode.port,
+                "frequency_mhz": rnode.frequency / 1_000_000,
+                "bandwidth_khz": rnode.bandwidth / 1000,
+                "txpower_dbm": rnode.txpower,
+                "spreadingfactor": rnode.spreadingfactor,
+                "codingrate": rnode.codingrate,
+            }
+            if rnode is not None
+            else None
+        )
+
         sync: dict[str, Any] = {
             "pending_dispatch": 0,
             "pending_by_user": {},
@@ -104,8 +126,11 @@ class SignalService:
                     gateway and getattr(gateway, "_task", None) is not None
                 ),
                 "handlers": gateway_handlers,
-                "encrypted": transport_name in ("reticulum", "rns", "lora"),
+                "encrypted": encrypted,
+                "security": security,
+                "rns_interface": rns_interface,
                 "rns_hash": rns_hash,
+                "rnode": rnode_info,
                 "note": note,
                 "radios": radios,
                 "radios_detected": len(radios),

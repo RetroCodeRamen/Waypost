@@ -81,7 +81,42 @@ Expect: `PASS: M2e Dispatch over Reticulum (encrypted TCP lab)`.
 
 Bind includes `transport_dest` (peer RNS hash) so Station can push encrypted `MSG_PUSH` replies. Node ids use `rns-*` prefix for air TX (like `radio-*` for Heltec).
 
-Station: `WAYPOST_TRANSPORT=reticulum` (config under `data/reticulum/` or `WAYPOST_RNS_CONFIG`; swap AutoInterface/TCP for RNodeInterface for production LoRa).
+Station: `WAYPOST_TRANSPORT=reticulum` (config under `data/reticulum/` or `WAYPOST_RNS_CONFIG`).
+
+### Encrypted over real LoRa (RNode)
+
+**PASS 2026-09-22** on two Heltec WiFi LoRa 32 **V3** boards flashed with RNode firmware 1.86 (US 915 MHz). Flashing **replaces** the Waypost Heltec bridge firmware, so the plaintext `serial` lab above needs `firmware/heltec` reflashed with PlatformIO.
+
+```bash
+# Flash each board. Interactive; answers for Heltec V3 on US 915 in rnodeconf 1.5.x:
+#   8 (Heltec LoRa32 v3) → Enter (experimental notice) → 3 (915 MHz) → y
+rnodeconf /dev/ttyUSB0 --autoinstall
+rnodeconf /dev/ttyUSB0 --info   # verify; repeat for /dev/ttyUSB1
+```
+
+```bash
+# Terminal A — Station on board 1
+WAYPOST_TRANSPORT=reticulum WAYPOST_RNS_INTERFACE=rnode \
+  WAYPOST_LORA_DEVICE=/dev/ttyUSB0 WAYPOST_RNS_CONFIG=/tmp/wp-rns-station-rnode \
+  uvicorn server.api.main:app --host 127.0.0.1 --port 8000
+
+# Terminal B — peer Dispatch on board 2
+python -m tools.radio.dispatch_rns_airtest --rnode /dev/ttyUSB1
+```
+
+Expect: `PASS: M2e Dispatch over Reticulum (encrypted, RNode LoRa /dev/ttyUSB1)`. Signal shows **Security: encrypted (Reticulum)** and the radio settings.
+
+Radio settings come from env and **must match on every node**:
+
+| Env | Default | Notes |
+|-----|---------|-------|
+| `WAYPOST_RNS_FREQUENCY` | `915000000` | Hz. US 902–928 MHz ISM; use 868 MHz band in EU — check local rules |
+| `WAYPOST_RNS_BANDWIDTH` | `125000` | Hz |
+| `WAYPOST_RNS_TXPOWER` | `14` | dBm, 0–22 |
+| `WAYPOST_RNS_SF` | `8` | Spreading factor 5–12 (higher = longer range, slower) |
+| `WAYPOST_RNS_CR` | `5` | Coding rate 4/5 … 4/8 |
+
+The config file is written once; delete `$WAYPOST_RNS_CONFIG/config` after changing interface or radio settings.
 
 ## Related
 
