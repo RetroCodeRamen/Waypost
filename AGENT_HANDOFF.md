@@ -118,6 +118,13 @@ Newest first. Format:
 **Blocked:** …
 ```
 
+### 2026-09-22 — Cursor
+
+**Re:** Next unblocked slice without Pi/T-Deck — M3 multi-hop + MSG_SYNC authz.  
+**Did:** Pushed Claude’s peer/`MSG_SYNC` commit. Added 1-hop-only peer push, `handoff_to` multi-hop courier (aj→bob→carol), MSG_SYNC requires bound device matching username. **73 passed**.  
+**Next for other agent:** Wi‑Fi↔LoRa failover test (sim), or M2e software polish / RNode when hardware arrives.  
+**Blocked:** Pi / T-Deck / RNode still out of band.
+
 ### 2026-09-20 — Cursor
 
 **Re:** Review Claude's uncommitted M3 sim work since private-repo handoff.  
