@@ -436,13 +436,24 @@ class DispatchStore:
     def list_courier_pending(self, dest: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             """
-            SELECT c.message_id, c.dest, c.created_at, m.*
+            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, m.*
             FROM courier_queue c
             JOIN messages m ON m.id = c.message_id
             WHERE c.dest = ?
             ORDER BY m.created_at ASC
             """,
             (dest,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_courier_all(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, m.*
+            FROM courier_queue c
+            JOIN messages m ON m.id = c.message_id
+            ORDER BY m.created_at ASC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 

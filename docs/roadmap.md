@@ -202,7 +202,7 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 **Exit criteria:** Shared queue states ([offline-sync.md](offline-sync.md)); peer A→B without Station; carry-forward exercised; Wi‑Fi↔LoRa failover.
 
-**Progress:** `PeerDispatchNode` (`server/services/dispatch/peer.py`) proves peer→peer Dispatch delivery with **no Station in the mesh at all**, plus `MSG_SYNC` carry-forward to Station (dedup by `mid`, Station's own pending queue for that user piggybacks back in the same round trip) — all in the mock mesh (`server/tests/test_mesh_dispatch.py`). **Still open:** multi-hop beyond one courier hop (needs Outpost/M6), a dedicated Wi‑Fi↔LoRa failover test, and hardware (Heltec/RNode Pocket firmware doesn't exist yet — this is sim-only, per the "sim first" scoping above).
+**Progress:** `PeerDispatchNode` proves peer→peer Dispatch with **no Station**, `MSG_SYNC` carry-forward (dedup by `mid`, pending piggyback), **multi-hop courier** (`handoff_to` one-hop carry; peers only push at 1 hop), and **MSG_SYNC authz** (bound device must match username). Tests in `server/tests/test_mesh_dispatch.py`. **Still open:** dedicated Wi‑Fi↔LoRa failover test; hardware / Outpost multi-hop (M6); Pocket firmware (M7).
 
 **Depends on:** N1 ✅. Prefer N2 auth before multi-user mesh demos.
 

@@ -38,10 +38,10 @@ Related truth sources (do not duplicate long plans here):
 
 ## Current snapshot (update when wrong)
 
-**Date:** 2026-09-18  
+**Date:** 2026-09-22  
 
-**Active milestone:** **M2e** Production radio crypto 🟡 (Dispatch-over-RNS TCP lab ✅; RNode LoRa still open)  
-**Just finished:** **N2** username/password auth ✅  
+**Active milestone:** **M3** Dispatch mesh semantics 🟡 (sim multi-hop ✅); **M2e** RNode still open  
+**Just finished:** M3 multi-hop courier + MSG_SYNC bind authz (this session)
 
 **Have today**
 
@@ -49,14 +49,14 @@ Related truth sources (do not duplicate long plans here):
 - N2: register/login, PBKDF2 hashes, session cookie + Bearer; lab users `aj`/`bob` password `waypost1` (lab only)
 - N1 opportunistic Dispatch; Heltec M2c air path (plaintext stand-in)
 - M2e: `ReticulumTransport`, `dispatch_rns_airtest` PASS on encrypted TCP lab; bind `transport_dest` for `rns-*` pushes
-- M3 (sim): `PeerDispatchNode` (`server/services/dispatch/peer.py`) — peer→peer Dispatch with **no Station in the mesh**, plus `MSG_SYNC` carry-forward (dedup by `mid`, Station pending piggybacks back inline); `server/tests/test_mesh_dispatch.py`
+- M3 (sim): `PeerDispatchNode` — peer↔peer, `MSG_SYNC` (+ authz), **multi-hop** `handoff_to` (aj→bob→carol); `test_mesh_dispatch.py`
 - Deploy templates under `deploy/raspberry-pi/` — **not validated on hardware**
 
 **Don’t have yet**
 
 - Pi AP product path (M1b): hostapd + dnsmasq + Waygate + Caddy on real Pi
 - RNode production LoRa interface (finish M2e)
-- Pocket/Outpost firmware; mesh without Station **hardware** (M3 sim proven, M6/M7 hardware still open); multi-hop beyond one courier; Wi‑Fi↔LoRa failover test
+- Dedicated Wi‑Fi↔LoRa failover test; Pocket/Outpost firmware (M6/M7)
 - Stalwart/OIDC (M4)
 
 **Freezes:** no new portal apps; no Atlas; no Workshop until network depth advances.
@@ -71,11 +71,11 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 
 | Slot | Agent | Status | Branch / notes |
 |------|-------|--------|----------------|
-| M2e RNode LoRa | — | open | After TCP lab; needs hardware |
+| M2e RNode LoRa | — | open | Needs RNode hardware |
 | M1b Pi stack | — | waiting on human | SSH install once Pi is online |
-| M3 peer-to-peer Dispatch (sim) | — | done (this slice) | Sim-only; multi-hop + hardware + Wi‑Fi↔LoRa failover test remain open for next M3 slice |
+| M3 peer + multi-hop sim | Cursor | done | Remaining: Wi‑Fi↔LoRa failover test |
 
-**Cursor last session:** N2 auth hardened (all private APIs); M2e Dispatch-over-RNS; Station may be on `WAYPOST_TRANSPORT=reticulum` locally.  
+**Cursor last session:** M3 multi-hop courier + MSG_SYNC authz; pushed Claude’s prior M3 peer slice.  
 **Claude last session:** M3 sim slice — peer-to-peer Dispatch + `MSG_SYNC` carry-forward (see message board).
 
 ---

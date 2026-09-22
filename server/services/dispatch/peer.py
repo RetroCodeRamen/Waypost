@@ -143,8 +143,14 @@ class PeerDispatchNode:
         finally:
             self._pending.pop(env.rid, None)
 
-    def _payload(self, message: dict[str, Any]) -> dict[str, Any]:
-        return {
+    def _payload(
+        self,
+        message: dict[str, Any],
+        *,
+        final_dest: Optional[str] = None,
+        for_user: Optional[str] = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {
             "message": {
                 "id": message["id"],
                 "conversation_id": message["conversation_id"],
@@ -153,6 +159,16 @@ class PeerDispatchNode:
                 "transport": message.get("transport"),
             }
         }
+        if final_dest:
+            out["final_dest"] = final_dest
+        if for_user:
+            out["for_user"] = for_user
+        return out
+
+    async def _is_direct_neighbor(self, dest_node_id: str) -> bool:
+        """App-layer courier only pushes one hop; multi-hop is store-and-forward."""
+        route = await self.transport.get_route(dest_node_id)
+        return bool(route and route.hops == 1)
 
     async def send_direct(
         self,
@@ -173,15 +189,24 @@ class PeerDispatchNode:
         )
         if not created:
             return msg
-        if await self.transport.reachable(peer_node_id):
-            delivered = await self._push_to(peer_node_id, msg)
+        if await self._is_direct_neighbor(peer_node_id):
+            delivered = await self._push_to(
+                peer_node_id, msg, for_user=peer_username
+            )
             if delivered:
                 msg = self.store.set_delivery_state(msg["id"], DELIVERY_ROUTED) or msg
                 return msg
         self.store.queue_courier(msg["id"], peer_node_id)
         return msg
 
-    async def _push_to(self, dest_node_id: str, message: dict[str, Any]) -> bool:
+    async def _push_to(
+        self,
+        dest_node_id: str,
+        message: dict[str, Any],
+        *,
+        final_dest: Optional[str] = None,
+        for_user: Optional[str] = None,
+    ) -> bool:
         env = Envelope(
             src=self.node_id,
             dst=dest_node_id,
@@ -189,7 +214,9 @@ class PeerDispatchNode:
             op=OP_MSG_SEND,
             flags=int(Flags.REQUEST),
             mid=new_id(),
-            payload=self._payload(message),
+            payload=self._payload(
+                message, final_dest=final_dest, for_user=for_user
+            ),
         )
         reply = await self.request(env)
         return bool(reply and not (reply.flags & int(Flags.ERROR)))
@@ -200,6 +227,36 @@ class PeerDispatchNode:
         if not isinstance(m, dict) or not m.get("id") or not m.get("sender") or m.get("body") is None:
             return env.make_response(op=OP_MSG_PUSH, payload={"error": "invalid_message"}, error=True)
 
+        final_dest = payload.get("final_dest") if isinstance(payload, dict) else None
+        for_user = payload.get("for_user") if isinstance(payload, dict) else None
+
+        # Multi-hop carry: this node is an intermediate courier, not the reader.
+        if final_dest and str(final_dest) != self.node_id:
+            peer_name = str(for_user or m.get("peer") or "unknown")
+            conv = self.store.ensure_direct(str(m["sender"]), peer_name)
+            msg, created = self.store.add_message(
+                conversation_id=conv["id"],
+                sender=str(m["sender"]),
+                body=str(m["body"]),
+                message_id=str(m["id"]),
+                transport=m.get("transport"),
+                delivery_state=DELIVERY_SENT,
+            )
+            self.store.queue_courier(msg["id"], str(final_dest))
+            if created:
+                logger.info(
+                    "peer_courier_accepted node=%s mid=%s final=%s",
+                    self.node_id,
+                    msg["id"],
+                    final_dest,
+                )
+            return env.make_response(
+                op=OP_MSG_PUSH,
+                payload={"ok": True, "id": msg["id"], "courier": True},
+                flags=Flags.RESPONSE | Flags.ACK,
+            )
+
+        # Direct delivery: recipient reads now, still carries a copy to Station.
         conv = self.store.ensure_direct(self.username, str(m["sender"]))
         msg, created = self.store.add_message(
             conversation_id=conv["id"],
@@ -217,18 +274,58 @@ class PeerDispatchNode:
         )
 
     async def flush_pending(self, peer_node_id: str) -> int:
-        """Retry courier items addressed to peer_node_id now that it's reachable
-        (peer-side mirror of Station's bind-time opportunistic flush)."""
+        """Retry courier items addressed to peer_node_id now that it's a neighbor."""
         pending = self.store.list_courier_pending(peer_node_id)
         count = 0
         for row in pending:
-            if not await self.transport.reachable(peer_node_id):
+            if not await self._is_direct_neighbor(peer_node_id):
                 break
             if await self._push_to(peer_node_id, row):
                 self.store.set_delivery_state(row["message_id"], DELIVERY_ROUTED)
                 self.store.clear_courier(row["message_id"], peer_node_id)
                 count += 1
         return count
+
+    async def handoff_to(self, neighbor_node_id: str) -> int:
+        """Pass courier items for *other* destinations to a one-hop neighbor.
+
+        The neighbor stores them and later delivers (or hands off again) —
+        Pocket-as-courier multi-hop without requiring a transport path to the
+        final node.
+        """
+        if not await self._is_direct_neighbor(neighbor_node_id):
+            return 0
+        # First deliver anything actually addressed to this neighbor
+        handed = await self.flush_pending(neighbor_node_id)
+        for row in list(self.store.list_courier_all()):
+            dest = str(row.get("dest") or "")
+            if dest in (neighbor_node_id, STATION_DEST, ""):
+                continue
+            # Infer recipient username from DM conversation id when possible
+            for_user = None
+            cid = str(row.get("conversation_id") or "")
+            if cid.startswith("dm:"):
+                parts = cid.split(":")
+                if len(parts) == 3:
+                    a, b = parts[1], parts[2]
+                    for_user = b if a == self.username.lower() else a
+            ok = await self._push_to(
+                neighbor_node_id,
+                row,
+                final_dest=dest,
+                for_user=for_user,
+            )
+            if ok:
+                self.store.clear_courier(row["message_id"], dest)
+                handed += 1
+                logger.info(
+                    "peer_handoff node=%s via=%s mid=%s final=%s",
+                    self.node_id,
+                    neighbor_node_id,
+                    row["message_id"],
+                    dest,
+                )
+        return handed
 
     async def sync_with_station(
         self, station_node_id: str = STATION_DEST, *, timeout: float = 5.0

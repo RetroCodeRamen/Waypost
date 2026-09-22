@@ -432,6 +432,18 @@ class DispatchService:
                 error=True,
             )
 
+        # Courier must be a bound device for this username (radio authz stand-in).
+        binding = self.store.get_binding(env.src)
+        if (
+            not binding
+            or str(binding["username"]).lower() != str(username).lower()
+        ):
+            return env.make_response(
+                op=OP_MSG_SYNC,
+                payload={"error": "unauthorized_courier"},
+                error=True,
+            )
+
         ingested = 0
         for m in messages:
             if (

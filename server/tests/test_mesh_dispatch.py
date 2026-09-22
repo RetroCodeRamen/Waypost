@@ -127,6 +127,7 @@ async def test_carry_forward_sync_to_station_dedups():
     mesh = MockMesh()
     dispatch, station_gateway = _station(mesh)
     b = _peer(mesh, "radio-bob", "bob", 6)
+    dispatch.store.bind_device("radio-bob", "bob")
     mesh.link("radio-bob", "station")
     await station_gateway.start()
     await b.start()
@@ -169,10 +170,12 @@ async def test_sync_piggybacks_station_pending():
     await station_gateway.start()
     await b.start()
     try:
-        # AJ messaged Bob over the portal while Bob's Pocket was out of range.
+        # AJ messaged Bob over the portal while Bob had no bound Pocket yet.
         dispatch.send_direct(sender="aj", peer="bob", body="dinner at 6", transport="wifi")
         assert dispatch.sync_status()["pending_dispatch"] == 1
 
+        # Bind only when the Pocket comes online to sync.
+        dispatch.store.bind_device("radio-bob", "bob")
         result = await b.sync_with_station()
         assert result["ok"] is True
         assert result["received"] == 1
@@ -187,3 +190,72 @@ async def test_sync_piggybacks_station_pending():
     finally:
         await station_gateway.stop()
         await b.stop()
+
+
+@pytest.mark.asyncio
+async def test_sync_rejects_unbound_courier():
+    mesh = MockMesh()
+    dispatch, station_gateway = _station(mesh)
+    b = _peer(mesh, "radio-bob", "bob", 8)
+    # Intentionally no bind_device — must fail closed
+    mesh.link("radio-bob", "station")
+    await station_gateway.start()
+    await b.start()
+    try:
+        result = await b.sync_with_station()
+        assert result["ok"] is False
+    finally:
+        await station_gateway.stop()
+        await b.stop()
+
+
+@pytest.mark.asyncio
+async def test_multihop_courier_aj_bob_carol():
+    """aj -- bob -- carol: aj cannot one-hop carol; bob carries the message."""
+    mesh = MockMesh()
+    a = _peer(mesh, "radio-aj", "aj", 9)
+    b = _peer(mesh, "radio-bob", "bob", 10)
+    c = _peer(mesh, "radio-carol", "carol", 11)
+    mesh.link("radio-aj", "radio-bob")
+    mesh.link("radio-bob", "radio-carol")
+    # No aj—carol link. Transport BFS would be 2 hops; peer only pushes 1 hop.
+    await a.start()
+    await b.start()
+    await c.start()
+    try:
+        msg = await a.send_direct(
+            peer_username="carol",
+            peer_node_id="radio-carol",
+            body="via bob please",
+        )
+        assert msg["delivery_state"] == "SENT"
+        assert len(a.store.list_courier_pending("radio-carol")) == 1
+
+        handed = await a.handoff_to("radio-bob")
+        assert handed == 1
+        assert a.store.list_courier_pending("radio-carol") == []
+        assert len(b.store.list_courier_pending("radio-carol")) == 1
+
+        # Carol has not seen it yet
+        carol_before = [
+            m
+            for conv in c.store.list_conversations("carol")
+            for m in c.store.list_messages(conv["id"])
+        ]
+        assert not any(m["body"] == "via bob please" for m in carol_before)
+
+        flushed = await b.flush_pending("radio-carol")
+        assert flushed == 1
+
+        carol_msgs = [
+            m
+            for conv in c.store.list_conversations("carol")
+            for m in c.store.list_messages(conv["id"])
+        ]
+        assert any(
+            m["body"] == "via bob please" and m["sender"] == "aj" for m in carol_msgs
+        )
+    finally:
+        await a.stop()
+        await b.stop()
+        await c.stop()
