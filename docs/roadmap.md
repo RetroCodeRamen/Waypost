@@ -196,11 +196,13 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 ---
 
-### M3 — Dispatch hardening (mesh semantics)
+### M3 — Dispatch hardening (mesh semantics) 🟡
 
 **Goal:** Same conversation on Wi‑Fi and LoRa — including **no Station** (sim first, then hardware).
 
 **Exit criteria:** Shared queue states ([offline-sync.md](offline-sync.md)); peer A→B without Station; carry-forward exercised; Wi‑Fi↔LoRa failover.
+
+**Progress:** `PeerDispatchNode` (`server/services/dispatch/peer.py`) proves peer→peer Dispatch delivery with **no Station in the mesh at all**, plus `MSG_SYNC` carry-forward to Station (dedup by `mid`, Station's own pending queue for that user piggybacks back in the same round trip) — all in the mock mesh (`server/tests/test_mesh_dispatch.py`). **Still open:** multi-hop beyond one courier hop (needs Outpost/M6), a dedicated Wi‑Fi↔LoRa failover test, and hardware (Heltec/RNode Pocket firmware doesn't exist yet — this is sim-only, per the "sim first" scoping above).
 
 **Depends on:** N1 ✅. Prefer N2 auth before multi-user mesh demos.
 

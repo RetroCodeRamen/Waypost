@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS pending_pushes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pending_user ON pending_pushes(username);
+
+CREATE TABLE IF NOT EXISTS courier_queue (
+    message_id TEXT NOT NULL,
+    dest TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (message_id, dest),
+    FOREIGN KEY (message_id) REFERENCES messages(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_courier_dest ON courier_queue(dest);
 """
 
 _SLUG_RE = re.compile(r"[^a-z0-9\-]+")
@@ -410,3 +420,35 @@ class DispatchStore:
             """
         ).fetchall()
         return {str(r["username"]): int(r["n"]) for r in rows}
+
+    # -- Courier queue (outbound carry: this node -> dest, e.g. peer or "station") --
+
+    def queue_courier(self, message_id: str, dest: str) -> None:
+        self._conn.execute(
+            """
+            INSERT OR IGNORE INTO courier_queue (message_id, dest, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (message_id, dest, time.time()),
+        )
+        self._conn.commit()
+
+    def list_courier_pending(self, dest: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT c.message_id, c.dest, c.created_at, m.*
+            FROM courier_queue c
+            JOIN messages m ON m.id = c.message_id
+            WHERE c.dest = ?
+            ORDER BY m.created_at ASC
+            """,
+            (dest,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_courier(self, message_id: str, dest: str) -> None:
+        self._conn.execute(
+            "DELETE FROM courier_queue WHERE message_id = ? AND dest = ?",
+            (message_id, dest),
+        )
+        self._conn.commit()

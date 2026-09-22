@@ -40,7 +40,12 @@ from server.services.beacon.constants import (
 from server.services.beacon.service import BeaconService
 from server.services.commons.constants import OP_POST_CREATE, OP_POST_GET, OP_POST_LIST
 from server.services.commons.service import CommonsService
-from server.services.dispatch.constants import OP_MSG_ACK, OP_MSG_LIST, OP_MSG_SEND
+from server.services.dispatch.constants import (
+    OP_MSG_ACK,
+    OP_MSG_LIST,
+    OP_MSG_SEND,
+    OP_MSG_SYNC,
+)
 from server.services.dispatch.service import DispatchService
 from server.services.locker.constants import OP_FILE_DELETE, OP_FILE_INFO, OP_FILE_LIST
 from server.services.locker.service import LockerService
@@ -133,6 +138,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_DISPATCH, OP_MSG_SEND, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_LIST, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_ACK, dispatch.handle_rpc)
+        gateway.register(SVC_DISPATCH, OP_MSG_SYNC, dispatch.handle_rpc)
         for op in (
             OP_MAIL_STATUS,
             OP_MAIL_LIST,

@@ -14,6 +14,7 @@ from server.services.dispatch.constants import (
     OP_MSG_LIST,
     OP_MSG_PUSH,
     OP_MSG_SEND,
+    OP_MSG_SYNC,
     TRANSPORT_LORA,
     TRANSPORT_WIFI,
 )
@@ -278,6 +279,8 @@ class DispatchService:
             return await self._rpc_list(env)
         if env.op == OP_MSG_ACK:
             return await self._rpc_ack(env)
+        if env.op == OP_MSG_SYNC:
+            return await self._rpc_sync(env)
         return env.make_response(
             op=env.op,
             payload={"error": "unknown_operation", "op": env.op},
@@ -404,4 +407,77 @@ class DispatchService:
         self._mark_push_delivered(env.src, message_id)
         return env.make_response(
             op=OP_MSG_ACK, payload={"ok": True, "id": message_id}, flags=Flags.RESPONSE | Flags.ACK
+        )
+
+    async def _rpc_sync(self, env: Envelope) -> Envelope:
+        """M3: ingest a courier's carried copies (dedup by mid) and piggyback
+        this user's own pending queue back inline, in the same round trip —
+        the sync response itself is the delivery confirmation, so pending
+        rows are cleared directly rather than via a separate push/ACK.
+
+        See docs/protocol.md "Offline / no-Station path" and
+        docs/architecture.md "Pocket↔Pocket and store-and-forward".
+        """
+        payload = env.payload or {}
+        if not isinstance(payload, dict):
+            return env.make_response(
+                op=OP_MSG_SYNC, payload={"error": "invalid_payload"}, error=True
+            )
+        username = payload.get("username")
+        messages = payload.get("messages")
+        if not username or not isinstance(messages, list):
+            return env.make_response(
+                op=OP_MSG_SYNC,
+                payload={"error": "username_and_messages_required"},
+                error=True,
+            )
+
+        ingested = 0
+        for m in messages:
+            if (
+                not isinstance(m, dict)
+                or not m.get("id")
+                or not m.get("sender")
+                or m.get("body") is None
+            ):
+                continue
+            conv = self.store.ensure_direct(str(m["sender"]), str(username))
+            _, created = self.store.add_message(
+                conversation_id=conv["id"],
+                sender=str(m["sender"]),
+                body=str(m["body"]),
+                message_id=str(m["id"]),
+                transport=m.get("transport"),
+                delivery_state=str(m.get("delivery_state") or DELIVERY_DELIVERED),
+            )
+            if created:
+                ingested += 1
+
+        pending_rows = self.store.list_pending_for_user(str(username))
+        piggyback: list[dict[str, Any]] = []
+        for row in pending_rows:
+            piggyback.append(
+                {
+                    "id": row["message_id"],
+                    "conversation_id": row["conversation_id"],
+                    "sender": row["sender"],
+                    "body": row["body"],
+                    "transport": row.get("transport"),
+                }
+            )
+            self.store.clear_pending(row["message_id"], str(username))
+            if not self.store.pending_usernames_for_message(row["message_id"]):
+                self.store.set_delivery_state(row["message_id"], DELIVERY_DELIVERED)
+
+        logger.info(
+            "dispatch_sync courier=%s user=%s ingested=%s piggyback=%s",
+            env.src,
+            username,
+            ingested,
+            len(piggyback),
+        )
+        return env.make_response(
+            op=OP_MSG_SYNC,
+            payload={"ok": True, "ingested": ingested, "pending": piggyback},
+            flags=Flags.RESPONSE | Flags.ACK,
         )

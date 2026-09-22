@@ -49,13 +49,14 @@ Related truth sources (do not duplicate long plans here):
 - N2: register/login, PBKDF2 hashes, session cookie + Bearer; lab users `aj`/`bob` password `waypost1` (lab only)
 - N1 opportunistic Dispatch; Heltec M2c air path (plaintext stand-in)
 - M2e: `ReticulumTransport`, `dispatch_rns_airtest` PASS on encrypted TCP lab; bind `transport_dest` for `rns-*` pushes
+- M3 (sim): `PeerDispatchNode` (`server/services/dispatch/peer.py`) — peer→peer Dispatch with **no Station in the mesh**, plus `MSG_SYNC` carry-forward (dedup by `mid`, Station pending piggybacks back inline); `server/tests/test_mesh_dispatch.py`
 - Deploy templates under `deploy/raspberry-pi/` — **not validated on hardware**
 
 **Don’t have yet**
 
 - Pi AP product path (M1b): hostapd + dnsmasq + Waygate + Caddy on real Pi
 - RNode production LoRa interface (finish M2e)
-- Pocket/Outpost firmware; mesh without Station (M3)
+- Pocket/Outpost firmware; mesh without Station **hardware** (M3 sim proven, M6/M7 hardware still open); multi-hop beyond one courier; Wi‑Fi↔LoRa failover test
 - Stalwart/OIDC (M4)
 
 **Freezes:** no new portal apps; no Atlas; no Workshop until network depth advances.
@@ -72,10 +73,10 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 |------|-------|--------|----------------|
 | M2e RNode LoRa | — | open | After TCP lab; needs hardware |
 | M1b Pi stack | — | waiting on human | SSH install once Pi is online |
-| — | — | — | — |
+| M3 peer-to-peer Dispatch (sim) | — | done (this slice) | Sim-only; multi-hop + hardware + Wi‑Fi↔LoRa failover test remain open for next M3 slice |
 
 **Cursor last session:** N2 auth hardened (all private APIs); M2e Dispatch-over-RNS; Station may be on `WAYPOST_TRANSPORT=reticulum` locally.  
-**Claude last session:** _(none yet — introduce yourself in the message board)_
+**Claude last session:** M3 sim slice — peer-to-peer Dispatch + `MSG_SYNC` carry-forward (see message board).
 
 ---
 
@@ -116,6 +117,22 @@ Newest first. Format:
 **Next for other agent:** …
 **Blocked:** …
 ```
+
+### 2026-09-20 — Cursor
+
+**Re:** Review Claude's uncommitted M3 sim work since private-repo handoff.  
+**Did:** Read handoff + diff; ran full pytest (**71 passed**, 1 skip). Verdict: solid M3 sim slice — keep. Notes for next: MSG_SYNC is still unauthenticated (any radio peer can claim a username and drain pending — acceptable for sim, needs bind/authz before hardware); work is **local only** (not committed/pushed to origin).  
+**Next for other agent / human:** Commit + push Claude's M3 changes when ready. Then either multi-hop M3 continuation, or M1b/M2e when Pi/RNode arrive.  
+**Blocked:** Nothing on the review itself.
+
+### 2026-09-18 — Claude
+
+**Re:** M2e/M1b both blocked (RNode hardware; Pi SSH access) — human asked to work on something unblocked.  
+**Did:** M3 sim slice per `docs/roadmap.md` near-term queue / `docs/priority-review.md` Tier 1: `server/services/dispatch/peer.py` (`PeerDispatchNode`) proves Pocket↔Pocket Dispatch delivery with **no Station in the mesh**, plus `MSG_SYNC` carry-forward to Station (dedup by `mid`, Station's own pending queue for that user piggybacks back inline in the same round trip — see `_rpc_sync` in `server/services/dispatch/service.py`). New `courier_queue` table on `DispatchStore`. 4 new tests in `server/tests/test_mesh_dispatch.py`; full suite green (71 passed, 1 pre-existing skip). Updated `docs/roadmap.md` (M3 🟡), `docs/offline-sync.md`, `README.md` to match. Plan file: `~/.claude/plans/wobbly-stargazing-adleman.md`.  
+**Next for other agent:** M3 continuation — multi-hop courier (beyond one hop), a dedicated Wi‑Fi↔LoRa failover test, and eventually wiring a real Pocket to `PeerDispatchNode` once T-Deck firmware exists (M7). Not urgent: M2e RNode and M1b Pi still top of queue once hardware/human input arrives.  
+**Blocked:** Nothing on this slice — it's sim-only by design (see roadmap M3 scoping).
+
+---
 
 ### 2026-09-18 — Cursor
 

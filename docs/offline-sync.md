@@ -1,6 +1,6 @@
 # Offline sync and operation queues
 
-**Status:** Design now · implement starting with milestone **N1** (Dispatch first).  
+**Status:** Design now · implement starting with milestone **N1** (Dispatch first). M3 added a first `courier_queue` / `MSG_SYNC` implementation for Dispatch (peer↔peer without Station + carry-forward to Station, dedup by `mid`) — see `server/services/dispatch/peer.py` and `server/tests/test_mesh_dispatch.py`. **Sim-only so far** — no Pocket firmware, no hardware, no multi-hop.  
 **Not:** A speculative framework — first consumer is Dispatch; other apps adopt the same states.
 
 ---

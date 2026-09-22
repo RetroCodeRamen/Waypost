@@ -25,7 +25,7 @@ That is the goal. **It is not there yet.**
 |------------|----------------|
 | Laptop Station API + portal prototypes | Plug-and-play Pi Station / Waygate Wi‑Fi |
 | Heltec Dispatch over air (M2c) + [radio-dev](docs/radio-dev.md) | Production RNode LoRa (**M2e** partial: encrypted Dispatch over RNS TCP lab ✅) |
-| **N1** opportunistic queue + Signal/Today sync | Mesh peer path without Station (**M3**) |
+| **N1** opportunistic queue + Signal/Today sync | Mesh peer path without Station (**M3** partial: peer↔peer + `MSG_SYNC` carry-forward proven in sim ✅; multi-hop + hardware pending) |
 | **N2** username/password (portal + Pocket Wi‑Fi) ✅ | Stalwart/OIDC; TLS on camp Wi‑Fi (**M1b**) |
 
 Expect breakage, missing pieces, and rapid change. Priorities: **[docs/priority-review.md](docs/priority-review.md)** · plan: **[docs/roadmap.md](docs/roadmap.md)**.
