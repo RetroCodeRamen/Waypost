@@ -1,6 +1,6 @@
 # Offline sync and operation queues
 
-**Status:** Design now · implement starting with milestone **N1** (Dispatch first). M3 added a first `courier_queue` / `MSG_SYNC` implementation for Dispatch (peer↔peer without Station + carry-forward to Station, dedup by `mid`) — see `server/services/dispatch/peer.py` and `server/tests/test_mesh_dispatch.py`. **Sim-only so far** — no Pocket firmware, no hardware, no multi-hop.  
+**Status:** Design now · implement starting with milestone **N1** (Dispatch first). M3 added a first `courier_queue` / `MSG_SYNC` implementation for Dispatch (peer↔peer without Station + carry-forward to Station, dedup by `mid`) — see `server/services/dispatch/peer.py` and `server/tests/test_mesh_dispatch.py`. Multi-hop courier and Wi‑Fi↔LoRa failover are covered in the same sim. **Sim-only so far** — no Pocket firmware, no hardware.  
 **Not:** A speculative framework — first consumer is Dispatch; other apps adopt the same states.
 
 ---
@@ -38,6 +38,7 @@ Apps map domain language onto these (e.g. Dispatch `delivery_state` ↔ queue st
 | Peer appears (bind, LoRa hear, Wi‑Fi) | Opportunistically flush matching outbox |
 | Recipient Pocket offline from Station | Peer path or courier may deliver first; Station sync later via `MSG_SYNC` / carry |
 | Wi‑Fi-only payload (Locker body) | `WAITING_FOR_WIFI` download/upload job |
+| Recipient bound on several paths (Wi‑Fi + LoRa) | Push on every path; Dispatch stays `SENT` with a durable pending row until any device confirms (outbox poll, `MSG_ACK`, `MSG_PUSH` reply, `MSG_SYNC`); first confirm drops the other paths' copies |
 
 ## Assumptions
 

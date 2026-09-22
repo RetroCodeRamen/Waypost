@@ -40,8 +40,8 @@ Related truth sources (do not duplicate long plans here):
 
 **Date:** 2026-09-22  
 
-**Active milestone:** **M3** Dispatch mesh semantics 🟡 (sim multi-hop ✅); **M2e** RNode still open  
-**Just finished:** M3 multi-hop courier + MSG_SYNC bind authz (this session)
+**Active milestone:** **M3** Dispatch mesh semantics 🟡 (sim complete ✅; hardware pending); **M2e** RNode still open  
+**Just finished:** M3 Wi‑Fi↔LoRa failover + durable pending for bound devices (this session)
 
 **Have today**
 
@@ -49,14 +49,15 @@ Related truth sources (do not duplicate long plans here):
 - N2: register/login, PBKDF2 hashes, session cookie + Bearer; lab users `aj`/`bob` password `waypost1` (lab only)
 - N1 opportunistic Dispatch; Heltec M2c air path (plaintext stand-in)
 - M2e: `ReticulumTransport`, `dispatch_rns_airtest` PASS on encrypted TCP lab; bind `transport_dest` for `rns-*` pushes
-- M3 (sim): `PeerDispatchNode` — peer↔peer, `MSG_SYNC` (+ authz), **multi-hop** `handoff_to` (aj→bob→carol); `test_mesh_dispatch.py`
+- M3 (sim): `PeerDispatchNode` — peer↔peer, `MSG_SYNC` (+ authz), **multi-hop** `handoff_to` (aj→bob→carol), **Wi‑Fi↔LoRa failover**; `test_mesh_dispatch.py`
+- Dispatch pending is durable for every recipient until a device confirms (outbox poll, `MSG_ACK`, `MSG_PUSH` reply, or `MSG_SYNC`); state is `SENT` until then, not `DELIVERED`
 - Deploy templates under `deploy/raspberry-pi/` — **not validated on hardware**
 
 **Don’t have yet**
 
 - Pi AP product path (M1b): hostapd + dnsmasq + Waygate + Caddy on real Pi
 - RNode production LoRa interface (finish M2e)
-- Dedicated Wi‑Fi↔LoRa failover test; Pocket/Outpost firmware (M6/M7)
+- Pocket/Outpost firmware (M6/M7); M3 on real hardware
 - Stalwart/OIDC (M4)
 
 **Freezes:** no new portal apps; no Atlas; no Workshop until network depth advances.
@@ -73,9 +74,9 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 |------|-------|--------|----------------|
 | M2e RNode LoRa | — | open | Needs RNode hardware |
 | M1b Pi stack | — | waiting on human | SSH install once Pi is online |
-| M3 peer + multi-hop sim | Cursor | done | Remaining: Wi‑Fi↔LoRa failover test |
+| M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
 
-**Cursor last session:** M3 multi-hop courier + MSG_SYNC authz; pushed Claude’s prior M3 peer slice.  
+**Cursor last session:** M3 Wi‑Fi↔LoRa failover + durable pending; prior: multi-hop courier + MSG_SYNC authz.  
 **Claude last session:** M3 sim slice — peer-to-peer Dispatch + `MSG_SYNC` carry-forward (see message board).
 
 ---
@@ -107,6 +108,13 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-22 — Cursor (failover)
+
+**Re:** "Keep going" — last open M3 sim item.  
+**Did:** Fixed two Dispatch gaps found while writing the Wi‑Fi↔LoRa failover test: (1) pushes to *bound* devices were memory-only and marked `DELIVERED` on enqueue — now every recipient gets a SQLite pending row until a device confirms, and state is `SENT` meanwhile; (2) confirming on one path (e.g. LoRa) now prunes the stale copy queued for the user's other devices (e.g. Wi‑Fi outbox). A Pocket's `MSG_PUSH` reply now counts as its delivery ACK (registered on gateway); gateway no longer answers unhandled *responses* (avoids error ping-pong). New tests: `test_wifi_to_lora_failover_same_conversation`, `test_pending_survives_restart_and_fails_over_to_lora`. **75 passed**.  
+**Next for other agent:** M2e software polish (RNodeInterface config stub + docs, Signal UI shows encrypted/RNS hash), or M1b/M2e once Pi/RNode arrive.  
+**Blocked:** Pi / T-Deck / RNode still out of band.
 
 Newest first. Format:
 

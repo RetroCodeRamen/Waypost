@@ -106,10 +106,30 @@ class DispatchService:
     def _mark_push_delivered(self, node_id: str, message_id: str) -> None:
         binding = self.store.get_binding(node_id)
         if binding:
-            self.store.clear_pending(message_id, binding["username"])
-            if not self.store.pending_usernames_for_message(message_id):
-                self.store.set_delivery_state(message_id, DELIVERY_DELIVERED)
+            self._confirm_delivered(binding["username"], message_id)
         self._queued_push_keys.discard((node_id, message_id))
+
+    def _confirm_delivered(self, username: str, message_id: str) -> None:
+        """Delivery confirmed on any path: clear pending and drop the copies
+        still queued for the user's other devices (Wi‑Fi↔LoRa failover)."""
+        self.store.clear_pending(message_id, username)
+        if not self.store.pending_usernames_for_message(message_id):
+            self.store.set_delivery_state(message_id, DELIVERY_DELIVERED)
+        for other in self.store.nodes_for_user(username):
+            q = self._outbox.get(other)
+            if q:
+                kept = [
+                    env
+                    for env in q
+                    if not (
+                        env.get("op") == OP_MSG_PUSH
+                        and ((env.get("payload") or {}).get("message") or {}).get("id")
+                        == message_id
+                    )
+                ]
+                if len(kept) != len(q):
+                    self._outbox[other] = deque(kept)
+            self._queued_push_keys.discard((other, message_id))
 
     def send_direct(
         self,
@@ -166,8 +186,13 @@ class DispatchService:
             delivery_state=DELIVERY_SENT,
         )
         if created:
-            queued_any = self._fanout_push(msg, exclude_username=sender)
-            state = DELIVERY_QUEUED if queued_any else DELIVERY_DELIVERED
+            offline_any, pushed_any = self._fanout_push(msg, exclude_username=sender)
+            if offline_any:
+                state = DELIVERY_QUEUED
+            elif pushed_any:
+                state = DELIVERY_SENT
+            else:
+                state = DELIVERY_DELIVERED
             msg = self.store.set_delivery_state(msg["id"], state) or msg
         return {
             "conversation": conv,
@@ -210,11 +235,8 @@ class DispatchService:
             try:
                 self._radio_push(env)
             except Exception:
+                # SQLite pending row stays until a device confirms, so a later bind/retry recovers
                 logger.exception("radio_push_failed node=%s mid=%s", node_id, message["id"])
-                # Keep SQLite pending so a later bind/retry can recover
-                binding = self.store.get_binding(node_id)
-                if binding:
-                    self.store.queue_pending_push(message["id"], binding["username"])
         logger.info(
             "dispatch_push node=%s mid=%s conv=%s",
             node_id,
@@ -223,26 +245,34 @@ class DispatchService:
         )
         return True
 
-    def _fanout_push(self, message: dict[str, Any], *, exclude_username: str) -> bool:
-        """Return True if any recipient was offline (pending queue)."""
+    def _fanout_push(
+        self, message: dict[str, Any], *, exclude_username: str
+    ) -> tuple[bool, bool]:
+        """Return (any recipient offline, any push handed to a bound device).
+
+        Every recipient gets a durable pending row until a device confirms
+        delivery — a bound Pocket may already be out of range.
+        """
         queued_offline = False
+        pushed = False
         members = self.store.member_usernames(message["conversation_id"])
         for username in members:
             if username.lower() == exclude_username.lower():
                 continue
+            self.store.queue_pending_push(message["id"], username)
             nodes = self.store.nodes_for_user(username)
             if nodes:
                 for node_id in nodes:
                     self._enqueue_push(node_id, message)
+                pushed = True
             else:
-                self.store.queue_pending_push(message["id"], username)
                 queued_offline = True
                 logger.info(
                     "dispatch_queued_offline user=%s mid=%s",
                     username,
                     message["id"],
                 )
-        return queued_offline
+        return queued_offline, pushed
 
     def poll_outbox(self, node_id: str, *, max_items: int = 20) -> list[dict[str, Any]]:
         q = self._outbox[node_id]
@@ -281,6 +311,12 @@ class DispatchService:
             return await self._rpc_ack(env)
         if env.op == OP_MSG_SYNC:
             return await self._rpc_sync(env)
+        if env.op == OP_MSG_PUSH and env.flags & int(Flags.RESPONSE):
+            # A Pocket's reply to our MSG_PUSH doubles as its delivery ACK.
+            payload = env.payload if isinstance(env.payload, dict) else {}
+            if payload.get("id") and not env.flags & int(Flags.ERROR):
+                self._mark_push_delivered(env.src, str(payload["id"]))
+            return None
         return env.make_response(
             op=env.op,
             payload={"error": "unknown_operation", "op": env.op},
@@ -477,9 +513,7 @@ class DispatchService:
                     "transport": row.get("transport"),
                 }
             )
-            self.store.clear_pending(row["message_id"], str(username))
-            if not self.store.pending_usernames_for_message(row["message_id"]):
-                self.store.set_delivery_state(row["message_id"], DELIVERY_DELIVERED)
+            self._confirm_delivered(str(username), row["message_id"])
 
         logger.info(
             "dispatch_sync courier=%s user=%s ingested=%s piggyback=%s",

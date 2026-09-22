@@ -99,6 +99,9 @@ class WaylinkGateway:
         )
 
         handler = self._handlers.get((env.svc, env.op))
+        if handler is None and env.flags & int(Flags.RESPONSE):
+            # Never answer a response — avoids error ping-pong between nodes.
+            return
         if handler is None:
             reply = env.make_response(
                 op=env.op,

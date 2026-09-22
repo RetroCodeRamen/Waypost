@@ -22,6 +22,7 @@ from server.gateway.waylink import WaylinkGateway
 from server.services.dispatch.constants import (
     OP_MSG_ACK,
     OP_MSG_LIST,
+    OP_MSG_PUSH,
     OP_MSG_SEND,
     OP_MSG_SYNC,
 )
@@ -29,7 +30,7 @@ from server.services.dispatch.peer import PeerDispatchNode
 from server.services.dispatch.service import DispatchService
 from server.services.dispatch.store import DispatchStore
 from server.transports.mock import MockMesh, MockTransportConfig
-from shared.protocol.envelope import SVC_DISPATCH
+from shared.protocol.envelope import SVC_DISPATCH, Envelope, Flags
 
 
 def _cfg(seed: int) -> MockTransportConfig:
@@ -42,19 +43,35 @@ def _memory_store() -> DispatchStore:
     return DispatchStore(conn)
 
 
-def _station(mesh: MockMesh) -> tuple[DispatchService, WaylinkGateway]:
-    store = _memory_store()
-    dispatch = DispatchService(store)
+def _station(
+    mesh: MockMesh, store: DispatchStore | None = None
+) -> tuple[DispatchService, WaylinkGateway]:
+    dispatch = DispatchService(store or _memory_store())
     transport = mesh.attach("station", _cfg(1))
     gateway = WaylinkGateway(transport, local_id="station")
-    gateway.register(SVC_DISPATCH, OP_MSG_SEND, dispatch.handle_rpc)
-    gateway.register(SVC_DISPATCH, OP_MSG_LIST, dispatch.handle_rpc)
-    gateway.register(SVC_DISPATCH, OP_MSG_ACK, dispatch.handle_rpc)
-    gateway.register(SVC_DISPATCH, OP_MSG_SYNC, dispatch.handle_rpc)
+    for op in (OP_MSG_SEND, OP_MSG_LIST, OP_MSG_ACK, OP_MSG_SYNC, OP_MSG_PUSH):
+        gateway.register(SVC_DISPATCH, op, dispatch.handle_rpc)
 
     loop = asyncio.get_event_loop()
     dispatch.set_radio_push(lambda env: loop.create_task(gateway.send_envelope(env)))
     return dispatch, gateway
+
+
+async def _wait_for(predicate, timeout: float = 2.0) -> bool:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(0.02)
+    return predicate()
+
+
+def _bodies(peer: PeerDispatchNode) -> list[str]:
+    return [
+        m["body"]
+        for conv in peer.store.list_conversations(peer.username)
+        for m in peer.store.list_messages(conv["id"])
+    ]
 
 
 def _peer(mesh: MockMesh, node_id: str, username: str, seed: int) -> PeerDispatchNode:
@@ -259,3 +276,96 @@ async def test_multihop_courier_aj_bob_carol():
         await a.stop()
         await b.stop()
         await c.stop()
+
+
+@pytest.mark.asyncio
+async def test_wifi_to_lora_failover_same_conversation():
+    """Bob's Pocket has a Wi‑Fi binding (HTTP outbox) and a LoRa binding.
+
+    Wi‑Fi drops mid-conversation: his retry over LoRa must not duplicate, the
+    portal reply must reach him over LoRa, and the stale Wi‑Fi copy must not
+    be redelivered when Wi‑Fi comes back.
+    """
+    mesh = MockMesh()
+    dispatch, station_gateway = _station(mesh)
+    bob = _peer(mesh, "radio-bob", "bob", 12)
+    mesh.link("radio-bob", "station")
+    dispatch.store.ensure_direct("aj", "bob")
+    dispatch.bind_device("pocket-bob", "bob")  # Wi‑Fi path
+    dispatch.bind_device("radio-bob", "bob")  # LoRa path
+    await station_gateway.start()
+    await bob.start()
+    try:
+        # 1) Bob sends over Wi‑Fi (what POST /api/waylink/rpc does).
+        wifi_send = Envelope(
+            src="pocket-bob",
+            dst="station",
+            svc=SVC_DISPATCH,
+            op=OP_MSG_SEND,
+            flags=int(Flags.REQUEST),
+            payload={"peer": "aj", "body": "heading out", "message_id": "mid-heading-out"},
+        )
+        r1 = await dispatch.handle_rpc(wifi_send)
+        assert r1.payload["created"] is True
+
+        # 2) Wi‑Fi drops before Bob saw the ACK; his Pocket retries over LoRa.
+        lora_retry = Envelope(
+            src="radio-bob",
+            dst="station",
+            svc=SVC_DISPATCH,
+            op=OP_MSG_SEND,
+            flags=int(Flags.REQUEST),
+            payload={"peer": "aj", "body": "heading out", "message_id": "mid-heading-out"},
+        )
+        r2 = await bob.request(lora_retry)
+        assert r2 is not None and r2.payload["created"] is False
+        conv_id = r1.payload["conversation_id"]
+        assert [m["body"] for m in dispatch.list_messages(conv_id)].count("heading out") == 1
+
+        # 3) AJ replies from the portal; only LoRa can reach Bob now.
+        sent = dispatch.send_direct(sender="aj", peer="bob", body="stay safe")
+        mid = sent["message"]["id"]
+        assert sent["message"]["delivery_state"] == "SENT"
+        bob_pending = lambda: dispatch.sync_status()["pending_by_user"].get("bob", 0)  # noqa: E731
+        assert bob_pending() == 1
+
+        assert await _wait_for(lambda: "stay safe" in _bodies(bob))
+        assert await _wait_for(lambda: bob_pending() == 0)
+        state = next(m for m in dispatch.list_messages(conv_id) if m["id"] == mid)
+        assert state["delivery_state"] == "DELIVERED"
+
+        # 4) Wi‑Fi returns: the copy confirmed over LoRa is not redelivered.
+        assert dispatch.poll_outbox("pocket-bob") == []
+    finally:
+        await station_gateway.stop()
+        await bob.stop()
+
+
+@pytest.mark.asyncio
+async def test_pending_survives_restart_and_fails_over_to_lora():
+    """Bob is bound on Wi‑Fi but out of range; Station restarts; his LoRa
+    Pocket binds later and still gets the message."""
+    store = _memory_store()
+    before = DispatchService(store)
+    store.ensure_direct("aj", "bob")
+    before.bind_device("pocket-bob", "bob")
+    sent = before.send_direct(sender="aj", peer="bob", body="radio check at 9")
+    assert sent["message"]["delivery_state"] == "SENT"
+    # Never polled — Bob walked out of Wi‑Fi range. Station restarts (memory lost).
+    del before
+
+    mesh = MockMesh()
+    dispatch, station_gateway = _station(mesh, store)
+    bob = _peer(mesh, "radio-bob", "bob", 13)
+    mesh.link("radio-bob", "station")
+    await station_gateway.start()
+    await bob.start()
+    try:
+        assert dispatch.sync_status()["pending_dispatch"] == 1
+        flushed = dispatch.bind_device("radio-bob", "bob")["flushed"]
+        assert flushed == 1
+        assert await _wait_for(lambda: "radio check at 9" in _bodies(bob))
+        assert await _wait_for(lambda: dispatch.sync_status()["pending_dispatch"] == 0)
+    finally:
+        await station_gateway.stop()
+        await bob.stop()

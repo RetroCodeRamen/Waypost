@@ -43,6 +43,7 @@ from server.services.commons.service import CommonsService
 from server.services.dispatch.constants import (
     OP_MSG_ACK,
     OP_MSG_LIST,
+    OP_MSG_PUSH,
     OP_MSG_SEND,
     OP_MSG_SYNC,
 )
@@ -139,6 +140,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_DISPATCH, OP_MSG_LIST, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_ACK, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_SYNC, dispatch.handle_rpc)
+        gateway.register(SVC_DISPATCH, OP_MSG_PUSH, dispatch.handle_rpc)
         for op in (
             OP_MAIL_STATUS,
             OP_MAIL_LIST,
