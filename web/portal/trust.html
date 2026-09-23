@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Trust this Station — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <style>
+    .trust-wrap {
+      max-width: 34rem;
+      margin: 6vh auto 3rem;
+      padding: 0 1.25rem;
+      line-height: 1.5;
+    }
+    .trust-wrap h1 {
+      font-family: var(--font-display, Georgia, serif);
+      font-size: 1.75rem;
+      margin: 0 0 0.35rem;
+    }
+    .trust-wrap .lede {
+      color: var(--muted, #666);
+      margin: 0 0 1.5rem;
+    }
+    .trust-status {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border, #ccc);
+      margin-bottom: 1.5rem;
+    }
+    .trust-status.ok {
+      border-color: var(--wp-green, #2f6f4f);
+    }
+    .trust-download {
+      display: inline-block;
+      padding: 0.65rem 1rem;
+      border-radius: 6px;
+      border: 1px solid currentColor;
+      font-weight: 600;
+      text-decoration: none;
+      margin: 0.25rem 0 0.75rem;
+    }
+    .trust-fp {
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      overflow-wrap: anywhere;
+      color: var(--muted, #666);
+    }
+    .trust-wrap details {
+      border-top: 1px solid var(--border, #ddd);
+      padding: 0.65rem 0;
+    }
+    .trust-wrap summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .trust-wrap ol {
+      margin: 0.5rem 0 0;
+      padding-left: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="trust-wrap">
+    <h1>Trust this Station</h1>
+    <p class="lede">Waypost encrypts Wi‑Fi traffic with its own certificate because there is no Internet here to vouch for it. Install it once per device, then every page and your Pocket login are private.</p>
+
+    <p class="trust-status" id="status">Checking whether this device already trusts the Station…</p>
+
+    <a class="trust-download" href="/waypost-ca.crt" download="waypost-ca.crt">Download Station certificate</a>
+    <p class="trust-fp">SHA‑256 fingerprint: <span id="fp">loading…</span><br/>Ask a Station operator to read theirs aloud and compare before installing.</p>
+
+    <details>
+      <summary>iPhone / iPad</summary>
+      <ol>
+        <li>Open this page in Safari and tap <strong>Download Station certificate</strong>, then <strong>Allow</strong>.</li>
+        <li>Settings → <strong>Profile Downloaded</strong> → Install.</li>
+        <li>Settings → General → About → <strong>Certificate Trust Settings</strong> → turn on “Waypost Station Local CA”.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Android</summary>
+      <ol>
+        <li>Download the certificate.</li>
+        <li>Settings → Security → More security settings → Encryption &amp; credentials → <strong>Install a certificate</strong> → <strong>CA certificate</strong>.</li>
+        <li>Pick <code>waypost-ca.crt</code> from Downloads. Menu names vary by maker; search Settings for “CA certificate”.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>macOS</summary>
+      <ol>
+        <li>Download and double-click the certificate; add it to the <strong>System</strong> keychain.</li>
+        <li>In Keychain Access, open “Waypost Station Local CA” → Trust → <strong>Always Trust</strong>.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Windows</summary>
+      <ol>
+        <li>Download and open the certificate → <strong>Install Certificate</strong> → Local Machine.</li>
+        <li>Choose “Place all certificates in the following store” → <strong>Trusted Root Certification Authorities</strong>.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Linux / Firefox</summary>
+      <ol>
+        <li>Debian/Ubuntu: <code>sudo cp waypost-ca.crt /usr/local/share/ca-certificates/ &amp;&amp; sudo update-ca-certificates</code></li>
+        <li>Firefox keeps its own list: Settings → Privacy &amp; Security → Certificates → View Certificates → Authorities → Import.</li>
+      </ol>
+    </details>
+  </main>
+  <script>
+    (function () {
+      var host = location.hostname || "waypost.home.arpa";
+      var secure = "https://" + host + "/";
+      var status = document.getElementById("status");
+
+      fetch("/waypost-ca.sha256")
+        .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
+        .then(function (t) { document.getElementById("fp").textContent = t.trim(); })
+        .catch(function () { document.getElementById("fp").textContent = "unavailable"; });
+
+      if (location.protocol === "https:") {
+        status.classList.add("ok");
+        status.textContent = "This device already trusts the Station. You’re on an encrypted connection.";
+        return;
+      }
+      // no-cors fetch only resolves if the TLS handshake (and so the CA) is trusted
+      fetch(secure + "api/health", { mode: "no-cors", cache: "no-store" })
+        .then(function () {
+          status.classList.add("ok");
+          status.textContent = "Trusted — taking you to the encrypted Station…";
+          setTimeout(function () {
+            var next = new URLSearchParams(location.search).get("next") || "/";
+            location.replace(secure.replace(/\/$/, "") + (next.charAt(0) === "/" ? next : "/"));
+          }, 600);
+        })
+        .catch(function () {
+          status.textContent = "Not trusted yet. Install the certificate below, then reload this page.";
+        });
+    })();
+  </script>
+</body>
+</html>

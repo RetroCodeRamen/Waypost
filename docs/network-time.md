@@ -23,7 +23,7 @@ Affects: Dispatch timestamps, Postbox, Notice/Beacon expiry, logs, Fieldbook rev
 ## Open questions
 
 - Dedicated `TIME_GET` / `TIME_SET` Waylink ops vs piggyback on `SIGNAL_STATUS`?
-- How to bootstrap Station clock with no GPS and no Internet (operator UI)?
+- How to bootstrap Station clock with no GPS and no Internet (operator UI)? **TLS depends on this:** Caddy issues 30-day certs from the Station clock, so a Pi that booted weeks behind real time serves certs phones reject ([pi-setup.md](pi-setup.md#notes-and-limits)).
 - Signed time responses?
 
 ## Deferred

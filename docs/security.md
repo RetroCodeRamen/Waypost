@@ -47,8 +47,8 @@ Receiving a valid radio packet does **not** authorize:
 
 | Path | Requirement | Status |
 |------|-------------|--------|
-| Browser / Pocket ↔ Station (Wi‑Fi) | **TLS** (Waypost local CA or equivalent) | Required for real deployments; laptop HTTP OK for lab only |
-| Station Wi‑Fi air | **WPA2/WPA3** | Pi / hostapd (M1b) |
+| Browser / Pocket ↔ Station (Wi‑Fi) | **TLS** (Waypost local CA or equivalent) | Caddy offline local CA + trust page, proven on laptop and in Debian containers; plain HTTP only serves the CA/trust page. Session cookie `Secure` over HTTPS. Awaiting Pi (M1b). Laptop HTTP OK for lab only |
+| Station Wi‑Fi air | **WPA2/WPA3** | hostapd WPA2-PSK/CCMP with a generated per-Station password (Pi onboard Wi‑Fi lacks reliable SAE in AP mode); awaiting Pi (M1b) |
 | LoRa via Heltec USB bridge | **Not encrypted** — development stand-in only | Must not be treated as production privacy |
 | LoRa production Waylink | **Transport crypto** (Reticulum/LXMF per ADR 0002) | M2e — encrypted Dispatch over LoRa **passed** on RNode-flashed Heltec V3 (2026-09-22). Signal labels plaintext Heltec links as "lab only" |
 | Outposts | Forward ciphertext; must not hold user passwords or private mail plaintext |
@@ -70,6 +70,8 @@ Options:
 4. Documented trust installation on phones/laptops  
 
 Tradeoff: users must install a CA (or accept warnings). Prefer documented CA install over permanent HTTP for authenticated services.
+
+Implemented (`deploy/raspberry-pi/caddy/Caddyfile`): Caddy's internal CA ("Waypost Station Local CA", 10-year root, 365-day intermediate, 30-day leaves for clock-drift tolerance). `http://…/trust.html` offers the CA and its SHA-256 fingerprint for out-of-band comparison, then forwards to HTTPS once trusted. Setup: [pi-setup.md](pi-setup.md).
 
 Wi-Fi: WPA2/WPA3 where hardware permits.
 

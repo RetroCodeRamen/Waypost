@@ -90,3 +90,35 @@ def test_cannot_spoof_sender(client: TestClient):
     )
     assert sent.status_code == 201
     assert sent.json()["author"] == "erin"
+
+
+def _login_cookie_header(client: TestClient, url: str) -> str:
+    r = client.post(url, json={"username": "aj", "password": "waypost1"})
+    assert r.status_code == 200
+    return r.headers["set-cookie"].lower()
+
+
+def test_session_cookie_secure_only_over_https(tmp_path: Path):
+    settings = Settings(
+        waypost_data_dir=tmp_path,
+        waypost_sqlite_path=tmp_path / "test.db",
+        waypost_transport="mock",
+        waypost_env="development",
+    )
+    with TestClient(create_app(settings), base_url="https://waypost.home.arpa") as c:
+        assert "; secure" in _login_cookie_header(c, "/api/auth/login")
+    with TestClient(create_app(settings)) as c:
+        assert "; secure" not in _login_cookie_header(c, "/api/auth/login")
+
+
+def test_production_has_no_lab_users(tmp_path: Path):
+    settings = Settings(
+        waypost_data_dir=tmp_path,
+        waypost_sqlite_path=tmp_path / "test.db",
+        waypost_transport="mock",
+        waypost_env="production",
+    )
+    with TestClient(create_app(settings)) as c:
+        r = c.post("/api/auth/login", json={"username": "aj", "password": "waypost1"})
+        assert r.status_code == 401
+        assert c.get("/trust.html").status_code == 200

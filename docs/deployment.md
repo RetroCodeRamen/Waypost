@@ -32,7 +32,7 @@ Do not hardcode service IPs in applications.
 - SSID: `WAYPOST` (configurable)  
 - Captive portal: **Waygate** (openNDS)  
 
-After captive mini-browser auth, tell users the permanent URL (e.g. `http://waypost.home.arpa/` or HTTPS equivalent).
+After captive mini-browser auth, tell users the permanent URL: `http://waypost.home.arpa/` lands on **Trust this Station** (CA download), which forwards to `https://waypost.home.arpa/` once the device trusts the CA. Plain HTTP serves nothing else.
 
 ## Data directories
 
@@ -50,15 +50,11 @@ Suggested on Station:
   backups/
 ```
 
-## Bootstrap (Phase 1+)
+## Bootstrap
 
-Scripts under `tools/provisioning/` and unit templates under `deploy/raspberry-pi/systemd/` will:
+**Step-by-step: [pi-setup.md](pi-setup.md).** `sudo deploy/raspberry-pi/install.sh` (idempotent) installs packages, the `waypost` service user, code + venv under `/opt/waypost`, data under `/var/lib/waypost`, `/etc/waypost/waypost.env`, the LoRa udev rule, `waypost-api.service`, Caddy HTTPS with an offline local CA, and stages hostapd/dnsmasq. `--enable-ap` switches `wlan0` to the access point.
 
-1. Install packages / Docker  
-2. Configure hostapd / dnsmasq / openNDS  
-3. Install udev rule for LoRa  
-4. Start Compose stack + Waypost API  
-5. Enable services on boot (power-loss recovery)
+Still to add: openNDS (Waygate), Compose stack for Stalwart & co, backups.
 
 ## Developer machine
 

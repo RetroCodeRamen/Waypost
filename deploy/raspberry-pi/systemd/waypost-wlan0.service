@@ -1,0 +1,15 @@
+[Unit]
+Description=Waypost access point address on wlan0
+Wants=sys-subsystem-net-devices-wlan0.device
+After=sys-subsystem-net-devices-wlan0.device
+Before=hostapd.service dnsmasq.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/rfkill unblock wlan
+ExecStart=/usr/sbin/ip link set wlan0 up
+ExecStart=/usr/sbin/ip addr replace 10.42.0.1/24 dev wlan0
+
+[Install]
+WantedBy=multi-user.target

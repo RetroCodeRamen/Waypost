@@ -1,16 +1,30 @@
 [Unit]
 Description=Waypost Station API
 After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
 User=waypost
+Group=waypost
+SupplementaryGroups=dialout
 WorkingDirectory=/opt/waypost
-EnvironmentFile=-/etc/waypost/waypost.env
+EnvironmentFile=/etc/waypost/waypost.env
 Environment=PYTHONPATH=/opt/waypost
-ExecStart=/opt/waypost/.venv/bin/uvicorn server.api.main:app --host 127.0.0.1 --port 8000
+Environment=PYTHONUNBUFFERED=1
+# Caddy terminates TLS on the same host; trust its X-Forwarded-Proto so cookies get Secure
+ExecStart=/opt/waypost/.venv/bin/uvicorn server.api.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=always
 RestartSec=3
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/waypost
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
 
 [Install]
 WantedBy=multi-user.target

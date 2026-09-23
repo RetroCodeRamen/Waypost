@@ -1,0 +1,12 @@
+# Waypost Station (Pi): expose the single LoRa radio as /dev/waypost-lora.
+# Installed by deploy/raspberry-pi/install.sh. Assumes ONE radio is plugged in;
+# with several, the last one enumerated wins — pin by ID_PATH instead
+# (see 99-waypost-lora.rules for the laptop two-board example).
+
+# Heltec LoRa32 V2/V3 (CP2102)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="waypost-lora", MODE="0660", GROUP="dialout"
+# LilyGO LoRa32 / T-Beam (CH9102, CH340)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", SYMLINK+="waypost-lora", MODE="0660", GROUP="dialout"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="waypost-lora", MODE="0660", GROUP="dialout"
+# ESP32-S3 native USB (T3S3, T-Beam Supreme)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", SYMLINK+="waypost-lora", MODE="0660", GROUP="dialout"

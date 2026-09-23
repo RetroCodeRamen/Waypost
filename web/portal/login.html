@@ -77,7 +77,8 @@
       </div>
       <p class="err" id="err"></p>
     </form>
-    <p class="hint">Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
+    <p class="hint" id="lab-hint" hidden>Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
+    <p class="hint" id="trust-hint" hidden>Browser warning about this connection? <a href="/trust.html">Trust this Station</a> first.</p>
   </div>
   <script src="/static/auth.js"></script>
   <script>
@@ -87,6 +88,14 @@
       var mode = "login";
       var display = document.getElementById("display_name");
       var displayLabel = document.getElementById("display-label");
+
+      fetch("/api/health")
+        .then(function (r) { return r.json(); })
+        .then(function (h) {
+          if (h.env === "development") document.getElementById("lab-hint").hidden = false;
+          if (h.env === "production") document.getElementById("trust-hint").hidden = false;
+        })
+        .catch(function () {});
 
       function setMode(m) {
         mode = m;

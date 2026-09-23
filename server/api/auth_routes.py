@@ -24,12 +24,14 @@ class LoginBody(BaseModel):
 def build_auth_router() -> APIRouter:
     router = APIRouter(tags=["auth"])
 
-    def _set_cookie(response: Response, token: str) -> None:
+    def _set_cookie(request: Request, response: Response, token: str) -> None:
+        # Behind Caddy, uvicorn --proxy-headers makes the scheme reflect the client's HTTPS
         response.set_cookie(
             key="waypost_session",
             value=token,
             httponly=True,
             samesite="lax",
+            secure=request.url.scheme == "https",
             max_age=60 * 60 * 24 * 14,
             path="/",
         )
@@ -47,7 +49,7 @@ def build_auth_router() -> APIRouter:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        _set_cookie(response, result["token"])
+        _set_cookie(request, response, result["token"])
         return result
 
     @router.post("/api/auth/login")
@@ -58,7 +60,7 @@ def build_auth_router() -> APIRouter:
             )
         except ValueError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
-        _set_cookie(response, result["token"])
+        _set_cookie(request, response, result["token"])
         return result
 
     @router.post("/api/auth/logout")

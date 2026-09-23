@@ -423,6 +423,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         def portal_login():
             return FileResponse(PORTAL_DIR / "login.html")
 
+        @app.get("/trust.html")
+        def portal_trust():
+            return FileResponse(PORTAL_DIR / "trust.html")
+
     return app
 
 
