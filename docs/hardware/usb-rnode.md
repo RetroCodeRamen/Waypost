@@ -4,6 +4,8 @@
 
 Dedicated LoRa mesh radio attached to the Waypost Station via USB. Preferred first implementation: **Reticulum + RNode-compatible** radio.
 
+**In hand:** the project's two Heltec WiFi LoRa 32 V3 boards ([heltec-wifi-lora-32.md](heltec-wifi-lora-32.md)) are on the official RNode firmware list and are already flashed as RNodes (firmware 1.86, 915 MHz) — encrypted Dispatch over real LoRa passed 2026-09-22 ([radio-dev.md](../radio-dev.md#encrypted-over-real-lora-rnode)). No separate RNode purchase was needed to reach M2e; a dedicated RNode remains the target for the Pi Station once it's deployed.
+
 ## Persistent device alias
 
 Do not depend on `/dev/ttyACM0` remaining stable.

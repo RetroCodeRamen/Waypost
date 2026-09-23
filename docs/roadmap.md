@@ -73,15 +73,15 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 
 | Area | Gap |
 |------|-----|
-| Raspberry Pi Station install | Templates only — no “plug in and join WAYPOST Wi‑Fi” product |
-| Waygate / hostapd / dnsmasq on real Pi | Not validated on hardware |
-| `ReticulumTransport` / production RNode path | Stub |
-| Pocket (T-Deck) firmware / UI | Not started |
+| Raspberry Pi Station install | Idempotent installer + Caddy HTTPS done and tested in containers ([pi-setup.md](pi-setup.md)) — **not yet run on real Pi hardware**; uncommitted |
+| Waygate / hostapd / dnsmasq on real Pi | hostapd/dnsmasq staged behind `--enable-ap`, unrun on hardware; openNDS (Waygate) not started |
+| `ReticulumTransport` / production RNode path | **Done (M2e ✅)** — encrypted Dispatch over real LoRa, RNode-flashed Heltec V3 |
+| Pocket (T-Deck) firmware / UI | Not started — peer/courier logic proven in sim (`server/services/dispatch/peer.py`, M3) |
 | Pocket GPS → Station location reports | Not started (planned under M7/M8) |
 | **Atlas** (map, Station origin, range/distance) | Not started |
 | Outpost (MakerHawk) firmware | Not started — GPIO unverified |
 | Stalwart / BookStack / Memos / Kiwix adapters | Placeholders |
-| Real identity (OIDC, passwords, invite flows) | Dev users only |
+| Real identity depth (OIDC, pairing UX, revocation, invite flows) | Username/password auth is real (N2 ✅); device pairing/revocation still open (M4) |
 | Fieldbook, Archive, Finder, Control | Not built (or nav “soon” only) |
 
 Apps marked *prototype* mean: local store + HTTP UI + some Waylink RPC ops — **not** production auth, sync, or multi-Station federation.
@@ -272,6 +272,8 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 **Goal:** Real Station Wi‑Fi product path.
 
 **Exit criteria:** Pi boots → SSID `WAYPOST` → Waygate → homepage. **Does not block N1.** Schedule when camp Wi‑Fi is the blocker.
+
+**Prep done (no Pi yet):** idempotent `deploy/raspberry-pi/install.sh` (tested twice in Debian Bookworm + Trixie containers), Caddy HTTPS with offline local CA + trust page (proven on laptop), sandboxed `waypost-api.service`, generated secrets/PSK, AP staged behind `--enable-ap` with a guard against cutting off wlan0 SSH. Guide: [pi-setup.md](pi-setup.md). **Remaining on hardware:** run it, `--enable-ap`, phone joins `WAYPOST` → trust → HTTPS; then openNDS (Waygate).
 
 ---
 

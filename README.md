@@ -23,10 +23,10 @@ That is the goal. **It is not there yet.**
 
 | Have today | Don’t have yet |
 |------------|----------------|
-| Laptop Station API + portal prototypes | Plug-and-play Pi Station / Waygate Wi‑Fi |
+| Laptop Station API + portal prototypes; Pi installer + offline HTTPS ready ([pi-setup](docs/pi-setup.md)) | Pi Station validated on hardware / Waygate captive portal |
 | Heltec Dispatch over air (M2c) + [radio-dev](docs/radio-dev.md); **M2e** encrypted Dispatch over LoRa (Reticulum on RNode-flashed Heltec V3) ✅ | Encrypted radio on the Pi Station by default |
 | **N1** opportunistic queue + Signal/Today sync | Mesh peer path without Station (**M3** 🟡: peer↔peer + multi-hop courier + `MSG_SYNC` + Wi‑Fi↔LoRa failover in sim ✅; hardware pending) |
-| **N2** username/password (portal + Pocket Wi‑Fi) ✅ | Stalwart/OIDC; TLS on camp Wi‑Fi (**M1b**) |
+| **N2** username/password (portal + Pocket Wi‑Fi) ✅ | Stalwart/OIDC; TLS on the Pi's camp Wi‑Fi (**M1b**, config proven on laptop) |
 
 Expect breakage, missing pieces, and rapid change. Priorities: **[docs/priority-review.md](docs/priority-review.md)** · plan: **[docs/roadmap.md](docs/roadmap.md)**.
 
@@ -122,6 +122,7 @@ tools/          Simulators, radio helpers, screenshots
 - [Protocol](docs/protocol.md)
 - [Security](docs/security.md)
 - [Deployment](docs/deployment.md)
+- [Pi Station setup](docs/pi-setup.md)
 - [Hardware](docs/hardware/)
 - [Heltec USB LoRa (dev radios)](docs/hardware/heltec-wifi-lora-32.md)
 - [Radio-dev runbook](docs/radio-dev.md)

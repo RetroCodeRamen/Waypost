@@ -73,7 +73,7 @@ without Station, for peer-to-peer Dispatch (and eventually other P2P-capable ops
 └──────────────────────────────────────┘
 ```
 
-**Dev note:** Two Heltec V3 boards + `SerialBridgeTransport` are the current radio stand-in. Production Station radio remains USB RNode + Reticulum (see roadmap M2e). Host networking (AP, DHCP, DNS, captive portal) runs on the Pi via **systemd**, not Docker, for reliability. Application services that fit containers may use Docker Compose.
+**Dev note:** `SerialBridgeTransport` (Heltec plaintext bridge) was the original radio stand-in; production Station radio is USB RNode + `ReticulumTransport`, proven over real LoRa as of M2e (2026-09-22) — the project's two Heltec V3 boards now serve as that RNode hardware directly (see [hardware/usb-rnode.md](hardware/usb-rnode.md)). Host networking (AP, DHCP, DNS, captive portal) runs on the Pi via **systemd**, not Docker, for reliability. Application services that fit containers may use Docker Compose.
 
 ---
 
@@ -131,6 +131,8 @@ Rules:
 - Outposts are always-on couriers; **Pockets are mobile couriers** (people walking between camp and trail).
 
 Reticulum/LXMF (or successor transport) should provide the hop/carry primitives; Waypost apps speak logical `MSG_*` only.
+
+**Implemented in sim (M3):** `server/services/dispatch/peer.py` (`PeerDispatchNode`) proves this exact flow — direct delivery, courier carry, `MSG_SYNC` merge by `mid` — in the mock mesh. Real Pocket firmware (M7) is what's still missing to run it on hardware.
 
 ---
 

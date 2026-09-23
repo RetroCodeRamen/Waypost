@@ -38,10 +38,10 @@ Related truth sources (do not duplicate long plans here):
 
 ## Current snapshot (update when wrong)
 
-**Date:** 2026-09-22  
+**Date:** 2026-09-23  
 
-**Active milestone:** none unblocked in software — **M1b** Pi waits on SSH; **M3** hardware waits on Pocket firmware  
-**Just finished:** **M2e ✅** — encrypted Dispatch over real LoRa (both Heltec V3 boards now run RNode firmware)
+**Active milestone:** **M1b** Pi — software prep done, waiting on SD card (human has it in the mail); **M7** T-Deck also in the mail  
+**Just finished:** Docs refresh (this session) — `docs/priority-review.md` rewritten (was stale since 2026-09-18, predates M2e/M3 completion); before that M1b prep — Pi installer + offline HTTPS ([docs/pi-setup.md](docs/pi-setup.md)); before that **M2e ✅** over real LoRa
 
 **Have today**
 
@@ -52,12 +52,13 @@ Related truth sources (do not duplicate long plans here):
 - **Hardware state:** `/dev/ttyUSB0` and `/dev/ttyUSB1` (Heltec V3, CP2102) flashed with RNode firmware 1.86 on 2026-09-22. `WAYPOST_TRANSPORT=serial` (Heltec plaintext) will not work until `firmware/heltec` is reflashed
 - M3 (sim): `PeerDispatchNode` — peer↔peer, `MSG_SYNC` (+ authz), **multi-hop** `handoff_to` (aj→bob→carol), **Wi‑Fi↔LoRa failover**; `test_mesh_dispatch.py`
 - Dispatch pending is durable for every recipient until a device confirms (outbox poll, `MSG_ACK`, `MSG_PUSH` reply, or `MSG_SYNC`); state is `SENT` until then, not `DELIVERED`
-- Deploy templates under `deploy/raspberry-pi/` — **not validated on hardware**
+- `deploy/raspberry-pi/install.sh` — idempotent Pi installer, tested twice in Debian Bookworm + Trixie containers (not yet on a Pi). Caddy (official repo, ≥2.8) offline local CA, 30-day leaves; `/trust.html` over HTTP; `Secure` session cookie over HTTPS; production env has no demo users and hides the lab hint
+- AP (hostapd/dnsmasq) staged; only `--enable-ap` switches wlan0, and it refuses if SSH arrives over wlan0
 
 **Don’t have yet**
 
-- Pi AP product path (M1b): hostapd + dnsmasq + Waygate + Caddy on real Pi
-- Wi‑Fi TLS (M1b) — the remaining gap for "all communications encrypted"
+- M1b on real Pi: run installer, `--enable-ap`, phone joins `WAYPOST` → trust → HTTPS; openNDS (Waygate)
+- Station clock bootstrap (no RTC) — TLS certs are only 30 days tolerant ([network-time.md](docs/network-time.md))
 - Pocket/Outpost firmware (M6/M7); M3 on real hardware
 - Stalwart/OIDC (M4)
 
@@ -74,11 +75,12 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | Slot | Agent | Status | Branch / notes |
 |------|-------|--------|----------------|
 | M2e RNode LoRa | Cursor | **done** | Over-air PASS 2026-09-22 |
-| M1b Pi stack | — | waiting on human | SSH install once Pi is online |
+| M1b Pi stack | Cursor | prep done | Installer + HTTPS ready; **still uncommitted**; run on Pi when SD card arrives ([pi-setup.md](docs/pi-setup.md)) |
 | M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
+| Docs refresh | Claude | done | `priority-review.md` rewrite + smaller fixes across roadmap/architecture/hardware docs — see message board |
 
-**Cursor last session:** Flashed both boards as RNodes, M2e over-air PASS; prior: M3 failover + durable pending.  
-**Claude last session:** M3 sim slice — peer-to-peer Dispatch + `MSG_SYNC` carry-forward (see message board).
+**Cursor last session:** M1b prep (Pi installer, offline HTTPS, SD guide); prior: RNode flash + M2e over-air PASS.  
+**Claude last session:** Docs refresh — `priority-review.md` rewrite, roadmap/architecture/hardware doc fixes (see message board).
 
 ---
 
@@ -116,6 +118,22 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-23 — Claude (docs refresh)
+
+**Re:** "Update all docs now, strong documentation is super important."  
+**Did:** Full doc sweep against current reality (M2e ✅ over real LoRa, M3 sim exit criteria met with multi-hop/authz/failover, M1b prepped-but-uncommitted). Rewrote `docs/priority-review.md` (was dated 2026-09-18, said `ReticulumTransport` was a stub and `MSG_SYNC`/courier were unimplemented — both now done in sim/hardware; added a fresh Tier list and a new recommended-next-milestone section pointing at **M4** as the only hardware-free item left in the priority spine). Fixed a stale "Stub" line and "dev users only" identity line in `docs/roadmap.md`'s gap table. Cross-linked `docs/hardware/heltec-wifi-lora-32.md` ↔ `docs/hardware/usb-rnode.md` (these boards now double as the RNode hardware — wasn't documented on either page). Small accuracy fix in `docs/architecture.md`'s transport dev-note + a pointer to `PeerDispatchNode` from the Pocket↔Pocket design section. Added `pi-setup.md` to README's doc list. Everything else (`protocol.md`, `security.md`, `offline-sync.md`, `deployment.md`, `network-time.md`, `radio-dev.md`, `pi-setup.md`, identity/groups/provisioning/federation design docs, ADRs, naming/brand) checked and already current — left alone. 86 passed, 1 skip, unchanged (docs-only).  
+**Flagged, not decided:** `priority-review.md` §3/§12 now explicitly calls out that the roadmap's app-catalog freeze ("no Atlas/Workshop/new portal apps until network depth advances") was written pre-M2e/M3 and Tier 1 has since exited — worth a human call on whether to revisit it.  
+**Next for other agent:** Commit the pending M1b work (still uncommitted — installer, Caddy config, trust page, systemd units, `pi-setup.md`) plus these doc changes. Otherwise M4 (identity depth) is the next hardware-free milestone per the refreshed priority review, or M1b/M2e-on-Pi/M3-on-hardware once the SD card/T-Deck arrive.  
+**Blocked:** Nothing on this pass — docs only.
+
+### 2026-09-22 — Cursor (M1b prep, no Pi yet)
+
+**Re:** Human: SD card + T-Deck in the mail — do what's possible now; chose the Pi slice.  
+**Did:** `deploy/raspberry-pi/install.sh` (idempotent; shellcheck clean; two-pass tested in `debian:bookworm` + `debian:trixie` — secrets stable, perms 0640/0600, prod env rejects lab login, HTTPS 200 with CA, HTTP → trust page). Caddyfile: offline local CA, 365d intermediate + 30d leaves (Pi has no RTC), HTTP serves only CA/trust/static. Found Debian's Caddy 2.6 can't set `intermediate_lifetime` → installer uses Caddy's official apt repo and enforces ≥2.8. New `web/portal/trust.html` (per-OS CA install, fingerprint, auto-forward to HTTPS). Session cookie `Secure` behind HTTPS; login page hides lab creds unless development. Sandboxed `waypost-api.service`, `waypost-wlan0.service`, Pi udev rule, hostapd template with generated PSK. Guide: `docs/pi-setup.md`. **86 passed**.  
+**Heads-up:** RNode Station on the laptop was restarted (same RNode config, now with `--proxy-headers`).  
+**Next:** When the SD card arrives: follow `docs/pi-setup.md` (human flashes SD with Imager; agent can run the rest over SSH). Then T-Deck firmware-base decision (ADR 0001).  
+**Blocked:** Pi SD card; T-Deck.
 
 ### 2026-09-22 — Cursor (M2e over-air ✅)
 

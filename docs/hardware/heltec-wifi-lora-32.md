@@ -31,6 +31,8 @@ Flashed with `firmware/heltec`. Verified: USB `ECHO`/`STAT`, bidirectional LoRa 
 
 Production Station path remains **RNode + Reticulum** (`/dev/waypost-lora`). Heltec USB boards are the **laptop vertical slice** for Phase 2.
 
+**Update (2026-09-22):** these same two boards *are* the RNode hardware now — Heltec WiFi LoRa 32 V3 is on the official RNode firmware list, so no separate radio purchase was needed for M2e. Both were reflashed with `rnodeconf --autoinstall` (firmware 1.86, 915 MHz) — see [radio-dev.md](../radio-dev.md#encrypted-over-real-lora-rnode) and [usb-rnode.md](usb-rnode.md). This **replaces** the Waypost Heltec bridge firmware below; getting the plaintext lab bridge back requires a PlatformIO reflash of `firmware/heltec`.
+
 ## udev aliases
 
 See `deploy/raspberry-pi/udev/99-waypost-lora.rules`.
