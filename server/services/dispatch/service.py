@@ -79,6 +79,25 @@ class DispatchService:
             }
         return {"username": username, "unbound": n}
 
+    def list_devices(self, username: str) -> list[dict[str, Any]]:
+        return self.store.list_bindings_for_user(username)
+
+    def unbind_device(self, node_id: str, *, username: str) -> dict[str, Any]:
+        """Revoke exactly one device — the sibling of unbind_user, which
+        wipes every device a user has. Raises ValueError if node_id isn't
+        bound to username (ownership check, same shape as the HTTP route
+        guards elsewhere in this module)."""
+        binding = self.store.get_binding(node_id)
+        if not binding or binding["username"].lower() != username.lower():
+            raise ValueError("device not found")
+        ok = self.store.unbind_device(node_id)
+        if ok:
+            self._outbox.pop(node_id, None)
+            self._queued_push_keys = {
+                k for k in self._queued_push_keys if k[0] != node_id
+            }
+        return {"node_id": node_id, "unbound": ok}
+
     def _flush_pending_for_user(self, username: str, node_id: str) -> int:
         """Enqueue pending pushes for a newly reachable node.
 

@@ -150,6 +150,18 @@ class DispatchStore:
         ).fetchall()
         return [r["node_id"] for r in rows]
 
+    def list_bindings_for_user(self, username: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT node_id, username, created_at, transport_dest
+            FROM device_bindings
+            WHERE username = ? COLLATE NOCASE
+            ORDER BY created_at ASC
+            """,
+            (username,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def unbind_user(self, username: str) -> int:
         cur = self._conn.execute(
             "DELETE FROM device_bindings WHERE username = ? COLLATE NOCASE",

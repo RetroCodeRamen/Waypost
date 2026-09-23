@@ -42,6 +42,11 @@ class DeviceUnbind(BaseModel):
     username: str = Field(min_length=1, max_length=32)
 
 
+class DeviceUnbindOne(BaseModel):
+    node_id: str = Field(min_length=1, max_length=64)
+    username: str = Field(min_length=1, max_length=32)
+
+
 class DirectOpen(BaseModel):
     user_a: str = Field(min_length=1, max_length=32)
     user_b: str = Field(min_length=1, max_length=32)
@@ -112,6 +117,26 @@ def build_dispatch_router() -> APIRouter:
         if auth_enforced(request) and body.username.lower() != username.lower():
             raise HTTPException(status_code=403, detail="cannot unbind another user")
         return request.app.state.dispatch.unbind_user(username)
+
+    @router.get("/api/dispatch/devices")
+    def list_devices(request: Request, user=Depends(get_current_user)):
+        """Caller's own paired devices (M4)."""
+        username = actor_username(request, user)
+        return {"devices": request.app.state.dispatch.list_devices(username)}
+
+    @router.post("/api/dispatch/devices/unbind-one")
+    def unbind_device_one(
+        body: DeviceUnbindOne, request: Request, user=Depends(get_current_user)
+    ):
+        """Revoke exactly one device — sibling bindings are untouched
+        (unlike /devices/unbind, which wipes every device a user has)."""
+        username = actor_username(request, user, body.username)
+        if auth_enforced(request) and body.username.lower() != username.lower():
+            raise HTTPException(status_code=403, detail="cannot unbind another user's device")
+        try:
+            return request.app.state.dispatch.unbind_device(body.node_id, username=username)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.post("/api/dispatch/conversations/direct")
     def open_direct(

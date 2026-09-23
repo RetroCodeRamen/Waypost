@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from server.api.deps import get_current_user, get_optional_user
+from server.services.auth.pairing import CODE_LENGTH
 
 
 class RegisterBody(BaseModel):
@@ -19,6 +20,12 @@ class RegisterBody(BaseModel):
 class LoginBody(BaseModel):
     username: str = Field(min_length=1, max_length=32)
     password: str = Field(min_length=1, max_length=128)
+
+
+class PairingRedeem(BaseModel):
+    code: str = Field(min_length=CODE_LENGTH, max_length=CODE_LENGTH, pattern=r"^[0-9]+$")
+    node_id: str = Field(min_length=1, max_length=64)
+    transport_dest: Optional[str] = Field(default=None, max_length=128)
 
 
 def build_auth_router() -> APIRouter:
@@ -77,5 +84,29 @@ def build_auth_router() -> APIRouter:
     @router.get("/api/auth/me")
     def me(user=Depends(get_current_user)):
         return {"user": user}
+
+    @router.get("/api/auth/registration_mode")
+    def registration_mode(request: Request):
+        return {"mode": request.app.state.settings.waypost_registration_mode}
+
+    @router.post("/api/auth/pairing/create")
+    def create_pairing_code(request: Request, user=Depends(get_current_user)):
+        """Short-lived single-use code a device can redeem to bind itself
+        to this account — no password ever needs to cross LoRa."""
+        return request.app.state.pairing.create_code(user["username"])
+
+    @router.post("/api/auth/pairing/redeem")
+    def redeem_pairing_code(body: PairingRedeem, request: Request):
+        """Deliberately unauthenticated: this is how a device with no
+        session yet (radio-only, or first Wi-Fi contact) binds itself. The
+        code is the credential — short TTL, single use."""
+        try:
+            return request.app.state.pairing.redeem_code(
+                code=body.code,
+                node_id=body.node_id,
+                transport_dest=body.transport_dest,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return router

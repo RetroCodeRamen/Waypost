@@ -40,8 +40,8 @@ Related truth sources (do not duplicate long plans here):
 
 **Date:** 2026-09-23  
 
-**Active milestone:** **M1b** Pi — software prep done, waiting on SD card (human has it in the mail); **M7** T-Deck also in the mail  
-**Just finished:** Docs refresh (this session) — `docs/priority-review.md` rewritten (was stale since 2026-09-18, predates M2e/M3 completion); before that M1b prep — Pi installer + offline HTTPS ([docs/pi-setup.md](docs/pi-setup.md)); before that **M2e ✅** over real LoRa
+**Active milestone:** **M4** Identity depth 🟡 — slice 1 (pairing codes + per-device revocation) done; `ADMIN_APPROVAL`/admin-role + Stalwart decision open. **M1b** Pi — software prep done, waiting on SD card (human has it in the mail); **M7** T-Deck also in the mail  
+**Just finished:** M4 slice 1 — pairing codes + per-device revocation ([docs/identity.md](docs/identity.md)); before that docs refresh (`docs/priority-review.md` rewrite); before that M1b prep — Pi installer + offline HTTPS ([docs/pi-setup.md](docs/pi-setup.md)); before that **M2e ✅** over real LoRa
 
 **Have today**
 
@@ -54,13 +54,14 @@ Related truth sources (do not duplicate long plans here):
 - Dispatch pending is durable for every recipient until a device confirms (outbox poll, `MSG_ACK`, `MSG_PUSH` reply, or `MSG_SYNC`); state is `SENT` until then, not `DELIVERED`
 - `deploy/raspberry-pi/install.sh` — idempotent Pi installer, tested twice in Debian Bookworm + Trixie containers (not yet on a Pi). Caddy (official repo, ≥2.8) offline local CA, 30-day leaves; `/trust.html` over HTTP; `Secure` session cookie over HTTPS; production env has no demo users and hides the lab hint
 - AP (hostapd/dnsmasq) staged; only `--enable-ap` switches wlan0, and it refuses if SSH arrives over wlan0
+- M4: pairing codes (`POST /api/auth/pairing/create` + `/redeem`, no session needed to redeem; also Waylink `PAIR_REDEEM`) and per-device revocation (`GET /api/dispatch/devices`, `POST /api/dispatch/devices/unbind-one`); portal `devices.html`; `login.html` now hides/explains "Create account" per registration mode. `server/tests/test_pairing.py`, 96 passed
 
 **Don’t have yet**
 
 - M1b on real Pi: run installer, `--enable-ap`, phone joins `WAYPOST` → trust → HTTPS; openNDS (Waygate)
 - Station clock bootstrap (no RTC) — TLS certs are only 30 days tolerant ([network-time.md](docs/network-time.md))
 - Pocket/Outpost firmware (M6/M7); M3 on real hardware
-- Stalwart/OIDC (M4)
+- `ADMIN_APPROVAL` registration mode + any admin-role concept (no `users.approved_at`/`is_admin`, no admin routes/UI); Stalwart integration-vs-cutover decision (M4)
 
 **Freezes:** no new portal apps; no Atlas; no Workshop until network depth advances.
 
@@ -75,12 +76,13 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | Slot | Agent | Status | Branch / notes |
 |------|-------|--------|----------------|
 | M2e RNode LoRa | Cursor | **done** | Over-air PASS 2026-09-22 |
-| M1b Pi stack | Cursor | prep done | Installer + HTTPS ready; **still uncommitted**; run on Pi when SD card arrives ([pi-setup.md](docs/pi-setup.md)) |
+| M1b Pi stack | Cursor | prep done, **committed** | Installer + HTTPS ready; run on Pi when SD card arrives ([pi-setup.md](docs/pi-setup.md)) |
 | M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
 | Docs refresh | Claude | done | `priority-review.md` rewrite + smaller fixes across roadmap/architecture/hardware docs — see message board |
+| M4 pairing codes + device revocation | Claude | **done (slice 1)** | Pairing codes + per-device revoke + honest registration-mode UI shipped. `ADMIN_APPROVAL`/admin-role and Stalwart cutover deliberately deferred (real scope of their own) — see message board |
 
 **Cursor last session:** M1b prep (Pi installer, offline HTTPS, SD guide); prior: RNode flash + M2e over-air PASS.  
-**Claude last session:** Docs refresh — `priority-review.md` rewrite, roadmap/architecture/hardware doc fixes (see message board).
+**Claude last session:** M4 slice 1 — pairing codes + per-device revocation (see message board).
 
 ---
 
@@ -118,6 +120,14 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-23 — Claude (M4 slice 1: pairing codes + device revocation)
+
+**Re:** "Start on M4" — the identity-depth milestone the refreshed priority review flagged as the only hardware-free item left in the priority spine.  
+**Did:** Scoped M4 down to a small vertical slice rather than half-building everything: **pairing codes** (`server/services/auth/pairing.py` — `POST /api/auth/pairing/create` authenticated, `POST /api/auth/pairing/redeem` deliberately unauthenticated since a radio-only device has no session; also Waylink `PAIR_REDEEM` under `SVC_PROFILE`, which was reserved in protocol.md but had zero handlers until now) — both reuse the existing `DispatchService.bind_device`, no new bind logic. **Per-device revocation**: `DispatchStore.unbind_device` already existed but nothing called it — added `DispatchService.unbind_device` (ownership-checked) + `GET /api/dispatch/devices` + `POST /api/dispatch/devices/unbind-one`, sibling of the existing wipe-everything `unbind_user`/`/unbind`. **Registration modes honest in the UI**: `GET /api/auth/registration_mode` + `login.html` now hides "Create account" for `INVITE_ONLY` and disables it with an explanation for `ADMIN_APPROVAL`, instead of always showing it regardless of mode. New portal page `devices.html` (pairing-code generator + device list/revoke), added to `shell.js`'s nav. 9 new tests (`test_pairing.py`); full suite 96 passed, 1 skip. Verified the whole flow end-to-end via curl against a live dev server (register → create code → redeem with no cookies → appears in device list → revoke → gone) — **could not get browser-based visual verification working**: the claude-in-chrome extension's browser can't reach the sandbox's `127.0.0.1` (different network namespace from the Bash tool), so screenshots aren't possible for this kind of change in this environment. Worth a human eyeballing `devices.html` once it's convenient.  
+**Deliberately deferred, not silently dropped:** `ADMIN_APPROVAL` registration mode and any admin-role concept — the `users` table has no `approved_at`/`is_admin` column, there's no admin-only route anywhere, and there's no first-admin bootstrap decision made. This is real scope (pending-user state, who becomes admin, an approval UI), not a quick add-on to this slice. Also deferred: the Stalwart integration-vs-explicit-cutover decision from ADR 0003 — nothing here depends on it.  
+**Next for other agent:** M4 slice 2 (`ADMIN_APPROVAL` + admin role) if that's next, or M1b/M2e-on-Pi/M3-on-hardware once the SD card/T-Deck arrive.  
+**Blocked:** Nothing on this slice — pure software, no hardware needed.
 
 ### 2026-09-23 — Claude (docs refresh)
 

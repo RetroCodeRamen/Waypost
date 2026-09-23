@@ -79,6 +79,7 @@
     </form>
     <p class="hint" id="lab-hint" hidden>Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
     <p class="hint" id="trust-hint" hidden>Browser warning about this connection? <a href="/trust.html">Trust this Station</a> first.</p>
+    <p class="hint" id="reg-mode-hint" hidden></p>
   </div>
   <script src="/static/auth.js"></script>
   <script>
@@ -94,6 +95,26 @@
         .then(function (h) {
           if (h.env === "development") document.getElementById("lab-hint").hidden = false;
           if (h.env === "production") document.getElementById("trust-hint").hidden = false;
+        })
+        .catch(function () {});
+
+      // M4: registration mode — be honest in the UI instead of letting
+      // someone submit a registration the server will reject (or, for
+      // ADMIN_APPROVAL, silently accept without an approval flow to match).
+      fetch("/api/auth/registration_mode")
+        .then(function (r) { return r.json(); })
+        .then(function (m) {
+          var btn = document.getElementById("btn-register");
+          var hint = document.getElementById("reg-mode-hint");
+          if (m.mode === "INVITE_ONLY") {
+            btn.hidden = true;
+            hint.hidden = false;
+            hint.textContent = "Registration is invite-only — ask an existing member.";
+          } else if (m.mode === "ADMIN_APPROVAL") {
+            btn.disabled = true;
+            hint.hidden = false;
+            hint.textContent = "Registration requires admin approval (not yet available on this Station).";
+          }
         })
         .catch(function () {});
 

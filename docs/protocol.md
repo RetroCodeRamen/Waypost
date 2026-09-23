@@ -127,7 +127,7 @@ Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or
 
 | Service | Operations |
 |---------|------------|
-| `PROFILE` | `PROFILE_GET`, `PROFILE_UPDATE` |
+| `PROFILE` | `PROFILE_GET`, `PROFILE_UPDATE` (not yet implemented); `PAIR_REDEEM` (M4 ✅ — redeem a pairing code created via `POST /api/auth/pairing/create`, binding `node_id` to that code's account without a password ever crossing the radio link) |
 | `COMMONS` | `POST_LIST`, `POST_CREATE`, `POST_GET` |
 | `NOTICEBOARD` | `NOTICE_LIST`, `NOTICE_GET`, `NOTICE_CREATE`, `NOTICE_EXPIRE` |
 | `BEACON` | `BEACON_GET`, `BEACON_PUSH`, `BEACON_CLEAR`, `BEACON_LIST` |

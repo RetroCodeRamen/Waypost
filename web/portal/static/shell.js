@@ -17,6 +17,7 @@
 
   var NAV_SYSTEM = [
     { id: "signal", label: "Signal", href: "/signal.html", icon: "signal" },
+    { id: "devices", label: "Devices", href: "/devices.html", icon: "devices" },
     { id: "control", label: "Control", href: "#", icon: "control", soon: true },
   ];
 
@@ -35,6 +36,7 @@
       rollcall: '<circle cx="12" cy="8" r="3"/><path d="M6 19 C6 15.5 9 14 12 14 C15 14 18 15.5 18 19"/>',
       finder: '<circle cx="11" cy="11" r="5.5"/><path d="M15.5 15.5 L19 19"/>',
       signal: '<path d="M5 16 V19"/><path d="M9 13 V19"/><path d="M13 9 V19"/><path d="M17 5 V19"/>',
+      devices: '<circle cx="8" cy="12" r="3.5"/><path d="M11.2 12 H20 M15.5 12 V15.5 M18.5 12 V14.5"/>',
       control: '<circle cx="12" cy="12" r="3"/><path d="M12 4 V7 M12 17 V20 M4 12 H7 M17 12 H20 M6.5 6.5 L8.5 8.5 M15.5 15.5 L17.5 17.5 M17.5 6.5 L15.5 8.5 M8.5 15.5 L6.5 17.5"/>',
     };
     var d = paths[name] || paths.home;

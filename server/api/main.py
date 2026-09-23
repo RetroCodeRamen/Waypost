@@ -29,6 +29,7 @@ from server.api.postbox_routes import build_postbox_router
 from server.api.rollcall_routes import build_rollcall_router
 from server.api.signal_routes import build_signal_router
 from server.gateway.waylink import WaylinkGateway
+from server.services.auth.pairing import PairingService
 from server.services.auth.passwords import hash_password
 from server.services.auth.service import AuthService
 from server.services.beacon.constants import (
@@ -67,6 +68,7 @@ from server.services.noticeboard.constants import (
     OP_NOTICE_LIST,
 )
 from server.services.noticeboard.service import NoticeboardService
+from server.services.profiles.constants import OP_PAIR_REDEEM
 from server.services.profiles.rollcall import RollcallService
 from server.services.signal.service import (
     OP_SIGNAL_ROUTE,
@@ -81,6 +83,7 @@ from shared.protocol.envelope import (
     SVC_LOCKER,
     SVC_MAIL,
     SVC_NOTICEBOARD,
+    SVC_PROFILE,
     SVC_SIGNAL,
     Envelope,
 )
@@ -129,6 +132,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.rollcall = rollcall
         app.state.signal = SignalService(lambda: app.state)
         app.state.auth = AuthService(db)
+        app.state.pairing = PairingService(db, dispatch)
 
         transport = create_transport(
             settings.waypost_transport,
@@ -161,6 +165,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             gateway.register(SVC_LOCKER, op, locker.handle_rpc)
         for op in (OP_SIGNAL_STATUS, OP_SIGNAL_ROUTE):
             gateway.register(SVC_SIGNAL, op, app.state.signal.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
 
@@ -426,6 +431,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/trust.html")
         def portal_trust():
             return FileResponse(PORTAL_DIR / "trust.html")
+
+        @app.get("/devices.html")
+        def portal_devices():
+            return FileResponse(PORTAL_DIR / "devices.html")
 
     return app
 

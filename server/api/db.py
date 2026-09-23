@@ -34,6 +34,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(username);
 
+CREATE TABLE IF NOT EXISTS pairing_codes (
+    code TEXT PRIMARY KEY,
+    username TEXT NOT NULL COLLATE NOCASE,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pairing_username ON pairing_codes(username);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -137,4 +147,28 @@ class Database:
 
     def delete_session(self, token: str) -> None:
         self._conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        self._conn.commit()
+
+    def create_pairing_code(
+        self, *, code: str, username: str, created_at: float, expires_at: float
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO pairing_codes (code, username, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (code, username, created_at, expires_at),
+        )
+        self._conn.commit()
+
+    def get_pairing_code(self, code: str) -> Optional[dict[str, Any]]:
+        row = self._conn.execute(
+            "SELECT * FROM pairing_codes WHERE code = ?", (code,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def mark_pairing_code_used(self, code: str, *, used_at: float) -> None:
+        self._conn.execute(
+            "UPDATE pairing_codes SET used_at = ? WHERE code = ?", (used_at, code)
+        )
         self._conn.commit()

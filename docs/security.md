@@ -37,9 +37,9 @@ Receiving a valid radio packet does **not** authorize:
 
 - One Waypost account: **username + password** (OIDC later via Stalwart).  
 - Same credentials for **Station portal** and **Pocket** (Pocket authenticates over Wi‑Fi/HTTPS to Station — never send passwords over LoRa).  
-- Pocket radio identity is separate; linked via bind / pairing codes with revocation.  
-- Lost Pocket: revoke device binding.  
-- Disabled users: reject API and radio-authenticated app ops.
+- Pocket radio identity is separate; linked via bind / pairing codes with revocation. **M4 ✅:** a signed-in user generates a 6-digit, 10-minute, single-use pairing code (`POST /api/auth/pairing/create`); a device redeems it (`POST /api/auth/pairing/redeem` or Waylink `PAIR_REDEEM`) with **no session and no password** — the code itself is the bounded-lifetime credential that's safe to send over an untrusted or radio-only path.  
+- Lost Pocket: `POST /api/dispatch/devices/unbind-one` revokes exactly that device (sibling devices keep working) — see [identity.md](identity.md).  
+- Disabled users: reject API and radio-authenticated app ops — **not implemented yet**; needs the `ADMIN_APPROVAL`/admin-role work noted in `identity.md`'s Deferred section.
 
 ---
 

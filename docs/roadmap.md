@@ -206,11 +206,16 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 ---
 
-### M4 — Identity depth (Stalwart / OIDC / pairing UX)
+### M4 — Identity depth (Stalwart / OIDC / pairing UX) 🟡
 
 **Goal:** Production identity authority; polished Pocket pairing; revocation UX.
 
 **Exit criteria:** Stalwart path or scheduled cutover; pairing codes; registration modes enforced in UI.
+
+**Progress (slice 1):** Pairing codes — `POST /api/auth/pairing/create` (authenticated) / `POST /api/auth/pairing/redeem` (no session; also `PAIR_REDEEM` over Waylink) — bind a device without a password ever crossing LoRa. Per-device revocation — `GET /api/dispatch/devices`, `POST /api/dispatch/devices/unbind-one` — revokes one device, siblings survive (unlike the older `unbind` which wipes all of a user's devices). Portal: new `devices.html`. `OPEN`/`INVITE_ONLY` are now honest in `login.html` (the button hides/explains instead of letting a blocked registration submit). See `docs/identity.md`, `docs/security.md`.
+
+**Still open:** `ADMIN_APPROVAL` — no admin-role concept exists anywhere in the codebase yet (no `users.approved_at`/`is_admin`, no admin routes, no approval UI); this is real scope, not wired up as a side effect of this slice. Stalwart integration-vs-cutover is still an open decision, not silently dropped — see `priority-review.md` §12.3.
+
 ---
 
 ### M5 — Postbox + Fieldbook (progressive)
@@ -281,9 +286,10 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 1. ~~**M2e** radio transport crypto~~ ✅ (over-air PASS 2026-09-22)  
 2. **M3** mesh/sim peer + shared sync adoption — sim ✅; hardware with Pocket firmware  
-3. **Hardware spikes (parallel):** MakerHawk GPIO; T-Deck Plus  
-4. **M1b Pi AP + TLS** when camp Wi‑Fi is the blocker  
-5. Then M4 Stalwart → M5 → M6/M7  
+3. **M4** identity depth — pairing codes + per-device revocation ✅ (slice 1); `ADMIN_APPROVAL`/admin-role + Stalwart decision open  
+4. **Hardware spikes (parallel):** MakerHawk GPIO; T-Deck Plus  
+5. **M1b Pi AP + TLS** when camp Wi‑Fi is the blocker  
+6. Then M5 → M6/M7  
 
 **Do not:** Atlas, Workshop, or new portal apps before M2e/M3 network depth.
 

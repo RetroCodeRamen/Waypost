@@ -1,0 +1,40 @@
+.devices-page { max-width: 36rem; }
+
+.pairing-code {
+  margin-top: 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.pairing-code__value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: 0.15em;
+}
+
+.devices {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.devices li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.devices .node-id {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+.devices button.revoke {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}

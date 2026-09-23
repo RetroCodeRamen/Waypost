@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Devices — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/devices.css"/>
+</head>
+<body>
+  <div id="wp-page" class="devices-page">
+    <article class="wp-card app-panel">
+      <h2 class="wp-card__title">Pair a device</h2>
+      <p class="muted">Generate a short code and enter it on your Pocket, or send it over LoRa — your password never leaves this browser.</p>
+      <button type="button" id="make-code">Generate pairing code</button>
+      <div id="code-display" class="pairing-code" hidden>
+        <span id="code-value" class="pairing-code__value"></span>
+        <span id="code-expiry" class="muted"></span>
+      </div>
+    </article>
+
+    <article class="wp-card app-panel">
+      <h2 class="wp-card__title">My devices</h2>
+      <ul id="devices" class="devices"></ul>
+      <p id="devices-empty" class="muted" hidden>No devices paired yet.</p>
+    </article>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "devices",
+      user: "AJ",
+      title: "Devices",
+      subtitle: "Pair and revoke your radio devices"
+    });
+  </script>
+  <script src="/static/devices.js"></script>
+</body>
+</html>
