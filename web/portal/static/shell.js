@@ -5,7 +5,7 @@
     { id: "dispatch", label: "Dispatch", href: "/dispatch.html", icon: "dispatch" },
     { id: "postbox", label: "Postbox", href: "/postbox.html", icon: "postbox" },
     { id: "commons", label: "Commons", href: "/commons.html", icon: "commons" },
-    { id: "fieldbook", label: "Fieldbook", href: "#", icon: "fieldbook", soon: true },
+    { id: "fieldbook", label: "Fieldbook", href: "/fieldbook.html", icon: "fieldbook" },
     { id: "noticeboard", label: "Noticeboard", href: "/noticeboard.html", icon: "notice" },
     { id: "beacon", label: "Beacon", href: "/beacon.html", icon: "beacon" },
     { id: "corkboard", label: "Corkboard", href: "/corkboard.html", icon: "corkboard" },

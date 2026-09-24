@@ -175,6 +175,7 @@
 .activity-avatar.accent-dispatch { background: var(--wp-accent-dispatch); }
 .activity-avatar.accent-postbox { background: var(--wp-accent-postbox); }
 .activity-avatar.accent-commons { background: var(--wp-accent-commons); }
+.activity-avatar.accent-fieldbook { background: var(--wp-accent-fieldbook); }
 
 .activity-actor {
   font-weight: 600;
@@ -196,6 +197,7 @@
 .activity-service.accent-dispatch { color: var(--wp-accent-dispatch); }
 .activity-service.accent-postbox { color: var(--wp-accent-postbox); }
 .activity-service.accent-commons { color: var(--wp-accent-commons); }
+.activity-service.accent-fieldbook { color: var(--wp-accent-fieldbook); }
 
 .activity-time {
   color: var(--wp-faint);

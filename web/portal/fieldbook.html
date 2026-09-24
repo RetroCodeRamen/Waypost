@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Fieldbook — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/fieldbook.css"/>
+</head>
+<body>
+  <div id="wp-page">
+    <section class="app-toolbar">
+      <label class="grow">Search the Fieldbook
+        <input id="search" type="search" placeholder="wells, trail closures, radio checklist…" autocomplete="off"/>
+      </label>
+      <button type="button" id="new-btn">New page</button>
+    </section>
+    <p class="meta muted" id="status-line">Editable community knowledge · every save keeps a revision</p>
+
+    <div class="app-layout fb-layout">
+      <aside class="app-sidebar">
+        <p class="fb-side-title" id="side-title">All pages</p>
+        <ul id="page-list" class="fb-list"></ul>
+      </aside>
+
+      <section class="app-reader fb-reader">
+        <div id="empty" class="muted">Pick a page, or search above.</div>
+
+        <article id="view" hidden>
+          <header class="fb-head">
+            <div>
+              <h2 id="v-title"></h2>
+              <p class="meta" id="v-meta"></p>
+            </div>
+            <div class="fb-actions">
+              <button type="button" id="edit-btn">Edit</button>
+              <button type="button" id="history-btn" class="secondary">History</button>
+            </div>
+          </header>
+          <nav id="v-outline" class="fb-outline" hidden></nav>
+          <div id="v-body" class="fb-body"></div>
+        </article>
+
+        <article id="editor" hidden>
+          <header class="fb-head">
+            <div>
+              <label class="fb-field">Title <input id="e-title" maxlength="120" required/></label>
+            </div>
+            <div class="fb-actions">
+              <button type="button" id="save-btn">Save</button>
+              <button type="button" id="cancel-btn" class="secondary">Cancel</button>
+            </div>
+          </header>
+          <p class="meta muted" id="e-base"></p>
+          <div id="e-conflict" class="fb-conflict" hidden>
+            <strong>Someone saved a newer revision while you were editing.</strong>
+            <span id="e-conflict-meta"></span>
+            <div class="fb-actions">
+              <button type="button" id="conflict-reload">Load their version</button>
+              <button type="button" id="conflict-diff" class="secondary">Show what changed</button>
+            </div>
+            <pre id="e-conflict-diff" class="fb-diff" hidden></pre>
+          </div>
+          <textarea id="e-body" rows="22" spellcheck="true" placeholder="# Heading&#10;&#10;Plain text or Markdown-ish. Lines starting with # become sections a Pocket can fetch one at a time."></textarea>
+          <label class="fb-field">Summary of change <input id="e-summary" maxlength="200" placeholder="what and why, briefly"/></label>
+        </article>
+
+        <article id="history" hidden>
+          <header class="fb-head">
+            <div>
+              <h2 id="h-title">History</h2>
+              <p class="meta muted">Newest first. Pick a revision to read it or compare it with the current page.</p>
+            </div>
+            <div class="fb-actions">
+              <button type="button" id="history-close" class="secondary">Back to page</button>
+            </div>
+          </header>
+          <ul id="h-list" class="fb-history"></ul>
+          <div id="h-detail" hidden>
+            <p class="meta" id="h-detail-meta"></p>
+            <pre id="h-detail-body" class="fb-diff"></pre>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <dialog id="new-dialog" class="wp-dialog">
+      <form method="dialog" id="new-form">
+        <h3>New Fieldbook page</h3>
+        <label>Title <input id="n-title" required maxlength="120" placeholder="Well maintenance"/></label>
+        <label>Address <span class="muted">(optional)</span> <input id="n-slug" maxlength="64" pattern="[a-z0-9][a-z0-9-]*" placeholder="well-maintenance"/></label>
+        <div class="actions">
+          <button type="submit" value="create">Create</button>
+          <button type="submit" value="cancel" formnovalidate>Cancel</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "fieldbook",
+      user: "AJ",
+      title: "Fieldbook",
+      subtitle: "The community's editable knowledge"
+    });
+  </script>
+  <script src="/static/fieldbook.js"></script>
+</body>
+</html>

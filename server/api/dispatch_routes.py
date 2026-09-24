@@ -165,9 +165,14 @@ def build_dispatch_router() -> APIRouter:
         db = request.app.state.db
         members = list(body.members)
         if body.group_id:
-            group = request.app.state.groups.get_group(body.group_id)
-            if not group:
-                raise HTTPException(status_code=404, detail="Group not found")
+            groups = request.app.state.groups
+            try:
+                groups.require_member(body.group_id, actor_username(request, user))
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail="Group not found") from exc
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            group = groups.get_group(body.group_id)
             members.extend(m["username"] for m in group["members"])
         members = list(dict.fromkeys(members))
         if not members:

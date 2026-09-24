@@ -17,10 +17,13 @@ Installer: [`deploy/raspberry-pi/install.sh`](../deploy/raspberry-pi/install.sh)
 
 ## 2. Copy the repo and install (Station + HTTPS)
 
-The repo is private, so copy it from the laptop rather than giving the Pi GitHub credentials:
+The repo is public, so if the Pi has Internet you can clone it directly. If it doesn't (the usual case for a Station), copy it from the laptop instead:
 
 ```bash
-# on the laptop, from the repo root
+# Pi online:
+git clone https://github.com/RetroCodeRamen/Waypost.git ~/Waypost
+
+# Pi offline — on the laptop, from the repo root:
 rsync -a --exclude .venv --exclude data --exclude .git --exclude '.pio' ./ <you>@waypost.local:~/Waypost/
 ssh <you>@waypost.local
 ```

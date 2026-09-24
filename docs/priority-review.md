@@ -16,6 +16,8 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 **Same day, later still:** built Groups/permissions core — this one genuinely *was* "not started" (no file existed, unlike the last three false alarms). `server/services/groups/` (`GroupsStore`/`GroupsService`), HTTP-only routes at `/api/groups*` (no Waylink — same precedent as Rollcall), v1's two enforced roles (member/admin, not the doc's original five), and portal `groups.html`. Integrated with 2 services per M8's exit criterion: Locker (`scope='group'` + `group_id`, membership-gated) and Dispatch (rooms can seed membership from a group at creation, one-time copy not a live link). 12 new tests, full suite 145 passed, 1 skipped. Verified live against the running Station with real per-user sessions (not just the aj-cookie-with-claimed-viewer trick, which — worth noting for future verification — silently no-ops when auth is enforced, since `actor_username()` ignores the claimed name and uses the session's own identity). **This closes M8 entirely** — all four exit criteria met, see `roadmap.md`.
 
+**Same day (Cursor):** review of that Groups commit found three authz holes (any user could read any group's roster; any user could seed a Dispatch room from any group's members; `add_member` could demote the last admin to zero admins) — all closed with tests, 148 passed. Then built the **Fieldbook progressive path** (the last software-only Tier 2 item that was genuinely empty — checked: `server/services/fieldbook/__init__.py` was the only file). `FieldbookStore`/`FieldbookService`, `WIKI_SEARCH/GET/UPDATE/CREATE` over Waylink with outline / section / `since`-diff so a Pocket never pulls a whole page to read or catch up on one part, base-revision conflict detection (409 over HTTP, compact `revision_conflict` + outline over radio, never a silent overwrite), section-level edits, full revision history, portal `fieldbook.html` with an in-editor conflict rebase flow. 17 new tests, **full suite 165 passed, 1 skipped**. Design: `docs/fieldbook.md`. M5's software half is done; what's left of M5 (Pocket offline edit queueing, favorites cache) waits on the shared sync subsystem and T-Deck firmware.
+
 ---
 
 ## 1. Current state
@@ -39,7 +41,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 145 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 165 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -134,7 +136,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 145 passed, 1 skipped as of this review
+- ~~Keep **radio regression** green~~ — 165 passed, 1 skipped as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -147,7 +149,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - Pocket↔Outpost↔Pocket / courier smoke — Outpost's half is ready; still blocked on real Pocket hardware
 - ~~`ADMIN_APPROVAL` + admin-role~~ — **done** (M4 fully built now — see header)
 - ~~Postbox progressive LoRa path~~ — **turned out to already be built**, this line was stale (see header)
-- Fieldbook progressive path — not started, software-only
+- ~~Fieldbook progressive path~~ — **done (2026-09-24)**: search → outline → section → `since`-diff over Waylink, section-level edits with base-revision conflict, portal page; see `docs/fieldbook.md`
 - ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts explicitly still not started (real scope of its own, not part of the auth fix)
 - ~~Groups/permissions core~~ — **done (2026-09-24)**, see header — core + Locker/Dispatch integration
 - ~~Unified Today / sync dashboard~~ — **turned out to already be substantially built**; two real gaps fixed 2026-09-24 (see header) — this line was stale, third instance this session
@@ -176,7 +178,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 With M4 build-complete, nothing left in the priority spine's hardware-free lane is a single obvious next step the way M4 was. **Noticeboard ack + Beacon auth got picked and built the same day** (see header) — while implementing it, checked Postbox against this same list and found its "progressive LoRa path" line was simply wrong: `MAIL_STATUS`/`MAIL_LIST`/`MAIL_GET` already implement exactly that pattern (compact headers, full body on demand, attachments kept Wi-Fi-only) — nothing to build there. What's left, still independent, none blocking each other:
 
-- **Fieldbook progressive path** — the same pattern Dispatch and (it turns out) Postbox already prove; likely the most mechanical of what's left. Still genuinely not started (package marker only).
+- ~~**Fieldbook progressive path**~~ — **done 2026-09-24**. Was genuinely empty (package marker only — verified before building, per the note below). Now `server/services/fieldbook/`, HTTP + four Waylink ops, portal `fieldbook.html`, 17 tests.
 - ~~**Groups/permissions core**~~ — **done 2026-09-24**, see header. Was genuinely unstarted (unlike the three false alarms above) — now the one authz model, integrated with Locker + Dispatch.
 - ~~**Unified Today/sync dashboard**~~ — **done 2026-09-24**, see header. Was already ~80% there; the "not started" label was wrong.
 - **Beacon propagation through Outposts** — deliberately cut from the auth-fix slice; store-and-forward relay for Beacon the way Dispatch's courier queue already works, real scope of its own.
@@ -209,7 +211,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 | MakerHawk GPIO verify (spike) | Still blocked — hardware not confirmed ordered, unlike Pi/T-Deck |
 | Pi AP (M1b) | Software done; genuinely just waiting on the physical Pi now |
 | Commons / Locker depth | Already prototyped; networking > polish |
-| Fieldbook / rich Postbox | Tier 2, software-only, no longer blocked on anything — see §8's "next up" list |
+| Fieldbook / rich Postbox | Both built (Fieldbook 2026-09-24); what's left is Pocket-side offline edit queueing, which waits on the shared sync subsystem (#2) |
 | Workshop / Arcade / Planner | Pocket platform Tier 4 |
 | Federation | Document only |
 

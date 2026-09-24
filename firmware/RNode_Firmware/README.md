@@ -41,8 +41,21 @@ monochrome bitmap generated from `web/portal/static/brand/waypost-mark-256.png`
 *opposite* of `firmware/{heltec,outpost}/src/waypost_mark.h`'s LSB-first
 format for U8g2. Don't reuse one header's bytes with the other library.
 
+The Heltec V3 panel is portrait after `setRotation` (64×128). The splash
+uses `display.width()` / `display.height()`, not the 128×64 `DISP_W` /
+`DISP_H` constants, and stacks a 56×56 tree mark over the word WAYPOST.
+`WaypostLogo.h` is cropped from the brand mark without the side W.
+
 Nothing else about RNode's radio/KISS-protocol behavior is touched — this
 only adds a display gesture.
+
+After flashing a new build, the OLED shows "firmware corrupt" until the
+EEPROM hash matches the running image. Read it and write it back:
+
+```bash
+rnodeconf /dev/ttyUSB0 --get-firmware-hash
+rnodeconf /dev/ttyUSB0 --firmware-hash <that-hash>
+```
 
 ## Build
 

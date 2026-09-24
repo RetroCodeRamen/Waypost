@@ -41,16 +41,16 @@ def build_groups_router() -> APIRouter:
 
     @router.get("/api/groups/{group_id}")
     def get_group(group_id: str, request: Request, user=Depends(get_current_user)):
-        _ = user
-        group = request.app.state.groups.get_group(group_id)
+        viewer = actor_username(request, user)
+        group = request.app.state.groups.get_group_for(group_id, viewer)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         return group
 
     @router.get("/api/groups/{group_id}/members")
     def list_members(group_id: str, request: Request, user=Depends(get_current_user)):
-        _ = user
-        group = request.app.state.groups.get_group(group_id)
+        viewer = actor_username(request, user)
+        group = request.app.state.groups.get_group_for(group_id, viewer)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         return {"members": group["members"]}

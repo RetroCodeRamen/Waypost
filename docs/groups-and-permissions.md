@@ -18,14 +18,19 @@ separate from Groups, used directly or seeded from a Group at creation time.
   portal/HTTP-only). Groups is a management concern, not something needed mid-hike from a
   Pocket; radio access can be a later slice if a real need shows up.
 - **Roles:** exactly two enforced ranks, `member` and `admin` — not the five-role list
-  below. See "Deferred" for why.
+  below. See "Deferred" for why. A group can never be left with zero admins: both
+  `remove_member` and a role-changing `add_member` refuse to demote/remove the last admin.
+- **Visibility:** `GET /api/groups/{id}` and `.../members` require membership; a
+  non-member gets the same 404 as a missing group, so the API is not an existence oracle
+  for group ids. `GET /api/groups` only ever lists the caller's own groups.
 - **Locker integration:** `locker_files.group_id` (nullable) + a third `scope` value,
   `'group'`. Viewing/downloading a group-scoped file requires membership, checked via the
   same injected-lookup pattern.
 - **Dispatch integration:** `POST /api/dispatch/conversations/rooms` takes an optional
   `group_id` that seeds the new room's membership from the group's *current* members — a
   one-time copy at creation, not a live link. Adding someone to the group afterward does
-  not retroactively add them to rooms created from it.
+  not retroactively add them to rooms created from it. The caller must be a member of
+  the group (403 otherwise) — you cannot pull another group's roster into your room.
 - Portal: `groups.html` — create a group, list mine, view/add/remove members (add/remove
   is admin-only, enforced server-side).
 
@@ -35,7 +40,7 @@ First-class **Groups** (Family, Trail Crew, Maintenance, …) that can eventuall
 
 - Dispatch room(s) — done (seed-on-create)
 - Noticeboard — not yet (same pattern as Locker, straightforward when needed)
-- Fieldbook area — not yet (Fieldbook itself doesn't exist yet)
+- Fieldbook area — not yet (Fieldbook exists as of 2026-09-24, all pages community-wide; group-scoped pages are a later slice)
 - Locker folder — done
 - Commons feed — not yet
 
@@ -67,7 +72,7 @@ and were already true beforehand.
 
 - Noticeboard/Commons/Fieldbook group-scoping — same pattern as Locker
   (`is_group_member` injection), not built because nothing in M8's exit criteria required
-  more than 2 services and Fieldbook doesn't exist yet.
+  more than 2 services; Fieldbook (built 2026-09-24) is community-wide for now.
 - Full 5-role permission semantics — v1 needed "who can manage membership" (admin) vs.
   "who's just in the group" (member); richer roles (Moderator/Editor/Operator) wait for a
   concrete feature that needs the distinction.

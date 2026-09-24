@@ -123,6 +123,8 @@ tools/          Simulators, radio helpers, screenshots
 - [Security](docs/security.md)
 - [Deployment](docs/deployment.md)
 - [Pi Station setup](docs/pi-setup.md)
+- [Fieldbook (wiki)](docs/fieldbook.md)
+- [Groups & permissions](docs/groups-and-permissions.md)
 - [Hardware](docs/hardware/)
 - [Heltec USB LoRa (dev radios)](docs/hardware/heltec-wifi-lora-32.md)
 - [Radio-dev runbook](docs/radio-dev.md)

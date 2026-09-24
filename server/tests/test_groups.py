@@ -91,6 +91,71 @@ def test_get_unknown_group_404s(client: TestClient):
     assert r.status_code == 404
 
 
+def _session_headers(client: TestClient, username: str) -> dict[str, str]:
+    """Real Bearer session for a second identity; honored even in test env."""
+    client.app.state.db.ensure_user(username)
+    token = client.app.state.auth.create_session(username)["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_non_member_cannot_read_group_or_roster(client: TestClient):
+    gid = client.post("/api/groups", json={"name": "Private"}).json()["id"]
+    bob = _session_headers(client, "bob")
+
+    # Indistinguishable from a missing group — no existence oracle.
+    assert client.get(f"/api/groups/{gid}", headers=bob).status_code == 404
+    assert client.get(f"/api/groups/{gid}/members", headers=bob).status_code == 404
+    assert client.get("/api/groups", headers=bob).json()["groups"] == []
+
+    # Members still see it.
+    assert client.get(f"/api/groups/{gid}").status_code == 200
+    assert client.get(f"/api/groups/{gid}/members").status_code == 200
+
+
+def test_non_member_cannot_seed_room_from_group(client: TestClient):
+    gid = client.post("/api/groups", json={"name": "Crew"}).json()["id"]
+    client.post(f"/api/groups/{gid}/members", json={"username": "carol"})
+    bob = _session_headers(client, "bob")
+
+    denied = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "Sneaky", "group_id": gid},
+        headers=bob,
+    )
+    assert denied.status_code == 403
+
+    missing = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "Nope", "group_id": "does-not-exist"},
+        headers=bob,
+    )
+    assert missing.status_code == 404
+
+    # A member can still seed a room from the group's roster.
+    ok = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "Crew chat", "group_id": gid},
+    )
+    assert ok.status_code == 200
+    assert set(ok.json()["conversation"]["members"]) == {"aj", "carol"}
+
+
+def test_cannot_demote_last_admin_via_add(client: TestClient):
+    gid = client.post("/api/groups", json={"name": "Solo"}).json()["id"]
+
+    r = client.post(f"/api/groups/{gid}/members", json={"username": "aj", "role": "member"})
+    assert r.status_code == 400
+    assert "last admin" in r.json()["detail"]
+    assert client.get(f"/api/groups/{gid}").json()["members"][0]["role"] == "admin"
+
+    # Promote someone else first, then the demotion is allowed.
+    client.post(f"/api/groups/{gid}/members", json={"username": "bob", "role": "admin"})
+    r = client.post(f"/api/groups/{gid}/members", json={"username": "aj", "role": "member"})
+    assert r.status_code == 200
+    roles = {m["username"]: m["role"] for m in r.json()["members"]}
+    assert roles == {"aj": "member", "bob": "admin"}
+
+
 def test_groups_page(client: TestClient):
     r = client.get("/groups.html")
     assert r.status_code == 200

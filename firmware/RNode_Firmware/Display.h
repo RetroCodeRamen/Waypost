@@ -1040,22 +1040,30 @@ bool epd_blanked = false;
   }
 #endif
 
-// Waypost identity splash -- full-screen, drawn directly rather than
-// via the disp_area/stat_area canvases the normal layout uses, since
-// this doesn't need to integrate with portrait/landscape paging.
+// Waypost identity splash. Heltec V3's panel is portrait after
+// setRotation (64 wide, 128 tall). DISP_W/DISP_H stay 128x64, so this
+// uses the live display size and stacks the mark over the word.
 void draw_waypost_logo() {
-  int16_t icon_x = (DISP_W - WAYPOST_LOGO_WIDTH) / 2;
-  drawBitmap(icon_x, 0, WAYPOST_LOGO_BITS, WAYPOST_LOGO_WIDTH, WAYPOST_LOGO_HEIGHT, SSD1306_WHITE, SSD1306_BLACK);
+  int16_t w = display.width();
+  int16_t h = display.height();
+  display.fillScreen(SSD1306_BLACK);
+  int16_t icon_x = (w - WAYPOST_LOGO_WIDTH) / 2;
+  if (icon_x < 0) icon_x = 0;
+  int16_t icon_y = (h - WAYPOST_LOGO_HEIGHT - 16) / 2;
+  if (icon_y < 0) icon_y = 0;
+  drawBitmap(icon_x, icon_y, WAYPOST_LOGO_BITS, WAYPOST_LOGO_WIDTH, WAYPOST_LOGO_HEIGHT, SSD1306_WHITE, SSD1306_BLACK);
 
   display.setFont(SMALL_FONT);
   display.setTextWrap(false);
   display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(2);
+  display.setTextSize(1);
   int16_t tx, ty; uint16_t tw, th;
   display.getTextBounds("WAYPOST", 0, 0, &tx, &ty, &tw, &th);
-  int16_t label_x = (DISP_W - (int16_t)tw) / 2;
+  int16_t label_x = (w - (int16_t)tw) / 2;
   if (label_x < 0) label_x = 0;
-  display.setCursor(label_x, DISP_H - 6);
+  int16_t label_y = icon_y + WAYPOST_LOGO_HEIGHT + 12;
+  if (label_y > h - 2) label_y = h - 2;
+  display.setCursor(label_x, label_y);
   display.print("WAYPOST");
 }
 

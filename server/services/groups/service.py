@@ -41,11 +41,28 @@ class GroupsService:
     def is_member(self, group_id: str, username: str) -> bool:
         return self.store.is_member(group_id, username)
 
+    def require_member(self, group_id: str, username: str) -> None:
+        if not self.store.get_group(group_id):
+            raise ValueError("group not found")
+        if not self.store.is_member(group_id, username):
+            raise PermissionError("not a member of that group")
+
     def require_admin(self, group_id: str, username: str) -> None:
         if not self.store.get_group(group_id):
             raise ValueError("group not found")
         if not self.store.is_admin(group_id, username):
             raise PermissionError("only a group admin can do that")
+
+    def get_group_for(self, group_id: str, username: str) -> Optional[dict[str, Any]]:
+        """Group as seen by `username`: None when it doesn't exist *or* they aren't in it.
+
+        Non-members get the same answer as a missing group so the API is not
+        an existence oracle for group ids.
+        """
+        group = self.store.get_group(group_id)
+        if not group or not self.store.is_member(group_id, username):
+            return None
+        return group
 
     def add_member(
         self, group_id: str, *, actor: str, username: str, role: str = ROLE_MEMBER
@@ -57,6 +74,14 @@ class GroupsService:
         if role not in ALLOWED_ROLES:
             raise ValueError("role must be member or admin")
         self.require_admin(group_id, actor)
+        # add_member upserts the role, so re-adding an existing admin as
+        # "member" is a demotion — refuse when it would leave no admin.
+        if (
+            role != ROLE_ADMIN
+            and self.store.get_role(group_id, username) == ROLE_ADMIN
+            and self.store.count_admins(group_id) <= 1
+        ):
+            raise ValueError("cannot demote the last admin")
         self.store.add_member(group_id, username, role=role)
         return self.store.get_group(group_id)  # type: ignore[return-value]
 

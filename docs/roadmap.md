@@ -88,7 +88,8 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | Physical Outpost claim over real LoRa | Everything upstream is verified (HTTP round trip proven live) — the join-the-AP-and-use-`/claim` step itself hasn't been done yet |
 | Stalwart / BookStack / Memos / Kiwix adapters | Placeholders |
 | Stalwart-vs-SQLite decision for identity | Undecided — M4's own scope says decide, don't do both halfway (see `priority-review.md` §12) |
-| Fieldbook, Archive, Finder, Control | Not built (or nav “soon” only) |
+| Fieldbook | **Built 2026-09-24** (SQLite pages + revisions, `WIKI_SEARCH/GET/UPDATE/CREATE` with outline/section/diff, portal `fieldbook.html`) — offline edit *queueing* on Pocket still waits on the shared sync subsystem |
+| Archive, Finder | Not built (nav “soon” only) |
 
 Apps marked *prototype* mean: local store + HTTP UI + some Waylink RPC ops — **not** production auth, sync, or multi-Station federation.
 
@@ -115,7 +116,7 @@ Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticu
 
 **Remaining on this thread:** the physical claim test over real LoRa (join the Outpost's Wi-Fi, use `/claim`) — needs a human, not more code; MakerHawk GPIO verification whenever that board exists.
 
-**Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). M8 is now fully done (2026-09-24) — Noticeboard ack, Beacon auth, Today/sync dashboard, and Groups (core + Locker/Dispatch integration) all shipped. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Remaining Tier 2 software-only items: Fieldbook progressive path (still genuinely empty — package marker only), extending Groups scoping to Noticeboard/Commons (not required for M8's exit criteria, same pattern as Locker once needed). See `priority-review.md` §7, §8, §12.
+**Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). M8 is now fully done (2026-09-24) — Noticeboard ack, Beacon auth, Today/sync dashboard, and Groups (core + Locker/Dispatch integration) all shipped. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Fieldbook progressive path shipped 2026-09-24 (`docs/fieldbook.md`) — M5's software half is now done on both apps. Remaining Tier 2 software-only items: Beacon propagation through Outposts, extending Groups scoping to Noticeboard/Commons/Fieldbook (not required for M8's exit criteria, same pattern as Locker once needed). See `priority-review.md` §7, §8, §12.
 
 **Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
 
@@ -235,11 +236,11 @@ MakerHawk's own OLED still has only a planned diagnostic layout ([hardware/maker
 
 ---
 
-### M5 — Postbox + Fieldbook (progressive)
+### M5 — Postbox + Fieldbook (progressive) 🟡 software done
 
 **Goal:** Mail and wiki usable off-grid without giant sync.
 
-**Exit criteria:** Postbox LoRa `STATUS→LIST→GET→SEND`; Fieldbook search→page→section; offline edits via shared sync; Pocket favorites cache design.
+**Exit criteria:** ~~Postbox LoRa `STATUS→LIST→GET→SEND`~~ ✅ (already built, see priority-review §8); ~~Fieldbook search→page→section~~ ✅ 2026-09-24 (plus `since`-diff and section-level edits with base-revision conflict detection — [fieldbook.md](fieldbook.md)); offline edits via shared sync — **open**, waits on the shared offline-sync subsystem (Dispatch is still the only adopter); Pocket favorites cache design — **open**, design only once T-Deck firmware exists.
 
 ---
 
@@ -338,7 +339,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Beacon | ✅ | Partial | ⬜ | — |
 | Locker | ✅ | Metadata only | N/A (Wi‑Fi bodies) | — |
 | Signal | ✅ | Partial | ✅ airtest/ping | — |
-| Fieldbook | ⬜ | Spec only | ⬜ | BookStack later |
+| Fieldbook | ✅ | `WIKI_SEARCH/GET/UPDATE/CREATE` (outline/section/diff) | ⬜ | BookStack later |
 | **Atlas** | ⬜ | Spec (M9) | ⬜ `LOC_*` | Offline tiles on Station |
 | Finder / Archive / Control | ⬜ | Spec / stub | ⬜ | — |
 

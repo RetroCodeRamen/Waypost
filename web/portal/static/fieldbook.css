@@ -1,0 +1,182 @@
+.fb-layout { grid-template-columns: 16rem 1fr; }
+@media (max-width: 48rem) {
+  .fb-layout { grid-template-columns: 1fr; }
+}
+
+.fb-side-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wp-muted);
+}
+
+.fb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fb-list li + li { border-top: 1px solid var(--wp-border-soft); }
+.fb-list button {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.4rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--wp-radius-sm);
+  font: inherit;
+  text-align: left;
+  color: var(--wp-ink);
+  cursor: pointer;
+}
+.fb-list button:hover { background: var(--wp-bg); }
+.fb-list button.active { background: var(--wp-bg); font-weight: 650; }
+.fb-list .fb-item-title { display: block; }
+.fb-list .fb-item-meta {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--wp-muted);
+  margin-top: 0.1rem;
+}
+.fb-list .fb-item-snippet {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--wp-muted);
+  margin-top: 0.15rem;
+}
+.fb-list mark {
+  background: transparent;
+  color: var(--wp-green);
+  font-weight: 650;
+}
+
+.fb-reader { min-height: 24rem; }
+
+.fb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.fb-head h2 { margin: 0 0 0.2rem; }
+.fb-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.fb-actions button {
+  background: var(--wp-green);
+  color: #fff;
+  border: 0;
+  border-radius: var(--wp-radius-sm);
+  padding: 0.5rem 0.85rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fb-actions button.secondary {
+  background: transparent;
+  color: var(--wp-ink);
+  border: 1px solid var(--wp-border);
+}
+.fb-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.fb-outline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--wp-bg);
+  border-radius: var(--wp-radius-sm);
+  font-size: 0.85rem;
+}
+.fb-outline a { color: var(--wp-green); text-decoration: none; }
+.fb-outline a.lvl-3 { padding-left: 0.6rem; }
+
+.fb-body { line-height: 1.55; overflow-wrap: anywhere; }
+.fb-body h2, .fb-body h3, .fb-body h4 {
+  margin: 1.4rem 0 0.4rem;
+  scroll-margin-top: 4rem;
+}
+.fb-body h2:first-child, .fb-body h3:first-child { margin-top: 0.4rem; }
+.fb-body p { margin: 0.5rem 0; }
+.fb-body ul { margin: 0.4rem 0 0.4rem 1.25rem; padding: 0; }
+.fb-body pre {
+  background: var(--wp-bg);
+  border-radius: var(--wp-radius-sm);
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+.fb-body .fb-empty-page { color: var(--wp-muted); font-style: italic; }
+
+.fb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--wp-muted);
+  min-width: 16rem;
+}
+.fb-field input,
+#editor textarea {
+  background: var(--wp-card);
+  border: 1px solid var(--wp-border);
+  color: var(--wp-ink);
+  border-radius: var(--wp-radius-sm);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+}
+#e-title { font-size: 1.15rem; font-weight: 650; }
+#editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.fb-conflict {
+  border: 1px solid var(--wp-warning);
+  background: color-mix(in srgb, var(--wp-warning) 12%, var(--wp-card));
+  border-radius: var(--wp-radius-sm);
+  padding: 0.75rem 0.9rem;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.fb-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--wp-border-soft);
+}
+.fb-history li {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--wp-border-soft);
+  font-size: 0.9rem;
+}
+.fb-history .rev { font-weight: 650; color: var(--wp-green); }
+.fb-history .fb-actions button { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+
+.fb-diff {
+  background: var(--wp-bg);
+  border-radius: var(--wp-radius-sm);
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  margin-top: 0.5rem;
+}
+.fb-diff .add { color: var(--wp-positive); }
+.fb-diff .del { color: var(--wp-critical); }
+.fb-diff .hunk { color: var(--wp-muted); }

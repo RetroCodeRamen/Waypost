@@ -91,16 +91,32 @@ Attachments: metadata over LoRa; bodies normally Wi-Fi only.
 
 ---
 
-## Fieldbook
+## Fieldbook (`FIELDBOOK`) — M5 ✅ (2026-09-24, sim)
 
-| Operation | Purpose |
-|-----------|---------|
-| `WIKI_SEARCH` | Compact results |
-| `WIKI_GET` | Structured/plain content |
-| `WIKI_UPDATE` | Edit with base `revision` |
-| `WIKI_CREATE` | New page (later) |
+Progressive: **search → outline → section → diff**. A Pocket never has to pull a whole page to
+read one part of it or to catch up on an edit. Full design: [fieldbook.md](fieldbook.md).
 
-On revision mismatch: return conflict with current revision — never silent overwrite.
+| Operation | Payload | Reply |
+|-----------|---------|-------|
+| `WIKI_SEARCH` | `{q, limit?}` | `{results:[{slug,title,revision,updated_by,updated_at,size,match,snippet}]}` — never bodies |
+| `WIKI_GET` | `{slug}` | `{page}` full body (Wi‑Fi-sized; avoid over LoRa) |
+| `WIKI_GET` | `{slug, outline:true}` | `{slug,title,revision,size,outline:[{index,heading,level,size}]}` |
+| `WIKI_GET` | `{slug, section: idx \| heading}` | `{slug,title,revision,section:{index,heading,level,text,size}}` |
+| `WIKI_GET` | `{slug, since: N}` | `{unchanged:true}` if N is current, else `{from_revision,to_revision,diff}` (unified diff) |
+| `WIKI_UPDATE` | `{slug, base_revision, body}` or `{slug, base_revision, section, section_text}` + optional `title`, `summary` | `{page}` without body (compact ack) |
+| `WIKI_CREATE` | `{title, body, slug?, summary?}` | `{page}` without body; `already_exists` error if the slug is taken |
+
+Sections are ATX headings (`# …`); section 0 is any preamble. Every save appends a
+`wiki_revisions` row; nothing is rewritten.
+
+**Revision conflict:** `WIKI_UPDATE` whose `base_revision` isn't current returns an `ERROR`
+reply `{error:"revision_conflict", current_revision, updated_by, outline}` — the outline, not
+the body, so a Pocket can decide which section to re-fetch. Never a silent overwrite. Over HTTP
+the same case is `409` with the full current page.
+
+**Radio authz:** `WIKI_CREATE`/`WIKI_UPDATE` resolve the author from the sending device's
+binding (`env.src`), same as Noticeboard/Beacon; unbound devices get `unauthorized_device`.
+Reads are open.
 
 ---
 

@@ -24,6 +24,7 @@ from server.api.dashboard_routes import build_dashboard_router
 from server.api.db import Database
 from server.api.deps import get_current_user
 from server.api.dispatch_routes import build_dispatch_router
+from server.api.fieldbook_routes import build_fieldbook_router
 from server.api.groups_routes import build_groups_router
 from server.api.locker_routes import build_locker_router
 from server.api.noticeboard_routes import build_noticeboard_router
@@ -53,6 +54,13 @@ from server.services.dispatch.constants import (
     OP_MSG_SYNC,
 )
 from server.services.dispatch.service import DispatchService
+from server.services.fieldbook.constants import (
+    OP_WIKI_CREATE,
+    OP_WIKI_GET,
+    OP_WIKI_SEARCH,
+    OP_WIKI_UPDATE,
+)
+from server.services.fieldbook.service import FieldbookService
 from server.services.groups.service import GroupsService
 from server.services.locker.constants import OP_FILE_DELETE, OP_FILE_INFO, OP_FILE_LIST
 from server.services.locker.service import LockerService
@@ -87,6 +95,7 @@ from shared.protocol.envelope import (
     SVC_COMMONS,
     SVC_CORKBOARD,
     SVC_DISPATCH,
+    SVC_FIELDBOOK,
     SVC_LOCKER,
     SVC_MAIL,
     SVC_NOTICEBOARD,
@@ -131,6 +140,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         corkboard = CorkboardService(db.corkboard)
         groups = GroupsService(db.groups)
         locker = LockerService(db.locker, is_group_member=db.groups.is_member)
+        fieldbook = FieldbookService(
+            db.fieldbook, get_binding=lambda n: db.dispatch.get_binding(n)
+        )
         rollcall = RollcallService(db)
         app.state.db = db
         app.state.settings = settings
@@ -142,6 +154,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.corkboard = corkboard
         app.state.groups = groups
         app.state.locker = locker
+        app.state.fieldbook = fieldbook
         app.state.rollcall = rollcall
         app.state.signal = SignalService(lambda: app.state)
         app.state.auth = AuthService(db)
@@ -186,6 +199,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         for op in (OP_FILE_LIST, OP_FILE_INFO, OP_FILE_DELETE):
             gateway.register(SVC_LOCKER, op, locker.handle_rpc)
+        for op in (OP_WIKI_SEARCH, OP_WIKI_GET, OP_WIKI_UPDATE, OP_WIKI_CREATE):
+            gateway.register(SVC_FIELDBOOK, op, fieldbook.handle_rpc)
         for op in (OP_SIGNAL_STATUS, OP_SIGNAL_ROUTE):
             gateway.register(SVC_SIGNAL, op, app.state.signal.handle_rpc)
         gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
@@ -306,6 +321,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(build_corkboard_router())
     app.include_router(build_groups_router())
     app.include_router(build_locker_router())
+    app.include_router(build_fieldbook_router())
     app.include_router(build_signal_router())
     app.include_router(build_rollcall_router())
     app.include_router(build_dashboard_router())
@@ -329,6 +345,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "beacon": True,
             "groups": True,
             "locker": True,
+            "fieldbook": True,
             "signal": True,
             "rollcall": True,
         }
@@ -486,6 +503,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/groups.html")
         def portal_groups():
             return FileResponse(PORTAL_DIR / "groups.html")
+
+        @app.get("/fieldbook.html")
+        def portal_fieldbook():
+            return FileResponse(PORTAL_DIR / "fieldbook.html")
 
     return app
 

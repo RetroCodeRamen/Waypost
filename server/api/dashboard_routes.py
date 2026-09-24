@@ -139,6 +139,21 @@ def build_dashboard_router() -> APIRouter:
                 }
             )
 
+        fieldbook = getattr(request.app.state, "fieldbook", None)
+        if fieldbook is not None:
+            for page in fieldbook.recent_pages(limit=5):
+                verb = "created" if page.get("revision") == 1 else "edited"
+                activity.append(
+                    {
+                        "actor": page.get("updated_by"),
+                        "text": f"{verb} \u201c{page.get('title')}\u201d",
+                        "service": "Fieldbook",
+                        "accent": "fieldbook",
+                        "ts": page.get("updated_at"),
+                        "href": f"/fieldbook.html#{page.get('slug')}",
+                    }
+                )
+
         activity.sort(key=lambda a: float(a.get("ts") or 0), reverse=True)
         activity = activity[:10]
 
@@ -198,6 +213,7 @@ def build_dashboard_router() -> APIRouter:
             "sync": _sync_status(dispatch, mail),
             "quick_links": [
                 {"label": "Locker", "href": "/locker.html", "icon": "locker"},
+                {"label": "Fieldbook", "href": "/fieldbook.html", "icon": "fieldbook"},
                 {"label": "Beacon", "href": "/beacon.html", "icon": "beacon"},
                 {"label": "Commons", "href": "/commons.html", "icon": "commons"},
                 {"label": "Signal", "href": "/signal.html", "icon": "signal"},

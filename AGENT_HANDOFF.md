@@ -88,13 +88,16 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | M8 Notice ack + Beacon auth | Claude | **done** | Fixed a real radio-path author-spoofing gap in both services; new `NOTICE_ACK`. Groups + Today view still open — see message board |
 | M8 Today/sync dashboard | Claude | **done** | Was already ~80% built; fixed per-user unread count + cross-app sync total. Groups is the only M8 item left — see message board |
 | M8 Groups core + Locker/Dispatch integration | Claude | **done** | `server/services/groups/`, HTTP-only v1, `groups.html`; M8 fully closed — see message board |
+| M8 Groups authz fixes | Cursor | **done, committed** | Non-member read → 404, room seeding requires membership, last-admin demotion guard; +3 tests — see message board |
+| M5 Fieldbook progressive path | Cursor | **done, committed** | `server/services/fieldbook/`, `WIKI_*` ops, `fieldbook.html`; 17 tests, browser-verified — see message board + `docs/fieldbook.md` |
+| Brand asset integration (design system) | Cursor | **analysis delivered, implementation rolled back — awaiting human** | New artwork lives in `image/`; A–E report + asset request list given in chat 2026-09-24; nothing shipped in `web/` yet — see message board |
 | M6 OutpostNode (sim) | Claude | **done** | Uncapped relay + preferred-route caching, sim-tested. Corkboard/Beacon-extension/Wi‑Fi terminal are follow-up slices, not started |
 | M6 OutpostNode (hardware, `outpost_airtest.py`) | Claude | **superseded** | Both-Heltecs-as-RNode stand-in; superseded by real Outpost firmware existing now, not pursued further |
 | M6 Corkboard | Claude | **done, both sides (sim)** | `OutpostNode.sync_corkboard` + `CorkboardService` full round trip verified in sim and browser |
 | M6 standalone Outpost firmware | Claude | **hardware bring-up done** | `firmware/outpost` flashed to `/dev/ttyUSB1`, identity persistence verified across reboots |
 | M6 OUTPOST_CLAIM | Claude | **done, verified over live HTTP** | Station can reply to a claimed Outpost; physical Wi-Fi→radio leg still needs a human — see message board |
 
-**Cursor last session:** M1b prep (Pi installer, offline HTTPS, SD guide); prior: RNode flash + M2e over-air PASS.  
+**Cursor last session:** Brand asset analysis (rolled back a premature implementation at the human's request), then committed Fieldbook + Groups authz + RNode splash and made the GitHub repo public; prior: M1b prep, RNode flash + M2e over-air PASS.  
 **Claude last session:** M8 slice — Groups core + Locker/Dispatch integration, closing M8 (see message board).
 
 ---
@@ -106,7 +109,8 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 WAYPOST_TRANSPORT=reticulum WAYPOST_RNS_INTERFACE=rnode \
   WAYPOST_LORA_DEVICE=/dev/ttyUSB0 WAYPOST_RNS_CONFIG=/tmp/wp-rns-station-rnode \
   uvicorn server.api.main:app --host 127.0.0.1 --port 8000
-# Peer over LoRa on board 2
+# Peer over LoRa on a second RNode board (NOTE: /dev/ttyUSB1 currently runs
+# firmware/outpost, not RNode — reflash it with rnodeconf --autoinstall first)
 python -m tools.radio.dispatch_rns_airtest --rnode /dev/ttyUSB1
 
 # Laptop Station (Heltec plaintext lab — needs firmware/heltec reflashed first)
@@ -133,6 +137,41 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-24 — Cursor (brand assets: analysis only; commit + repo goes public)
+
+**Re:** Human dropped a new asset set into `image/` (`Waypost Evergreen Trail logo.png` primary logo, `icon_Waylink.png`, `icon_AdventureGear.png`, four `Wallpaper_*.png` textures, plus `imgae list.jpeg` which is **reference only — never ship it in the app**) with a detailed brief: art-direct them into the portal design system, but deliver the analysis (where each asset goes, which pages change, what's missing, prioritized asset requests, asset-quality issues) **before** implementing. I started implementing first; human called it, I rolled every frontend edit back (verified `git diff` shows only the pre-existing Fieldbook lines in `tokens.css`/`home.css`/`shell.js`; suite still 165 passed).  
+**Analysis findings that matter for whoever picks this up:** the logo is a dark-green wordmark on transparent — only works on light surfaces, so on the dark sidebar it needs a light "nameplate" or a still-to-be-made light variant; the tree and the "W" overlap so **no clean standalone mark can be cropped** (current `brand/waypost-mark-*.png` favicon is a bad crop with a "W" sliver); both icons are RGB on an opaque off-white ground (usable on light cards via `mix-blend-mode: multiply`, not on dark); wallpapers are 1254×1254 PNGs at 2.3–3.7 MB each — **human must OK optimized copies before any are made; never overwrite the originals**; wallpapers are not seamless, so `cover` only, never `repeat`. Per-app stylesheets `devices.css`/`control.css` and `login.html`/`trust.html` reference undefined vars (`--line`, `--ink`, `--font-display`, `--muted`, `--border`) and fall back to browser defaults — a real inconsistency worth fixing in whatever design pass happens. Asset requests, CRITICAL tier: transparent tree-only mark (SVG + 512/192/32 PNG + favicon), light-on-dark logo variant, transparent versions of both icons.  
+**Also this session:** committed Fieldbook + Groups authz fixes + RNode portrait splash (previously uncommitted for two sessions), pushed, and flipped `RetroCodeRamen/Waypost` to **public** at the human's request after a history-wide secrets scan (no keys/`.env`/PSK ever committed; `hostapd.conf` is a placeholder template; only credentials in text are the documented lab-only `waypost1`). `docs/pi-setup.md` no longer says the repo is private. `image/imgae list.jpeg` deliberately left uncommitted.  
+**Next for other agent:** Wait for the human's decision on the design pass (proceed as analysed / adjust / wait for new artwork). Do not touch `web/portal/static/brand/` or add textures until then. Software-only Tier 2 items still open: Beacon propagation through Outposts; Groups scoping for Noticeboard/Commons/Fieldbook; shared offline-sync subsystem.  
+**Blocked:** Design pass — on the human. Hardware — Pi/T-Deck still in the mail.
+
+### 2026-09-24 — Cursor (M5 slice: Fieldbook progressive path — the last empty Tier 2 item)
+
+**Re:** "Let's keep going" after the Groups authz fixes. Verified first that `server/services/fieldbook/` really was just a package marker (it was — unlike the three stale "not started" claims Claude caught earlier), then built it.  
+**Did:** `FieldbookStore` (`wiki_pages` with current body + `wiki_revisions` append-only history) and `FieldbookService` with the full progressive ladder from `docs/architecture.md`: `WIKI_SEARCH` (compact hits + snippet, never bodies) → `WIKI_GET {outline}` → `WIKI_GET {section: idx|heading}` → `WIKI_GET {since: N}` (returns `unchanged:true` or a unified diff N→current). `WIKI_UPDATE` takes `base_revision` and either a whole `body` or one `section` + `section_text` (the LoRa-friendly edit); a stale base returns `revision_conflict` with `current_revision` + **outline** (not body) over radio, `409` + full current page over HTTP — never a silent overwrite. `WIKI_CREATE` too (protocol.md had it as "later"; it was trivial and the portal needs it). Radio writes use the bound device's username, same `get_binding` injection as Noticeboard/Beacon. No-op saves don't create revisions. HTTP: `/api/fieldbook/pages` (list/create), `/pages/{slug}` (GET with `section`/`since`/`outline` params, PUT), `/history`, `/revisions/{n}`, `/diff?from&to`, `/search?q`. Portal `fieldbook.html`: search-as-you-type, outline nav, minimal Markdown render (headings/lists/code), editor with **in-place conflict handling** (keeps your text, "Show what changed", "Load their version" to rebase), history with read/compare. Shell nav item un-"soon"ed; home Recent Activity shows created/edited pages; `#slug` deep links.  
+**Verified:** `test_fieldbook.py` 17 tests (helpers, HTTP CRUD, 409 conflict doesn't clobber, section edit leaves other sections intact, `since` diff, search, radio ladder end-to-end, radio authz, radio conflict payload has outline not body). **Full suite 165 passed, 1 skipped.** Drove the portal in headless Chromium against a throwaway test-env Station on :8765 (not the human's :8000 demo Station): view → search → edit → forced a concurrent save → conflict banner + diff → rebase → save → history → home activity. Zero JS errors beyond the browser logging the intentional 409. One rendering nit found and fixed (last line without trailing newline glued diff markers together).  
+**Docs:** new `docs/fieldbook.md` (design, ladder, conflicts, storage, deferred list); `docs/protocol.md` Fieldbook section rewritten with real payloads; `docs/roadmap.md` (M5 🟡 software done, gap table, app matrix); `docs/priority-review.md` (header note, Tier 2 line, §8, §12, test counts → 165); `docs/groups-and-permissions.md` no longer says Fieldbook doesn't exist; README doc list.  
+**Deferred, on purpose:** Pocket offline-edit queueing (belongs to the shared offline-sync subsystem — Fieldbook should adopt its states, not grow a private queue), group-scoped pages, FTS5, rich Markdown, rename/delete. All listed in `docs/fieldbook.md`.  
+**Next for other agent:** remaining software-only Tier 2 is Beacon propagation through Outposts, or Groups scoping for Noticeboard/Commons/Fieldbook. The shared offline-sync subsystem (priority-review #2) is now the thing blocking both Postbox's and Fieldbook's last M5 criterion — worth considering as the next real slice. Hardware-gated work resumes when Pi/T-Deck arrive.  
+**Uncommitted in the tree:** this slice + Groups authz fixes + RNode portrait splash. Local `main` still ahead of `origin/main`.
+
+### 2026-09-24 — Cursor (Groups authz fixes — closes the three holes from the `1e3f79f` review)
+
+**Re:** "Review the plan and start the next thing we can do while waiting on the hardware." Per my own review note below, the three Groups authz holes had to close before Fieldbook, so this slice does exactly that and nothing else.  
+**Did:** (1) `GET /api/groups/{id}` and `/members` now go through new `GroupsService.get_group_for(group_id, viewer)` — a non-member gets the same 404 as a missing group, so the API is not an existence oracle. (2) `POST /api/dispatch/conversations/rooms` with `group_id` calls new `GroupsService.require_member` first — 403 for a non-member, 404 for an unknown group. (3) `GroupsService.add_member` refuses to upsert the last admin down to `member` (`ValueError("cannot demote the last admin")` → 400), mirroring the existing `remove_member` guard. In test env the anonymous caller is still `aj`, so the new tests mint a **real Bearer session for `bob`** via `app.state.auth.create_session` — `get_current_user` honors real tokens even in test mode, which is the clean way to get a second identity without a development-env fixture.  
+**Verified:** `test_groups.py` +3 (`test_non_member_cannot_read_group_or_roster`, `test_non_member_cannot_seed_room_from_group`, `test_cannot_demote_last_admin_via_add`); full suite **148 passed**, 1 skipped. Portal never sends `group_id` to the rooms endpoint (only Locker uses it), so no UI change needed. Also corrected the cheat sheet: `/dev/ttyUSB1` is Outpost firmware, not RNode.  
+**Docs:** `docs/groups-and-permissions.md` — v1 shipped section now states the membership checks.  
+**Next:** Fieldbook progressive path (`server/services/fieldbook/` is still an empty package) — see `docs/priority-review.md` §8. Uncommitted in the tree: this slice + the RNode portrait splash (`firmware/RNode_Firmware/{Display.h,WaypostLogo.h,README.md}`); commit when the human OKs. Local `main` still ahead of `origin/main`.  
+**Blocked:** Nothing. Pi/T-Deck still in the mail.
+
+### 2026-09-24 — Cursor (review of Groups commit `1e3f79f`)
+
+**Re:** Human asked for a review now that Claude finished, plus a next-step recommendation. No code changes.  
+**Did:** Read the Groups/Locker/Dispatch commit against the earlier review. Locker group scope is real (non-member list/download denied; tested live). Three authz holes from the in-progress review **shipped unchanged**: (1) `POST /api/dispatch/conversations/rooms` copies any `group_id`'s members without checking the caller is in the group; (2) `GET /api/groups/{id}` and `.../members` return the roster to any logged-in user; (3) last-admin protection only covers `remove_member` — `add_member` with `role=member` on the last admin demotes them and leaves the group with zero admins.  
+**Next:** Close those three before Fieldbook. Then Fieldbook progressive path (still empty). Beacon-through-Outposts and Groups-on-Noticeboard/Commons can wait.  
+**Blocked:** Nothing. Pi/T-Deck still out of band. Local `main` is 6 commits ahead of `origin/main` (M4/M6/M8 not pushed).  
+**RNode screen (updated):** Human asked to rotate the splash for the vertical panel and then update the hash. Splash now uses the live 64×128 size (the old layout used 128×64 and drew off-screen) with a 56×56 tree and WAYPOST underneath. Flashed to `/dev/ttyUSB0` 2026-09-24 and set EEPROM hash `4dc99c9a…eb86` to match. **Human confirmed the splash looks right** ("it's perfect") and the corrupt warning is gone. Station was restarted afterward on the same Wi-Fi demo env (`WAYPOST_DATA_DIR=/tmp/wp-wifi-demo`, host 0.0.0.0:8000).
 
 ### 2026-09-24 — Claude (M8 slice: Groups core + Locker/Dispatch integration — M8 fully closed)
 
