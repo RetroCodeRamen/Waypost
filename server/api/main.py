@@ -155,7 +155,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             db.fieldbook, get_binding=lambda n: db.dispatch.get_binding(n)
         )
         finder = FinderService(
-            commons=commons, noticeboard=noticeboard, fieldbook=fieldbook, locker=locker
+            commons=commons,
+            noticeboard=noticeboard,
+            fieldbook=fieldbook,
+            locker=locker,
+            get_binding=lambda n: db.dispatch.get_binding(n),
         )
         rollcall = RollcallService(db)
         app.state.db = db

@@ -16,7 +16,7 @@ Finder is a new way to *find* things, never a new way to *see* them.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from server.services.finder.constants import DEFAULT_LIMIT, MAX_LIMIT, OP_SEARCH
 from shared.protocol.envelope import Envelope, Flags
@@ -36,11 +36,24 @@ class FinderService:
         noticeboard: "NoticeboardService",
         fieldbook: "FieldbookService",
         locker: "LockerService",
+        get_binding: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
     ) -> None:
+        # Same injected cross-service lookup as Noticeboard/Beacon's
+        # get_binding — resolves a radio node_id to its bound account, so
+        # OP_SEARCH can't have its scoping identity spoofed by a payload
+        # field (a real gap found in review: this used to trust
+        # payload.get("username") directly, letting anyone on the mesh
+        # read another user's group-scoped notices/personal Locker files
+        # through Finder with no pairing at all).
+        self._get_binding = get_binding or (lambda _node_id: None)
         self.commons = commons
         self.noticeboard = noticeboard
         self.fieldbook = fieldbook
         self.locker = locker
+
+    def _bound_username(self, node_id: str) -> Optional[str]:
+        binding = self._get_binding(node_id)
+        return str(binding["username"]) if binding else None
 
     def search(
         self, query: str, *, username: Optional[str] = None, limit: int = DEFAULT_LIMIT
@@ -123,14 +136,16 @@ class FinderService:
             return envelope.make_response(
                 op=op, payload={"error": f"unknown_op:{op}"}, flags=Flags.RESPONSE, error=True
             )
-        # Waylink has no session — search is scoped by whatever the caller
-        # claims as their username, same openness as other read-only ops
-        # (NOTICE_LIST etc.) that annotate but don't gate on it; the real
-        # privacy boundary is each underlying service's own visibility
-        # check, not who's asking here.
+        # Resolve the caller from their actual device binding, never a
+        # self-reported payload field (same pattern NOTICE_LIST already
+        # uses) — Finder's whole design rests on reusing each service's own
+        # visibility checks correctly, which only works if the identity
+        # fed into those checks is real. An unbound device still gets a
+        # reply, just scoped to public content only, same openness
+        # Noticeboard's own read-only ops already have.
         results = self.search(
             str(payload.get("q") or payload.get("query") or ""),
-            username=payload.get("username"),
+            username=self._bound_username(envelope.src),
             limit=int(payload.get("limit") or DEFAULT_LIMIT),
         )
         # Bandwidth philosophy: titles + snippets only, never full bodies

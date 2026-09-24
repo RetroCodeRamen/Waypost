@@ -123,7 +123,14 @@ class CborReader {
       _pos = save;
       return false;
     }
-    if (_pos + val > _len) return false;
+    // val is attacker-controlled (an 8-byte CBOR length prefix, up to
+    // UINT64_MAX) — check it against _len BEFORE adding to _pos, not
+    // after. `_pos + val` alone can wrap around in 64-bit arithmetic for a
+    // val chosen near UINT64_MAX, passing a naive bounds check with the
+    // truncated-to-size_t val then used as an assign() length — a crafted
+    // few-byte CBOR field could otherwise crash this 320KB-RAM device via
+    // a multi-gigabyte string allocation attempt.
+    if (val > _len || _pos + val > _len) return false;
     out.assign(reinterpret_cast<const char*>(_buf + _pos), static_cast<size_t>(val));
     _pos += val;
     return true;

@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 
 from server.api.config import Settings
 from server.api.main import create_app
+from server.services.finder.constants import OP_SEARCH
+from shared.protocol.envelope import SVC_FINDER, Envelope, Flags, new_id
 
 
 @pytest.fixture()
@@ -109,6 +111,68 @@ def test_personal_locker_file_hidden_from_others(client: TestClient):
         "/api/finder/search", params={"q": "confidential"}, headers=bob
     )
     assert not any(r["service"] == "locker" for r in as_bob.json()["results"])
+
+
+def _search_over_radio(client: TestClient, *, src: str, q: str, username: str | None = None):
+    payload = {"q": q}
+    if username is not None:
+        payload["username"] = username
+    env = Envelope(
+        src=src,
+        dst="station",
+        svc=SVC_FINDER,
+        op=OP_SEARCH,
+        flags=int(Flags.REQUEST),
+        mid=new_id(),
+        payload=payload,
+    )
+    r = client.post("/api/waylink/rpc", json=env.to_dict())
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_radio_search_ignores_spoofed_username_in_payload(client: TestClient):
+    """Regression: OP_SEARCH used to trust payload["username"] directly,
+    letting an unbound (unpaired) device impersonate anyone and read their
+    group-scoped/personal results through Finder with no pairing at all."""
+    gid = client.post("/api/groups", json={"name": "Radio Test Group"}).json()["id"]
+    client.post(
+        "/api/noticeboard/notices",
+        json={
+            "author": "aj",
+            "title": "Radio secret",
+            "body": "group members only",
+            "group_id": gid,
+        },
+    )
+
+    # Never bound to anyone — claiming to be "aj" in the payload must not work.
+    reply = _search_over_radio(
+        client, src="unbound-device", q="Radio secret", username="aj"
+    )
+    results = reply["payload"]["results"]
+    assert not any(r["service"] == "noticeboard" for r in results)
+
+
+def test_radio_search_uses_real_device_binding(client: TestClient):
+    gid = client.post("/api/groups", json={"name": "Radio Test Group 2"}).json()["id"]
+    client.post(
+        "/api/noticeboard/notices",
+        json={
+            "author": "aj",
+            "title": "Ridge crossing notice",
+            "body": "group members only",
+            "group_id": gid,
+        },
+    )
+    client.post(
+        "/api/dispatch/devices/bind",
+        json={"node_id": "pocket-aj", "username": "aj"},
+    )
+
+    reply = _search_over_radio(client, src="pocket-aj", q="Ridge crossing")
+    results = reply["payload"]["results"]
+    assert any(r["service"] == "noticeboard" for r in results)
 
 
 def test_finder_page_served(client: TestClient):
