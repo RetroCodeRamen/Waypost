@@ -26,6 +26,23 @@
     return (p[0][0] + p[1][0]).toUpperCase();
   }
 
+  function telemetryRow(dotClass, label, value, valueClass) {
+    return (
+      '<li class="telemetry-row">' +
+      '<span class="dot ' +
+      esc(dotClass) +
+      '"></span>' +
+      '<span class="telemetry-label">' +
+      esc(label) +
+      "</span>" +
+      '<span class="telemetry-value' +
+      (valueClass ? " " + esc(valueClass) : "") +
+      '">' +
+      esc(value) +
+      "</span></li>"
+    );
+  }
+
   WaypostShell.mount({
     active: "home",
     user: USER,
@@ -76,15 +93,17 @@
     var activity = data.activity || [];
     if (!activity.length) {
       list.innerHTML =
-        '<li class="activity-empty muted">No recent activity yet. Try Dispatch, Postbox, or Commons.</li>';
+        '<li class="activity-empty-state">' +
+        '<img class="activity-empty-state__mark" src="/static/brand/waypost-mark-64.png" width="64" height="64" alt=""/>' +
+        '<p class="activity-empty-state__title">No recent activity</p>' +
+        '<p class="activity-empty-state__hint">Dispatch, Postbox, and Commons activity will appear here.</p>' +
+        "</li>";
     } else {
       list.innerHTML = activity
         .map(function (a) {
           return (
             "<li>" +
-            '<div class="activity-avatar accent-' +
-            esc(a.accent || "dispatch") +
-            '">' +
+            '<div class="activity-avatar">' +
             esc(initials(a.actor)) +
             "</div>" +
             "<div>" +
@@ -94,9 +113,7 @@
             '<div class="activity-text">' +
             esc(a.text) +
             "</div>" +
-            '<div class="activity-service accent-' +
-            esc(a.accent || "dispatch") +
-            '">' +
+            '<div class="activity-service">' +
             esc(a.service) +
             "</div>" +
             "</div>" +
@@ -114,34 +131,26 @@
     var pendingDispatch = sync.pending_dispatch || 0;
     var pendingMail = sync.pending_mail_outbox || 0;
     var pending = sync.pending_total || pendingDispatch + pendingMail;
-    var syncParts = [];
-    if (pendingDispatch) syncParts.push(pendingDispatch + " Dispatch");
-    if (pendingMail) syncParts.push(pendingMail + " Postbox");
+    var syncLabel = pending ? pending + " PENDING" : "IDLE";
+    var syncDot = pending ? "warn" : "ok";
+    var syncClass = pending ? "is-warn" : "is-live";
+
     var netEl = document.getElementById("network-status");
     netEl.innerHTML =
-      '<li><span class="dot ok"></span><div><strong>Waypost Station</strong><small>' +
-      esc(net.station || "Online") +
-      " · " +
-      esc(net.ssid || "WAYPOST") +
-      "</small></div></li>" +
-      '<li><span class="dot ' +
-      (pending ? "bad" : "ok") +
-      '"></span><div><strong>Sync</strong><small>' +
-      (pending
-        ? syncParts.join(", ") + " message(s) waiting"
-        : "Nothing waiting") +
-      "</small></div></li>" +
-      '<li><span class="dot ok"></span><div><strong>Outposts</strong><small>' +
-      esc(net.outposts_online) +
-      " online / " +
-      esc(net.outposts_total) +
-      " total</small></div></li>" +
-      '<li><span class="dot ok"></span><div><strong>Connected Users</strong><small>' +
-      esc(net.users_online) +
-      " online</small></div></li>" +
-      '<li><span class="dot ok"></span><div><strong>Waylink</strong><small>' +
-      esc(net.transport || "mock") +
-      " transport</small></div></li>";
+      telemetryRow("ok", "Station", (net.station || "ONLINE").toUpperCase(), "is-live") +
+      telemetryRow(syncDot, "Sync", syncLabel, syncClass) +
+      telemetryRow(
+        "ok",
+        "Outposts",
+        String(net.outposts_online || 0) + " / " + String(net.outposts_total || 0),
+        ""
+      ) +
+      telemetryRow(
+        "ok",
+        "Users",
+        String(net.users_online || 0) + " ONLINE",
+        net.users_online > 0 ? "is-live" : ""
+      );
 
     var ql = document.getElementById("quick-links");
     ql.innerHTML = (data.quick_links || [])
@@ -175,7 +184,10 @@
       var list = document.getElementById("activity-list");
       if (list) {
         list.innerHTML =
-          '<li class="activity-empty muted">Could not load dashboard data.</li>';
+          '<li class="activity-empty-state">' +
+          '<p class="activity-empty-state__title">Could not load dashboard</p>' +
+          '<p class="activity-empty-state__hint">Check that the Station is running and try again.</p>' +
+          "</li>";
       }
     });
 })();

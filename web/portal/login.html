@@ -7,79 +7,137 @@
   <link rel="stylesheet" href="/static/tokens.css"/>
   <link rel="stylesheet" href="/static/shell.css"/>
   <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="icon" type="image/png" href="/static/brand/waypost-mark-32.png"/>
   <style>
-    .auth-wrap {
-      max-width: 22rem;
-      margin: 10vh auto 2rem;
-      padding: 0 1.25rem;
+    .auth-page {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 2rem 1rem;
+      font-family: var(--wp-font);
     }
-    .auth-wrap h1 {
-      font-family: var(--font-display, Georgia, serif);
-      font-size: 1.75rem;
-      margin: 0 0 0.35rem;
+    .auth-card {
+      width: 100%;
+      max-width: 24rem;
+      background: var(--wp-card);
+      color: var(--wp-ink);
+      border: 1px solid var(--wp-border);
+      border-radius: var(--wp-radius);
+      box-shadow: var(--wp-shadow-raised);
+      overflow: hidden;
     }
-    .auth-wrap .lede {
-      color: var(--muted, #666);
-      margin: 0 0 1.5rem;
-      font-size: 0.95rem;
+    .auth-card__brand {
+      padding: 1.25rem 1.5rem 0.85rem;
+      background: var(--wp-card-secondary);
+      border-bottom: 1px solid var(--wp-border);
     }
-    .auth-wrap label {
+    .auth-card__logo {
       display: block;
-      font-size: 0.8rem;
-      margin: 0.75rem 0 0.25rem;
+      width: 100%;
+      max-width: 15rem;
+      height: auto;
+      margin: 0 auto;
     }
-    .auth-wrap input {
+    .auth-card__body { padding: 1.25rem 1.5rem 1.4rem; }
+    .auth-card h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 0 0 0.3rem;
+    }
+    .auth-card .lede {
+      color: var(--wp-muted);
+      margin: 0 0 1.1rem;
+      font-size: 0.9rem;
+    }
+    .auth-card label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--wp-muted);
+      margin: 0.85rem 0 0.3rem;
+    }
+    .auth-card input {
       width: 100%;
       box-sizing: border-box;
-      padding: 0.55rem 0.65rem;
-      border: 1px solid var(--border, #ccc);
-      border-radius: 4px;
+      padding: 0.62rem 0.75rem;
+      background: var(--wp-card-sunken);
+      border: 1px solid var(--wp-border);
+      border-radius: var(--wp-radius-sm);
       font: inherit;
     }
-    .auth-wrap .actions {
+    .auth-card .actions {
       display: flex;
       gap: 0.5rem;
       margin-top: 1.25rem;
     }
-    .auth-wrap button {
+    .auth-card button {
       flex: 1;
-      padding: 0.6rem;
+      padding: 0.65rem;
       font: inherit;
+      font-weight: 600;
       cursor: pointer;
+      border-radius: var(--wp-radius-sm);
+      border: 1px solid var(--wp-green);
+      background: var(--wp-green);
+      color: #fff;
     }
-    .auth-wrap .err {
-      color: #a33;
+    .auth-card button#btn-register {
+      background: transparent;
+      color: var(--wp-ink);
+      border-color: var(--wp-border);
+    }
+    .auth-card .err {
+      color: var(--wp-critical);
       font-size: 0.85rem;
-      margin-top: 0.75rem;
+      margin: 0.75rem 0 0;
       min-height: 1.2em;
     }
-    .auth-wrap .hint {
-      margin-top: 1.5rem;
+    .auth-card .hint {
+      margin: 1.1rem 0 0;
       font-size: 0.8rem;
-      color: var(--muted, #666);
+      color: var(--wp-muted);
+    }
+    .auth-card .hint a { color: var(--wp-green); }
+    .auth-foot {
+      margin: 1.25rem 0 0;
+      text-align: center;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 240, 0.55);
     }
   </style>
 </head>
-<body>
-  <div class="auth-wrap">
-    <h1>Waypost</h1>
-    <p class="lede">Sign in with your Station account. The same username and password work on Waypost Pocket over Wi‑Fi.</p>
-    <form id="auth-form">
-      <label for="username">Username</label>
-      <input id="username" name="username" autocomplete="username" required pattern="[a-zA-Z0-9_\-]+"/>
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8"/>
-      <label for="display_name" id="display-label" hidden>Display name</label>
-      <input id="display_name" name="display_name" hidden/>
-      <div class="actions">
-        <button type="submit" id="btn-login">Sign in</button>
-        <button type="button" id="btn-register">Create account</button>
+<body class="auth-page waypost-background waypost-background--beacon waypost-background--scheme-dark">
+  <div>
+    <div class="auth-card">
+      <div class="auth-card__brand">
+        <img class="auth-card__logo" src="/static/brand/waypost-logo-primary-800.png" width="800" height="267" alt="Waypost"/>
       </div>
-      <p class="err" id="err"></p>
-    </form>
-    <p class="hint" id="lab-hint" hidden>Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
-    <p class="hint" id="trust-hint" hidden>Browser warning about this connection? <a href="/trust.html">Trust this Station</a> first.</p>
-    <p class="hint" id="reg-mode-hint" hidden></p>
+      <div class="auth-card__body">
+        <h1>Sign in to the Station</h1>
+        <p class="lede">Use your Station account. The same username and password work on Waypost Pocket over Wi‑Fi.</p>
+        <form id="auth-form">
+          <label for="username">Username</label>
+          <input id="username" name="username" autocomplete="username" required pattern="[a-zA-Z0-9_\-]+"/>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8"/>
+          <label for="display_name" id="display-label" hidden>Display name</label>
+          <input id="display_name" name="display_name" hidden/>
+          <div class="actions">
+            <button type="submit" id="btn-login">Sign in</button>
+            <button type="button" id="btn-register">Create account</button>
+          </div>
+          <p class="err" id="err"></p>
+        </form>
+        <p class="hint" id="lab-hint" hidden>Lab demo users: <code>aj</code> / <code>bob</code> · password <code>waypost1</code></p>
+        <p class="hint" id="trust-hint" hidden>Browser warning about this connection? <a href="/trust.html">Trust this Station</a> first.</p>
+        <p class="hint" id="reg-mode-hint" hidden></p>
+      </div>
+    </div>
+    <p class="auth-foot">Waypost Station · Off-grid community network</p>
   </div>
   <script src="/static/auth.js"></script>
   <script>
@@ -164,7 +222,7 @@
               return;
             }
             if (res.body.pending_approval) {
-              err.style.color = "var(--muted, #666)";
+              err.style.color = "var(--wp-muted)";
               err.textContent = "Account created — waiting on admin approval before you can sign in.";
               setMode("login");
               return;

@@ -7,62 +7,76 @@
   <link rel="stylesheet" href="/static/tokens.css"/>
   <link rel="stylesheet" href="/static/shell.css"/>
   <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="icon" type="image/png" href="/static/brand/waypost-mark-32.png"/>
   <style>
+    body.trust-page {
+      font-family: var(--wp-font);
+      color: var(--wp-ink);
+      background: var(--wp-bg);
+      min-height: 100vh;
+      margin: 0;
+    }
     .trust-wrap {
-      max-width: 34rem;
-      margin: 6vh auto 3rem;
+      max-width: 36rem;
+      margin: 5vh auto 3rem;
       padding: 0 1.25rem;
       line-height: 1.5;
     }
+    .trust-brand img {
+      display: block;
+      width: 11rem;
+      height: auto;
+    }
+    .trust-panel { padding: 1.35rem 1.5rem 1.5rem; }
     .trust-wrap h1 {
-      font-family: var(--font-display, Georgia, serif);
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       margin: 0 0 0.35rem;
     }
     .trust-wrap .lede {
-      color: var(--muted, #666);
-      margin: 0 0 1.5rem;
+      color: var(--wp-muted);
+      margin: 0 0 1.25rem;
     }
     .trust-status {
       padding: 0.75rem 1rem;
-      border-radius: 6px;
-      border: 1px solid var(--border, #ccc);
-      margin-bottom: 1.5rem;
+      border-radius: var(--wp-radius-sm);
+      border: 1px solid var(--wp-border);
+      border-left-width: 4px;
+      background: var(--wp-card-sunken);
+      margin-bottom: 1.25rem;
     }
     .trust-status.ok {
-      border-color: var(--wp-green, #2f6f4f);
+      border-color: var(--wp-aqua);
+      background: var(--wp-aqua-soft);
     }
     .trust-download {
       display: inline-block;
       padding: 0.65rem 1rem;
-      border-radius: 6px;
-      border: 1px solid currentColor;
+      border-radius: var(--wp-radius-sm);
+      background: var(--wp-green);
+      color: #fff;
       font-weight: 600;
       text-decoration: none;
       margin: 0.25rem 0 0.75rem;
     }
     .trust-fp {
-      font-family: ui-monospace, monospace;
+      font-family: var(--wp-mono);
       font-size: 0.8rem;
-      overflow-wrap: anywhere;
-      color: var(--muted, #666);
+      color: var(--wp-muted);
     }
     .trust-wrap details {
-      border-top: 1px solid var(--border, #ddd);
+      border-top: 1px solid var(--wp-border-soft);
       padding: 0.65rem 0;
     }
-    .trust-wrap summary {
-      cursor: pointer;
-      font-weight: 600;
-    }
-    .trust-wrap ol {
-      margin: 0.5rem 0 0;
-      padding-left: 1.25rem;
-    }
+    .trust-wrap summary { cursor: pointer; font-weight: 600; }
+    .trust-wrap ol { margin: 0.5rem 0 0; padding-left: 1.25rem; }
   </style>
 </head>
-<body>
+<body class="trust-page waypost-background waypost-background--stone">
   <main class="trust-wrap">
+    <a class="trust-brand" href="/">
+      <img src="/static/brand/waypost-logo-primary-800.png" width="800" height="267" alt="Waypost"/>
+    </a>
+    <div class="wp-card trust-panel">
     <h1>Trust this Station</h1>
     <p class="lede">Waypost encrypts Wi‑Fi traffic with its own certificate because there is no Internet here to vouch for it. Install it once per device, then every page and your Pocket login are private.</p>
 
@@ -108,10 +122,11 @@
         <li>Firefox keeps its own list: Settings → Privacy &amp; Security → Certificates → View Certificates → Authorities → Import.</li>
       </ol>
     </details>
+    </div>
   </main>
   <script>
     (function () {
-      var host = location.hostname || "waypost.home.arpa";
+      var host = location.hostname || "way.post";
       var secure = "https://" + host + "/";
       var status = document.getElementById("status");
 

@@ -89,6 +89,21 @@
     );
   }
 
+  var BACKGROUNDS = {
+    beacon: "beacon",
+    signal: "beacon",
+    corkboard: "beacon",
+    control: "stone",
+    groups: "stone",
+    devices: "pine",
+  };
+
+  function backgroundFor(opts) {
+    if (opts.background === false || opts.background === "none") return "";
+    var name = opts.background || BACKGROUNDS[opts.active] || "water";
+    return " waypost-background waypost-background--" + name;
+  }
+
   function buildShell(opts) {
     var active = opts.active || "home";
     var user = opts.user || "AJ";
@@ -107,7 +122,7 @@
       '<div class="wp-backdrop" data-wp-close-nav></div>' +
       '<aside class="wp-sidebar" aria-label="Waypost navigation">' +
       '<a class="wp-brand" href="/" aria-label="Waypost Home">' +
-      '<img class="wp-brand__mark" src="/static/brand/waypost-mark-64.png" width="34" height="34" alt=""/>' +
+      '<img class="wp-brand__mark" src="/static/brand/waypost-mark-64.png" width="64" height="64" alt=""/>' +
       '<span class="wp-brand__name">Waypost</span>' +
       "</a>" +
       '<nav class="wp-nav">' +
@@ -118,13 +133,16 @@
       "</nav>" +
       '<div class="wp-sidebar__foot">Waypost Station</div>' +
       "</aside>" +
-      '<div class="wp-main">' +
+      '<div class="wp-main' +
+      backgroundFor(opts) +
+      '">' +
       '<header class="wp-topbar">' +
       '<div class="wp-greeting">' +
       '<button type="button" class="wp-menu-btn" data-wp-toggle-nav aria-label="Open menu">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>' +
       "</button>" +
-      "<div>" +
+      '<div class="wp-header-block">' +
+      '<p class="wp-eyebrow">Waypost Station</p>' +
       '<p class="wp-greeting__title">' +
       (pageTitle || greeting(user)) +
       "</p>" +

@@ -1,49 +1,101 @@
-/* Waypost design tokens — community network appliance */
+/* Waypost design tokens — opaque field-equipment shell over subtle texture */
 
 :root {
-  /* Brand / chrome — aligned with Waypost logo greens */
-  --wp-sidebar: #14261f;
-  --wp-sidebar-mid: #1a3028;
-  --wp-sidebar-hover: #243f36;
-  --wp-sidebar-active: #2d5545;
+  /* Level 1 — app chrome (sidebar): near-solid dark forest */
+  --wp-sidebar: #132b26;
+  --wp-sidebar-end: #112420;
+  --wp-sidebar-hover: #1a3832;
+  --wp-sidebar-active: #1e4038;
   --wp-teal-dark: #1f4147;
   --wp-green: #2d5a42;
   --wp-green-deep: #1a3026;
   --wp-green-soft: rgba(45, 90, 66, 0.14);
+  --wp-sage: #6f8f74;
+  --wp-stone: #8a948c;
   --wp-moon: #bccdc5;
   --wp-path: #f4f6f2;
 
-  /* Surfaces */
-  --wp-bg: #f5f6f4;
-  --wp-card: #ffffff;
-  --wp-border: #dfe4e3;
-  --wp-border-soft: #e8eceb;
+  /* Live — teal/aqua only when something is connected/active */
+  --wp-aqua: #3fa79d;
+  --wp-aqua-deep: #2b8078;
+  --wp-aqua-soft: rgba(63, 167, 157, 0.18);
+  --wp-amber: #c9923a;
+  --wp-critical: #b84540;
 
-  /* Text */
-  --wp-ink: #1b252c;
-  --wp-muted: #6b747a;
-  --wp-faint: #8a9399;
+  /* Level 2 — page ground: texture + graded veil (not on/off) */
+  --wp-bg: #e8ebe5;
+  --wp-texture-opacity: 0.52;
+  --wp-texture-filter: saturate(0.78) contrast(0.92);
+  --wp-page-veil: linear-gradient(
+    180deg,
+    rgba(232, 235, 229, 0.42) 0%,
+    rgba(232, 235, 229, 0.28) 45%,
+    rgba(232, 235, 229, 0.38) 100%
+  );
 
-  /* Accents (use sparingly) */
-  --wp-accent-dispatch: #367a68;
-  --wp-accent-postbox: #3d6f91;
-  --wp-accent-commons: #4a8f62;
-  --wp-accent-notice: #c2783a;
-  --wp-accent-fieldbook: #6b5b95;
+  /* Level 3 — cards sit at the old page visibility; page is a step stronger */
+  --wp-surface-blur: 8px;
+  --wp-card: rgba(236, 237, 232, 0.78);
+  --wp-card-solid: #ecede8;
+  --wp-card-secondary: rgba(229, 232, 227, 0.68);
+  --wp-card-sunken: rgba(223, 226, 220, 0.72);
+  --wp-border: #c8cdc4;
+  --wp-border-soft: #d5d9d1;
+
+  /* Text — charcoal with green cast */
+  --wp-ink: #1c2622;
+  --wp-muted: #5f6b64;
+  --wp-faint: #849088;
+
+  /* Service accents — muted; teal reserved for live state in UI */
+  --wp-accent-dispatch: #4a7568;
+  --wp-accent-postbox: #4a7568;
+  --wp-accent-commons: #4a7568;
+  --wp-accent-notice: #4a7568;
+  --wp-accent-fieldbook: #6f8f5e;
   --wp-accent-beacon: #c8504d;
   --wp-positive: #3fa66b;
-  --wp-warning: #d7a33d;
-  --wp-critical: #c8504d;
+  --wp-warning: var(--wp-amber);
 
-  /* Shape / elevation */
+  /* Shape — restrained radius, panel separation not floaty shadows */
   --wp-radius: 10px;
   --wp-radius-sm: 8px;
-  --wp-shadow: 0 1px 2px rgba(23, 43, 53, 0.04), 0 1px 3px rgba(23, 43, 53, 0.03);
+  --wp-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 2px rgba(20, 38, 31, 0.06);
+  --wp-shadow-raised:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 4px rgba(20, 38, 31, 0.08);
   --wp-sidebar-width: 15.5rem;
-  --wp-header-h: 4.25rem;
+  --wp-header-h: 3.75rem;
+  --wp-page-gutter: 1.75rem;
+  --wp-card-gap: 1.125rem;
+  --wp-card-pad: 1.375rem;
 
-  /* Type */
+  /* Type scale */
+  --wp-text-title: 1.875rem;
+  --wp-text-card: 1.0625rem;
+  --wp-text-body: 0.875rem;
+  --wp-text-label: 0.6875rem;
+
   --wp-font: "Segoe UI", "Helvetica Neue", system-ui, -apple-system, sans-serif;
-  --wp-font-brand: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --wp-font-brand: var(--wp-font);
   --wp-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+
+  /* Brand assets */
+  --wp-asset-logo: url("/static/brand/waypost-logo-primary-800.png");
+  --wp-asset-logo-light: url("/static/brand/waypost-logo-light-800.png");
+  --wp-asset-mark: url("/static/brand/waypost-mark-128.png");
+  --wp-asset-icon-waylink: url("/static/brand/icon-waylink-transparent-128.png");
+  --wp-asset-icon-gear: url("/static/brand/icon-adventuregear-transparent-128.png");
+  --wp-asset-wall-water: url("/static/brand/wallpaper-water-1280.jpg");
+  --wp-asset-wall-beacon: url("/static/brand/wallpaper-beacon-1280.jpg");
+  --wp-asset-wall-stone: url("/static/brand/wallpaper-stone-1280.jpg");
+  --wp-asset-wall-pine: url("/static/brand/wallpaper-pine-camo-1280.jpg");
+
+  --line: var(--wp-border);
+  --ink: var(--wp-ink);
+  --muted: var(--wp-muted);
+  --border: var(--wp-border);
+  --font-display: var(--wp-font-brand);
 }

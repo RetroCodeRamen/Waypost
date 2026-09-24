@@ -99,6 +99,8 @@
 .app-chat,
 .app-reader {
   background: var(--wp-card);
+  backdrop-filter: blur(var(--wp-surface-blur)) saturate(1.04);
+  -webkit-backdrop-filter: blur(var(--wp-surface-blur)) saturate(1.04);
   border: 1px solid var(--wp-border);
   border-radius: var(--wp-radius);
   box-shadow: var(--wp-shadow);
@@ -139,10 +141,14 @@
 }
 
 .conv-list button:hover,
-.conv-list button.active,
 .mail-list button:hover {
-  background: #f3f5f4;
+  background: var(--wp-card-sunken);
   border-color: var(--wp-border-soft);
+}
+
+.conv-list button.active {
+  background: var(--wp-green-soft);
+  border-color: color-mix(in srgb, var(--wp-green) 30%, var(--wp-border));
 }
 
 .conv-list .title,
@@ -162,8 +168,25 @@
   text-overflow: ellipsis;
 }
 
+.mail-list button.unread {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.mail-list button.unread::before {
+  content: "";
+  position: absolute;
+  left: 0.3rem;
+  top: 0.95rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--wp-aqua);
+  box-shadow: 0 0 0 2px var(--wp-aqua-soft);
+}
+
 .mail-list button.unread .subj {
-  color: var(--wp-accent-postbox);
+  color: var(--wp-ink);
   font-weight: 600;
 }
 
@@ -305,20 +328,74 @@
   display: grid;
   gap: 0.5rem;
   margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--wp-border-soft);
+}
+
+.reply textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.reply button {
+  justify-self: end;
+}
+
+dialog.wp-dialog input:not([type="checkbox"]):not([type="radio"]),
+dialog.wp-dialog textarea,
+dialog.wp-dialog select,
+.reply textarea {
+  background: var(--wp-card-sunken);
+  border: 1px solid var(--wp-border);
+  color: var(--wp-ink);
+  border-radius: var(--wp-radius-sm);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+dialog.wp-dialog label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--wp-muted);
+}
+
+dialog.wp-dialog button,
+.reply button {
+  background: var(--wp-green);
+  color: #fff;
+  border: 0;
+  border-radius: var(--wp-radius-sm);
+  padding: 0.55rem 0.95rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+dialog.wp-dialog button[value="cancel"],
+dialog.wp-dialog button.secondary {
+  margin-top: 0;
+  background: transparent;
+  color: var(--wp-ink);
+  border: 1px solid var(--wp-border);
 }
 
 dialog.wp-dialog {
   border: 1px solid var(--wp-border);
   background: var(--wp-card);
   color: var(--wp-ink);
-  padding: 1.25rem;
+  padding: 1.25rem 1.35rem 1.35rem;
   max-width: 28rem;
   width: calc(100% - 2rem);
   border-radius: var(--wp-radius);
+  box-shadow: var(--wp-shadow-raised);
 }
 
 dialog.wp-dialog::backdrop {
-  background: rgba(23, 43, 53, 0.4);
+  background: rgba(20, 38, 31, 0.45);
 }
 
 dialog.wp-dialog form {
@@ -330,6 +407,7 @@ dialog.wp-dialog .actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .muted {
@@ -676,16 +754,17 @@ button.secondary {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
-  background: #94a3b8;
+  background: var(--wp-faint);
   flex-shrink: 0;
 }
 
 .signal-services .dot.ok {
-  background: var(--wp-green);
+  background: var(--wp-aqua);
+  box-shadow: 0 0 0 2px var(--wp-aqua-soft);
 }
 
 .signal-services .dot.bad {
-  background: #b91c1c;
+  background: var(--wp-critical);
 }
 
 .signal-route {

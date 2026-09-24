@@ -1,0 +1,131 @@
+/* Waypost background system — graduated layers, not binary
+ *
+ * Three knobs work together (none is all-or-nothing):
+ *
+ *   --wp-texture-opacity   how much of the photo shows (page ~38%)
+ *   --wp-texture-filter    desaturate/contrast so it stays atmosphere
+ *   --wp-page-veil         semi-transparent wash over the texture
+ *
+ * Cards use rgba alpha + backdrop-filter so the same texture blurs
+ * gently through panels at a different strength than the open page.
+ */
+
+.waypost-background {
+  position: relative;
+  --wp-bg-position: center;
+  --wp-bg-size: cover;
+}
+
+.waypost-background::before,
+.waypost-background::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.waypost-background::before {
+  z-index: 0;
+  background-image: var(--wp-bg-image);
+  background-position: var(--wp-bg-position);
+  background-size: var(--wp-bg-size);
+  background-repeat: no-repeat;
+  opacity: var(--wp-texture-opacity);
+  filter: var(--wp-texture-filter);
+}
+
+.waypost-background::after {
+  z-index: 0;
+  background: var(--wp-page-veil);
+}
+
+.waypost-background > .wp-topbar,
+.waypost-background > .wp-content,
+.waypost-background > div,
+.waypost-background > main {
+  position: relative;
+  z-index: 1;
+}
+
+.waypost-background--water {
+  --wp-bg-image: var(--wp-asset-wall-water);
+  --wp-texture-opacity: 0.55;
+  --wp-bg-position: 40% 30%;
+}
+
+.waypost-background--beacon {
+  --wp-bg-image: var(--wp-asset-wall-beacon);
+  --wp-texture-opacity: 0.46;
+  --wp-bg-position: center 20%;
+  --wp-page-veil: linear-gradient(
+    180deg,
+    rgba(232, 235, 229, 0.48) 0%,
+    rgba(232, 235, 229, 0.32) 45%,
+    rgba(232, 235, 229, 0.42) 100%
+  );
+}
+
+.waypost-background--stone {
+  --wp-bg-image: var(--wp-asset-wall-stone);
+  --wp-texture-opacity: 0.44;
+  --wp-bg-size: 140%;
+}
+
+.waypost-background--pine {
+  --wp-bg-image: var(--wp-asset-wall-pine);
+  --wp-texture-opacity: 0.48;
+  --wp-bg-size: 130%;
+  --wp-bg-position: 20% 30%;
+}
+
+.waypost-background--scheme-dark {
+  background: var(--wp-sidebar);
+  color: #e8eef0;
+  --wp-texture-opacity: 0.28;
+  --wp-texture-filter: saturate(0.6) contrast(0.85) brightness(0.7);
+  --wp-page-veil: linear-gradient(
+    180deg,
+    rgba(19, 43, 38, 0.72) 0%,
+    rgba(19, 43, 38, 0.55) 50%,
+    rgba(19, 43, 38, 0.7) 100%
+  );
+}
+
+/* Shared frosted surface — cards, stat tiles, chrome controls */
+.wp-surface {
+  background: var(--wp-card);
+  backdrop-filter: blur(var(--wp-surface-blur)) saturate(1.04);
+  -webkit-backdrop-filter: blur(var(--wp-surface-blur)) saturate(1.04);
+}
+
+.wp-surface--secondary {
+  background: var(--wp-card-secondary);
+}
+
+.wp-surface--sunken {
+  background: var(--wp-card-sunken);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .wp-surface,
+  .wp-card {
+    background: var(--wp-card-solid);
+  }
+  .wp-card--secondary,
+  .wp-surface--secondary {
+    background: #e5e8e3;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .waypost-background::before {
+    opacity: 0.08;
+    filter: none;
+  }
+
+  .wp-surface,
+  .wp-card {
+    backdrop-filter: none;
+    background: var(--wp-card-solid);
+  }
+}
