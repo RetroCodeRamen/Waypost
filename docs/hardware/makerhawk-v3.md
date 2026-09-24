@@ -6,6 +6,8 @@ Autonomous **Waypost Outpost**: routing, store-and-forward, deduplication, queue
 
 Sold as: **MakerHawk ESP32 LoRa V3 Development Board**.
 
+**Status:** this board isn't in hand yet (not confirmed ordered). The relay/routing *logic* Outpost firmware will eventually run is already built and sim-tested (`server/services/dispatch/outpost.py`, `OutpostNode`) — and got a first real-radio exercise using the project's two RNode-flashed Heltec V3 boards as a temporary Station+Outpost stand-in, same precedent as Heltec standing in before RNode existed (`tools/radio/outpost_airtest.py`, `docs/roadmap.md` M6). One run completed a full send→process round trip over real encrypted LoRa between the two boards; it hasn't reproduced reliably since, likely RF/timing rather than the app logic (which is also sim-tested independently). None of this exercises MakerHawk-specific concerns (GPIO, Wi‑Fi AP mode, embedded web server, power) — those still need the real board.
+
 ## Known general characteristics
 
 These are commonly advertised features and should be treated as **unverified until measured on the board in hand**:

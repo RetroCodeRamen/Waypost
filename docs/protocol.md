@@ -135,6 +135,7 @@ Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or
 | `FINDER` | `SEARCH` |
 | `SIGNAL` | `SIGNAL_STATUS`, `SIGNAL_ROUTE` |
 | `ATLAS` | `LOC_REPORT`, `LOC_GET`, `LOC_LIST`, `ORIGIN_GET`, `ORIGIN_SET` |
+| `CORKBOARD` | `BOARD_SYNC` (M6 ✅ — an Outpost uploads its public note board, dedup by `mid`, keyed by `env.src` so an Outpost can't claim to be a different one; Station piggybacks that Outpost's outbox back in the same response, mirroring `MSG_SYNC`); `OUTPOST_CLAIM` (M6 ✅ — redeem a Station-generated pairing code to register and teach Station this Outpost's Reticulum destination hash, required once before `BOARD_SYNC` can route a reply at all — see below) |
 
 ### Commons (`COMMONS`)
 
@@ -176,6 +177,34 @@ Severities: `emergency`, `urgent`, `advisory`.
 |-----------|---------|
 | `SIGNAL_STATUS` | Station / Waylink / service diagnostics snapshot |
 | `SIGNAL_ROUTE` | Probe reachability / route to a node |
+
+### Corkboard (`CORKBOARD`)
+
+Per-outpost public note board — a `body` plus a free-text `signature`, no
+account required to author one (matches the walk-up-at-the-Outpost's-Wi-Fi
+use case). The Outpost's own copy is durable and primary; Station's is
+backup, never merged across outposts — a Station user always reads/posts
+to exactly one known outpost.
+
+| Operation | Purpose |
+|-----------|---------|
+| `BOARD_SYNC` | Outpost → Station: upload notes (dedup by `mid`); Station registers/touches the outpost (keyed by `env.src`) and piggybacks that outpost's Station-composed outbox back in the same response |
+| `OUTPOST_CLAIM` | Outpost → Station: `{code, transport_dest, display_name}` — redeems a pairing code (same codes/UI as Pocket pairing, `server/services/auth/pairing.py`), registers the outpost, and calls `learn_route(node_id, transport_dest)` **before** the reply is sent, which is what makes the reply routable at all |
+
+**Why claiming exists:** Station's transport only knows how to reach a
+peer whose Reticulum destination hash it's been told — an Outpost's own
+hash isn't discoverable automatically. `OUTPOST_CLAIM` carries that hash
+directly in its own payload, and `learn_route` runs synchronously inside
+the handler, before `WaylinkGateway` resolves and sends the reply — so
+even a never-before-seen Outpost's very first request gets a routable
+response. Until an Outpost is claimed, `BOARD_SYNC` requests still
+*arrive* at Station, but Station has no way to send anything back.
+
+HTTP (Station portal, any signed-in user): `GET /api/corkboard/outposts`,
+`GET /api/corkboard/outposts/{id}/notes`, `POST
+/api/corkboard/outposts/{id}/notes` (queues into the outbox — delivered on
+that outpost's next `BOARD_SYNC`); `POST /api/auth/pairing/create` (shared
+with Pocket pairing) generates the claim code shown in the portal.
 
 ### Locker (`LOCKER`)
 

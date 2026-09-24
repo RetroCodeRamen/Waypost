@@ -20,7 +20,7 @@ Never rely on obscurity. Do not invent cryptographic primitives — use Reticulu
 | Pocket ↔ Station Wi-Fi API | HTTPS (local CA) + session/OIDC |
 | Browser ↔ Station | Same; Waygate bootstrap may start on HTTP then steer to trusted HTTPS |
 | Adapter ↔ FOSS backends | Local network; prefer mTLS or shared secrets on loopback/compose network |
-| Outpost nodes | Forwarding infrastructure; must not hold user passwords or private mail |
+| Outpost nodes | Forwarding infrastructure; must not hold user passwords or private mail — in practice this means **bounded transient hold, not "never touches plaintext"**: `OutpostNode` (like a Pocket-as-courier) necessarily stores a plaintext copy of whatever it's relaying until delivery or `COURIER_TTL_SECONDS` expiry (`DispatchStore.purge_expired_courier`, default 24h), same as any store-and-forward node has to. Never send passwords this way (see below) — only message bodies pass through the courier path, and only for as long as the TTL allows |
 
 Receiving a valid radio packet does **not** authorize:
 
@@ -38,6 +38,7 @@ Receiving a valid radio packet does **not** authorize:
 - One Waypost account: **username + password** (OIDC later via Stalwart).  
 - Same credentials for **Station portal** and **Pocket** (Pocket authenticates over Wi‑Fi/HTTPS to Station — never send passwords over LoRa).  
 - Pocket radio identity is separate; linked via bind / pairing codes with revocation. **M4 ✅:** a signed-in user generates a 6-digit, 10-minute, single-use pairing code (`POST /api/auth/pairing/create`); a device redeems it (`POST /api/auth/pairing/redeem` or Waylink `PAIR_REDEEM`) with **no session and no password** — the code itself is the bounded-lifetime credential that's safe to send over an untrusted or radio-only path.  
+- **M6 ✅:** the same pairing codes now also authorize claiming Outpost infrastructure (`OUTPOST_CLAIM`, `server/services/auth/pairing.py`) — a human generates a code on Station, enters it on the Outpost's own Wi-Fi page, and the code is what proves intent before Station will `learn_route()` and start trusting that node's self-reported destination hash. Same trust model as device pairing (a human-provided code, not raw self-assertion), different redemption target (infrastructure has no username).  
 - Lost Pocket: `POST /api/dispatch/devices/unbind-one` revokes exactly that device (sibling devices keep working) — see [identity.md](identity.md).  
 - Disabled users: reject API and radio-authenticated app ops — **not implemented yet**; needs the `ADMIN_APPROVAL`/admin-role work noted in `identity.md`'s Deferred section.
 
@@ -51,6 +52,7 @@ Receiving a valid radio packet does **not** authorize:
 | Station Wi‑Fi air | **WPA2/WPA3** | hostapd WPA2-PSK/CCMP with a generated per-Station password (Pi onboard Wi‑Fi lacks reliable SAE in AP mode); awaiting Pi (M1b) |
 | LoRa via Heltec USB bridge | **Not encrypted** — development stand-in only | Must not be treated as production privacy |
 | LoRa production Waylink | **Transport crypto** (Reticulum/LXMF per ADR 0002) | M2e — encrypted Dispatch over LoRa **passed** on RNode-flashed Heltec V3 (2026-09-22). Signal labels plaintext Heltec links as "lab only" |
+| Outpost's own radio (standalone firmware) | **Transport crypto**, on-device — no host computer | M6 — Outposts run real Reticulum themselves via [microReticulum](https://github.com/attermann/microReticulum), a reviewed C++ port of the actual protocol (not hand-rolled crypto, not plaintext). Identity/destination hash persists across reboots, hardware-verified 2026-09-23. See `firmware/outpost/README.md` |
 | Outposts | Forward ciphertext; must not hold user passwords or private mail plaintext |
 | Dispatch / Postbox bodies at rest | Station disk; protect Station physically; backups warn on keys |
 

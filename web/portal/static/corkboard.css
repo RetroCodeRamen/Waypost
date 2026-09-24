@@ -1,0 +1,88 @@
+.corkboard-page { max-width: 42rem; }
+
+.pairing-code {
+  margin-top: 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.pairing-code__value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: 0.15em;
+}
+
+.outposts {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.outposts li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.outposts li.selected {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.5rem;
+}
+.outpost-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.post-form {
+  margin: 1rem 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.post-form textarea {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  min-height: 4.5rem;
+  resize: vertical;
+}
+.post-form__row {
+  display: flex;
+  gap: 0.5rem;
+}
+.post-form__row input {
+  flex: 1;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+}
+.post-form__row button {
+  background: var(--accent);
+  color: #1a2218;
+  border: 0;
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.notes li {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.note-body {
+  white-space: pre-wrap;
+}
+.note-sig {
+  margin-top: 0.35rem;
+  font-style: italic;
+}

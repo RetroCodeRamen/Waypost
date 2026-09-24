@@ -386,7 +386,8 @@ class ReticulumTransport(Transport):
 
     async def reachable(self, destination: str) -> bool:
         try:
-            await asyncio.to_thread(self._out_destination, destination)
+            dest = self.resolve_destination(destination)
+            await asyncio.to_thread(self._out_destination, dest)
             return True
         except Exception:
             return False
@@ -395,9 +396,17 @@ class ReticulumTransport(Transport):
         ok = await self.reachable(destination)
         if not ok:
             return None
+        # Reticulum's own mesh routing (via always-on transport nodes, e.g.
+        # future Outposts) resolves multi-hop paths transparently below
+        # this abstraction — the app layer never sees individual RF hops,
+        # only "reachable or not". Report that as a single conceptual hop
+        # so callers built against MockTransport's hop-counting semantics
+        # (PeerDispatchNode._is_direct_neighbor, OutpostNode._route_to_
+        # station) behave the same way here: "reachable" -> "can push now".
         return RouteInfo(
             destination=destination,
-            hops=None,
+            hops=1,
+            next_hop=destination,
             detail={"transport": "reticulum", "encrypted": True},
         )
 

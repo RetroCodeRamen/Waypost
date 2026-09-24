@@ -118,6 +118,38 @@ Radio settings come from env and **must match on every node**:
 
 The config file is written once; delete `$WAYPOST_RNS_CONFIG/config` after changing interface or radio settings.
 
+## M6 — OutpostNode over real LoRa (both boards as Station + Outpost)
+
+Same two RNode-flashed boards, standing in for Station's own radio and one
+Outpost (real MakerHawk hardware doesn't exist yet — see
+[hardware/makerhawk-v3.md](hardware/makerhawk-v3.md)):
+
+```bash
+# Terminal A — Station on board 1
+WAYPOST_TRANSPORT=reticulum WAYPOST_RNS_INTERFACE=rnode \
+  WAYPOST_LORA_DEVICE=/dev/ttyUSB0 WAYPOST_RNS_CONFIG=/tmp/wp-rns-station-rnode \
+  uvicorn server.api.main:app --host 127.0.0.1 --port 8000
+
+# Terminal B — Outpost on board 2
+python -m tools.radio.outpost_airtest --rnode /dev/ttyUSB1
+```
+
+Expect: `PASS: OutpostNode relay over real RNode LoRa (single hop)`. Only
+tests the single-hop case (Outpost directly adjacent to Station) — a third
+radio would be needed for a real multi-hop chain.
+
+**Status as of 2026-09-23:** one run completed a full send→process round
+trip over the air; later runs haven't reproduced it reliably. Two real bugs
+got found and fixed along the way (`ReticulumTransport.get_route`/
+`reachable` weren't resolving logical node_ids to RNS hashes; Station
+couldn't resolve a reply back to an Outpost without an explicit
+`device_bindings` entry — the tool now creates one as a lab-only shortcut,
+see its docstring). The remaining flakiness looks like RF/timing rather
+than application logic (the same relay logic passes consistently in the
+`MockMesh` sim suite) but hasn't been root-caused — treat repeat runs with
+some patience between attempts, and see `AGENT_HANDOFF.md` for the open
+thread before assuming it's fixed.
+
 ## Related
 
 - `python -m tools.radio.airtest` — raw framed echo over air  

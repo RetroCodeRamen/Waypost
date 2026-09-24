@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS courier_queue (
     message_id TEXT NOT NULL,
     dest TEXT NOT NULL,
     created_at REAL NOT NULL,
+    hops INTEGER NOT NULL DEFAULT 0,
+    for_user TEXT,
     PRIMARY KEY (message_id, dest),
     FOREIGN KEY (message_id) REFERENCES messages(id)
 );
@@ -100,6 +102,16 @@ class DispatchStore:
             self._conn.execute(
                 "ALTER TABLE device_bindings ADD COLUMN transport_dest TEXT"
             )
+        courier_cols = {
+            r[1]
+            for r in self._conn.execute("PRAGMA table_info(courier_queue)").fetchall()
+        }
+        if "hops" not in courier_cols:
+            self._conn.execute(
+                "ALTER TABLE courier_queue ADD COLUMN hops INTEGER NOT NULL DEFAULT 0"
+            )
+        if "for_user" not in courier_cols:
+            self._conn.execute("ALTER TABLE courier_queue ADD COLUMN for_user TEXT")
 
     def bind_device(
         self,
@@ -435,20 +447,28 @@ class DispatchStore:
 
     # -- Courier queue (outbound carry: this node -> dest, e.g. peer or "station") --
 
-    def queue_courier(self, message_id: str, dest: str) -> None:
+    def queue_courier(
+        self,
+        message_id: str,
+        dest: str,
+        *,
+        hops: int = 0,
+        for_user: Optional[str] = None,
+    ) -> None:
         self._conn.execute(
             """
-            INSERT OR IGNORE INTO courier_queue (message_id, dest, created_at)
-            VALUES (?, ?, ?)
+            INSERT OR IGNORE INTO courier_queue (message_id, dest, created_at, hops, for_user)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (message_id, dest, time.time()),
+            (message_id, dest, time.time(), hops, for_user),
         )
         self._conn.commit()
 
     def list_courier_pending(self, dest: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             """
-            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, m.*
+            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, c.hops,
+                   c.for_user, m.*
             FROM courier_queue c
             JOIN messages m ON m.id = c.message_id
             WHERE c.dest = ?
@@ -461,7 +481,8 @@ class DispatchStore:
     def list_courier_all(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             """
-            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, m.*
+            SELECT c.message_id, c.dest, c.created_at AS courier_created_at, c.hops,
+                   c.for_user, m.*
             FROM courier_queue c
             JOIN messages m ON m.id = c.message_id
             ORDER BY m.created_at ASC
@@ -475,3 +496,15 @@ class DispatchStore:
             (message_id, dest),
         )
         self._conn.commit()
+
+    def purge_expired_courier(self, max_age_seconds: float) -> int:
+        """Drop courier entries older than max_age_seconds. A courier holds
+        plaintext copies of messages it isn't a party to (see docs/security.md)
+        — bounding how long that sits on its disk matters as much as bounding
+        hop count."""
+        cutoff = time.time() - max_age_seconds
+        cur = self._conn.execute(
+            "DELETE FROM courier_queue WHERE created_at < ?", (cutoff,)
+        )
+        self._conn.commit()
+        return int(cur.rowcount or 0)

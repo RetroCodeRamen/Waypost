@@ -33,6 +33,8 @@ Production Station path remains **RNode + Reticulum** (`/dev/waypost-lora`). Hel
 
 **Update (2026-09-22):** these same two boards *are* the RNode hardware now — Heltec WiFi LoRa 32 V3 is on the official RNode firmware list, so no separate radio purchase was needed for M2e. Both were reflashed with `rnodeconf --autoinstall` (firmware 1.86, 915 MHz) — see [radio-dev.md](../radio-dev.md#encrypted-over-real-lora-rnode) and [usb-rnode.md](usb-rnode.md). This **replaces** the Waypost Heltec bridge firmware below; getting the plaintext lab bridge back requires a PlatformIO reflash of `firmware/heltec`.
 
+**Update (2026-09-23):** `/dev/ttyUSB1` is now flashed with the standalone Outpost firmware (`firmware/outpost`) — it no longer runs RNode firmware. A board can only run one firmware at a time, so **Station's own radio must stay on `/dev/ttyUSB0`**; only `/dev/ttyUSB1` is safe to reflash for Outpost bring-up/testing. See [firmware/outpost/README.md](../../firmware/outpost/README.md) for what that firmware does and known limitations. Station itself is this dev machine, not the Pi yet — the Pi SD card hasn't arrived.
+
 ## udev aliases
 
 See `deploy/raspberry-pi/udev/99-waypost-lora.rules`.

@@ -33,6 +33,7 @@ SVC_LOCKER = "LOCKER"
 SVC_FINDER = "FINDER"
 SVC_SYNC = "SYNC"
 SVC_SIGNAL = "SIGNAL"
+SVC_CORKBOARD = "CORKBOARD"
 
 # Core ops
 OP_PING = "PING"
@@ -44,6 +45,10 @@ OP_MSG_LIST = "MSG_LIST"
 OP_MSG_ACK = "MSG_ACK"
 OP_MSG_SYNC = "MSG_SYNC"
 OP_MSG_PUSH = "MSG_PUSH"
+
+# Corkboard ops (see docs/protocol.md)
+OP_BOARD_SYNC = "BOARD_SYNC"
+OP_OUTPOST_CLAIM = "OUTPOST_CLAIM"
 
 
 def new_id() -> str:

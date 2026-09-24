@@ -14,6 +14,10 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <RadioLib.h>
+#include <Wire.h>
+#include <U8g2lib.h>
+
+#include "waypost_mark.h"
 
 #if defined(WAYPOST_HELTEC_V3)
   static const int PIN_LORA_NSS = 8;
@@ -32,6 +36,55 @@
   SX1276 radio = new Module(PIN_LORA_NSS, PIN_LORA_DIO0, PIN_LORA_RST, RADIOLIB_NC);
 #else
   #error "Select heltec_wifi_lora_32_V3 or V2 env in platformio.ini"
+#endif
+
+// OLED role splash — only wired up for V3 so far (the boards actually on
+// hand for testing this session); RST_OLED/SDA_OLED/SCL_OLED come from
+// the board's own pins_arduino.h (verified 2026-09-23: V3 = 21/17/18),
+// not guessed. V2 also has vext/an OLED, just not verified against real
+// hardware yet, so oled_init()/oled_splash() are no-ops there rather than
+// guessing pin behavior blind — see docs/roadmap.md's M2 backlog note.
+#if defined(WAYPOST_HELTEC_V3)
+  static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, /*reset=*/RST_OLED);
+
+  static void oled_init() {
+    pinMode(RST_OLED, OUTPUT);
+    digitalWrite(RST_OLED, LOW);
+    delay(20);
+    digitalWrite(RST_OLED, HIGH);
+    delay(20);
+    Wire.begin(SDA_OLED, SCL_OLED);
+    oled.begin();
+  }
+
+  static void oled_center_text(const char* text, int y) {
+    int w = oled.getStrWidth(text);
+    int x = (128 - w) / 2;
+    if (x < 0) x = 0;
+    oled.drawStr(x, y, text);
+  }
+
+  // Two distinct, non-overlapping layouts rather than one combined one —
+  // can't visually verify rendering remotely (no way to see the OLED from
+  // here), so each branch keeps generous vertical clearance on purpose.
+  static void oled_splash(bool radio_ok) {
+    oled.clearBuffer();
+    if (radio_ok) {
+      oled.drawXBMP((128 - WAYPOST_MARK_WIDTH) / 2, 0, WAYPOST_MARK_WIDTH,
+                     WAYPOST_MARK_HEIGHT, WAYPOST_MARK_BITS);
+      oled.setFont(u8g2_font_helvB12_tr);
+      oled_center_text("Waypost", 62);
+    } else {
+      oled.setFont(u8g2_font_helvB12_tr);
+      oled_center_text("Waypost", 26);
+      oled.setFont(u8g2_font_6x10_tr);
+      oled_center_text("radio init failed", 44);
+    }
+    oled.sendBuffer();
+  }
+#else
+  static void oled_init() {}
+  static void oled_splash(bool) {}
 #endif
 
 static const uint8_t MAGIC0 = 'W';
@@ -142,6 +195,7 @@ void setup() {
   digitalWrite(PIN_VEXT, LOW);
   delay(80);
   SPI.begin(PIN_LORA_SCK, PIN_LORA_MISO, PIN_LORA_MOSI, PIN_LORA_NSS);
+  oled_init();  // shares the Vext rail just enabled above
 #endif
 
   int16_t st = radio.begin(915.0);
@@ -161,6 +215,7 @@ void setup() {
     Serial.print("WAYPOST_RADIO_FAIL ");
     Serial.println(st);
   }
+  oled_splash(radio_ok);
 }
 
 void loop() {

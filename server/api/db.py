@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from server.services.beacon.store import BeaconStore
 from server.services.commons.store import CommonsStore
+from server.services.corkboard.store import CorkboardStore
 from server.services.dispatch.store import DispatchStore
 from server.services.locker.store import LockerStore
 from server.services.mail.store import MailStore
@@ -65,6 +66,7 @@ class Database:
         self.commons = CommonsStore(self._conn)
         self.noticeboard = NoticeStore(self._conn)
         self.beacon = BeaconStore(self._conn)
+        self.corkboard = CorkboardStore(self._conn)
         root = locker_root or (path.parent / "locker")
         self.locker = LockerStore(self._conn, root)
 

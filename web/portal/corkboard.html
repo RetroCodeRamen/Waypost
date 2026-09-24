@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Corkboard — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/corkboard.css"/>
+</head>
+<body>
+  <div id="wp-page" class="corkboard-page">
+    <article class="wp-card app-panel">
+      <h2 class="wp-card__title">Claim an outpost</h2>
+      <p class="muted">Generate a short code, then join the Outpost's own Wi-Fi and enter it on its "Pair with Station" page. This teaches Station how to reach it — required once per Outpost.</p>
+      <button type="button" id="make-outpost-code">Generate claim code</button>
+      <div id="outpost-code-display" class="pairing-code" hidden>
+        <span id="outpost-code-value" class="pairing-code__value"></span>
+        <span id="outpost-code-expiry" class="muted"></span>
+      </div>
+    </article>
+
+    <article class="wp-card app-panel">
+      <h2 class="wp-card__title">Outposts</h2>
+      <p class="muted">Backed-up copies from each Outpost's own public board. One at a time by design — never merged.</p>
+      <ul id="outposts" class="outposts"></ul>
+      <p id="outposts-empty" class="muted" hidden>No outposts heard from yet.</p>
+    </article>
+
+    <article class="wp-card app-panel" id="board-panel" hidden>
+      <h2 class="wp-card__title">Board — <span id="board-outpost-name"></span></h2>
+
+      <form id="post-form" class="post-form">
+        <textarea id="post-body" placeholder="Leave a note for this outpost…" maxlength="500" required></textarea>
+        <div class="post-form__row">
+          <input id="post-signature" placeholder="Signature (optional)" maxlength="80"/>
+          <button type="submit">Post</button>
+        </div>
+        <p class="muted">Posted here now; delivered to the Outpost once it next syncs (not built yet — see roadmap).</p>
+      </form>
+
+      <ul id="notes" class="notes"></ul>
+      <p id="notes-empty" class="muted" hidden>No notes on this board yet.</p>
+    </article>
+  </div>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "corkboard",
+      user: "AJ",
+      title: "Corkboard",
+      subtitle: "Public notes from each Outpost"
+    });
+  </script>
+  <script src="/static/corkboard.js"></script>
+</body>
+</html>

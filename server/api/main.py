@@ -19,6 +19,7 @@ from server.api.auth_routes import build_auth_router
 from server.api.beacon_routes import build_beacon_router
 from server.api.commons_routes import build_commons_router
 from server.api.config import Settings, get_settings
+from server.api.corkboard_routes import build_corkboard_router
 from server.api.dashboard_routes import build_dashboard_router
 from server.api.db import Database
 from server.api.deps import get_current_user
@@ -41,6 +42,8 @@ from server.services.beacon.constants import (
 from server.services.beacon.service import BeaconService
 from server.services.commons.constants import OP_POST_CREATE, OP_POST_GET, OP_POST_LIST
 from server.services.commons.service import CommonsService
+from server.services.corkboard.constants import OP_BOARD_SYNC, OP_OUTPOST_CLAIM
+from server.services.corkboard.service import CorkboardService
 from server.services.dispatch.constants import (
     OP_MSG_ACK,
     OP_MSG_LIST,
@@ -79,6 +82,7 @@ from server.transports import create_transport
 from shared.protocol.envelope import (
     SVC_BEACON,
     SVC_COMMONS,
+    SVC_CORKBOARD,
     SVC_DISPATCH,
     SVC_LOCKER,
     SVC_MAIL,
@@ -119,6 +123,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         commons = CommonsService(db.commons)
         noticeboard = NoticeboardService(db.noticeboard)
         beacon = BeaconService(db.beacon)
+        corkboard = CorkboardService(db.corkboard)
         locker = LockerService(db.locker)
         rollcall = RollcallService(db)
         app.state.db = db
@@ -128,11 +133,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.commons = commons
         app.state.noticeboard = noticeboard
         app.state.beacon = beacon
+        app.state.corkboard = corkboard
         app.state.locker = locker
         app.state.rollcall = rollcall
         app.state.signal = SignalService(lambda: app.state)
         app.state.auth = AuthService(db)
-        app.state.pairing = PairingService(db, dispatch)
+        app.state.pairing = PairingService(db, dispatch, corkboard_store=db.corkboard)
 
         transport = create_transport(
             settings.waypost_transport,
@@ -161,6 +167,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             gateway.register(SVC_NOTICEBOARD, op, noticeboard.handle_rpc)
         for op in (OP_BEACON_GET, OP_BEACON_PUSH, OP_BEACON_CLEAR, OP_BEACON_LIST):
             gateway.register(SVC_BEACON, op, beacon.handle_rpc)
+        gateway.register(SVC_CORKBOARD, OP_BOARD_SYNC, corkboard.handle_rpc)
+        gateway.register(
+            SVC_CORKBOARD, OP_OUTPOST_CLAIM, app.state.pairing.handle_outpost_claim
+        )
         for op in (OP_FILE_LIST, OP_FILE_INFO, OP_FILE_DELETE):
             gateway.register(SVC_LOCKER, op, locker.handle_rpc)
         for op in (OP_SIGNAL_STATUS, OP_SIGNAL_ROUTE):
@@ -168,6 +178,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
+        # PairingService is constructed before Transport exists (it needs
+        # to call learn_route() before replying to a redemption — see its
+        # module docstring), so it's wired up here instead of at construction.
+        app.state.pairing.transport = transport
 
         def _resolve_dest(dst: str) -> str:
             if hasattr(transport, "resolve_destination"):
@@ -190,6 +204,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     transport.learn_route(row["node_id"], row["transport_dest"])
             except Exception:
                 logger.exception("failed to reload transport routes")
+            try:
+                for row in db.corkboard.list_claimed_outposts():
+                    transport.learn_route(row["node_id"], row["transport_dest"])
+            except Exception:
+                logger.exception("failed to reload outpost transport routes")
 
         # When using a live radio transport, also TX Dispatch pushes over the air
         if settings.waypost_transport in (
@@ -268,6 +287,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(build_commons_router())
     app.include_router(build_noticeboard_router())
     app.include_router(build_beacon_router())
+    app.include_router(build_corkboard_router())
     app.include_router(build_locker_router())
     app.include_router(build_signal_router())
     app.include_router(build_rollcall_router())
@@ -435,6 +455,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/devices.html")
         def portal_devices():
             return FileResponse(PORTAL_DIR / "devices.html")
+
+        @app.get("/corkboard.html")
+        def portal_corkboard():
+            return FileResponse(PORTAL_DIR / "corkboard.html")
 
     return app
 

@@ -68,20 +68,26 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | Heltec USB↔LoRa bridge firmware | Done |
 | Heltec **air path** + Waylink `PING`/`PONG` | **Proven on hardware** |
 | Dispatch **over LoRa** into portal (Heltec) | **Proven (M2c)** — see [radio-dev.md](radio-dev.md) |
+| **Corkboard** (per-outpost public noteboard, both sides) | **Proven (M6 ✅)** — sim + browser; real-hardware round trip pending the physical claim test below |
+| **Standalone Outpost firmware** (Wi-Fi AP + real on-device Reticulum via microReticulum) | **Proven on real Heltec V3 hardware (M6)** — identity persists across reboots; see `firmware/outpost/README.md` |
+| **Device pairing codes + per-device revocation** | **Done (M4 slice 1 ✅)** — also now reused for `OUTPOST_CLAIM` (infrastructure claiming), not just Pocket devices |
+| Role-label OLED splash (both board types) | **Done (2026-09-23)** — Outpost hardware-verified; Station's board runs a patched-but-genuine RNode build (`firmware/RNode_Firmware/`), logo shown on a new button gesture |
 
 ### Explicitly not done
 
 | Area | Gap |
 |------|-----|
-| Raspberry Pi Station install | Idempotent installer + Caddy HTTPS done and tested in containers ([pi-setup.md](pi-setup.md)) — **not yet run on real Pi hardware**; uncommitted |
+| Raspberry Pi Station install | Idempotent installer + Caddy HTTPS done and tested in containers ([pi-setup.md](pi-setup.md)) — **not yet run on real Pi hardware** |
 | Waygate / hostapd / dnsmasq on real Pi | hostapd/dnsmasq staged behind `--enable-ap`, unrun on hardware; openNDS (Waygate) not started |
 | `ReticulumTransport` / production RNode path | **Done (M2e ✅)** — encrypted Dispatch over real LoRa, RNode-flashed Heltec V3 |
-| Pocket (T-Deck) firmware / UI | Not started — peer/courier logic proven in sim (`server/services/dispatch/peer.py`, M3) |
+| Pocket (T-Deck) firmware / UI | Not started — peer/courier logic proven in sim (`server/services/dispatch/peer.py`, M3); hardware in transit |
 | Pocket GPS → Station location reports | Not started (planned under M7/M8) |
 | **Atlas** (map, Station origin, range/distance) | Not started |
-| Outpost (MakerHawk) firmware | Not started — GPIO unverified |
+| Outpost firmware **on MakerHawk specifically** | GPIO still unverified on that board — the Heltec V3 build above is proven, MakerHawk is the separate, not-yet-confirmed-ordered production SKU |
+| Physical Outpost claim over real LoRa | Everything upstream is verified (HTTP round trip proven live) — the join-the-AP-and-use-`/claim` step itself hasn't been done yet |
 | Stalwart / BookStack / Memos / Kiwix adapters | Placeholders |
-| Real identity depth (OIDC, pairing UX, revocation, invite flows) | Username/password auth is real (N2 ✅); device pairing/revocation still open (M4) |
+| `ADMIN_APPROVAL` registration mode + admin-role concept | No `users.approved_at`/`is_admin`, no admin routes/UI — the one unbuilt piece of M4 |
+| Stalwart-vs-SQLite decision for identity | Undecided — M4's own scope says decide, don't do both halfway (see `priority-review.md` §12) |
 | Fieldbook, Archive, Finder, Control | Not built (or nav “soon” only) |
 
 Apps marked *prototype* mean: local store + HTTP UI + some Waylink RPC ops — **not** production auth, sync, or multi-Station federation.
@@ -101,15 +107,17 @@ transport proof → resilient messaging → identity/presence → shared sync
 Full analysis: **[priority-review.md](priority-review.md)**.  
 Foundational designs (implement later): [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md).
 
-### Just finished — **M2e Production radio crypto** ✅
+### Just finished — **M6 standalone Outpost + OUTPOST_CLAIM** ✅ (sim/hardware, software side)
 
-**Goal:** Encrypt LoRa Waylink (Reticulum/RNode). N2 username/password auth is ✅.
+**Goal:** Outposts as real relay infrastructure — public noteboard, real on-device encryption, Station able to actually address one.
 
-**M2e:** `ReticulumTransport` + Dispatch-over-RNS (`dispatch_rns_airtest` PASS on TCP lab). `RNodeInterface` config (`WAYPOST_RNS_INTERFACE=rnode` + validated radio params), `dispatch_rns_airtest --rnode`, and Signal shows link security. **Over-air PASS 2026-09-22:** encrypted Dispatch (send, portal history, `MSG_PUSH` reply) between two Heltec V3 boards flashed as RNodes ([radio-dev](radio-dev.md#encrypted-over-real-lora-rnode)). Remaining: run as the default on the Pi Station (M1b) and retire plaintext Heltec from anything user-facing.
+Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticulum, Wi-Fi AP + Corkboard) is flashed and hardware-verified, identity stable across reboots. `OUTPOST_CLAIM` reuses the M4 pairing-code system so Station can `learn_route()` an Outpost before replying to it — verified over a live HTTP round trip; also fixed a matching latent bug in Pocket's own radio-pairing path (`PAIR_REDEEM` never called `learn_route`). Both boards now carry a role-label OLED splash — Outpost hardware-verified, Station's via a patched-but-genuine RNode firmware build (`firmware/RNode_Firmware/`). Full detail: `docs/architecture.md`, `docs/protocol.md`, `AGENT_HANDOFF.md`'s 2026-09-23 entries.
 
-**Next:** M1b Pi AP + TLS (waits on Pi SSH); Wi‑Fi TLS is the remaining "all communications encrypted" gap. Heltec bridge firmware stays **lab plaintext** only.
+**Remaining on this thread:** the physical claim test over real LoRa (join the Outpost's Wi-Fi, use `/claim`) — needs a human, not more code; MakerHawk GPIO verification whenever that board exists.
 
-**Still freeze:** new portal apps; Atlas; Workshop.
+**Next in the priority spine (no hardware needed):** M4's last unbuilt piece — `ADMIN_APPROVAL` registration mode + admin-role — or the Stalwart-vs-SQLite decision (a call for the human, not something to build around). See `priority-review.md` §8, §12.
+
+**Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
 
 ---
 
@@ -153,6 +161,13 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 | **M2e** RNode + Reticulum path | ✅ | `ReticulumTransport` replaces Heltec without app changes; over-air PASS on RNode-flashed V3 |
 
 **Stand-in exit:** Bidirectional Dispatch over Heltec — **met**. Production mesh = M2e / Tier 2.
+
+**Role-label OLED splash — prioritized 2026-09-23** ("I would like to know which device is which when I look at them easily"): both Heltec V3 boards' onboard SSD1306 (128x64, real pins verified against the board's own `pins_arduino.h`, not guessed: `SDA_OLED`/`SCL_OLED`/`RST_OLED` = 17/18/21) now draw the Waypost mark icon (40x40, generated from `web/portal/static/brand/waypost-mark-256.png` — see each firmware's `waypost_mark.h`) plus a role label via U8g2, runtime-centered so it doesn't depend on exact font-metric guesses.
+
+- **`firmware/outpost`** — done, flashed, boot-verified clean (no I2C errors, identity still stable). Shows the mark + "OUTPOST".
+- **Station's board** — done a different way than `firmware/outpost`: rather than swap to `firmware/heltec` (which would replace RNode entirely), patched **RNode firmware itself** — `firmware/RNode_Firmware/` is a vendored, trimmed copy of upstream `master` (same version already flashed, 1.86) with one additive change: a new ~0.7–1.3s button-hold gesture shows the Waypost logo for 3s, inserted into the existing button's four duration-based behaviors without touching any of them (quick-tap BT toggle unchanged; sleep's threshold just moved ~0.6s later to make room). Built via upstream's own `arduino-cli` toolchain (pinned to ESP32 core 2.0.17, matching what they release-test against — not the 3.x core the rest of this project's firmware uses via PlatformIO). Confirmed before touching the live device that Reticulum's Python side (`RNodeInterface.validate_firmware()`) only checks the firmware's self-reported version number, not a hash, so a patched-but-same-version build is accepted exactly like the stock binary — verified true: flashed to `/dev/ttyUSB0`, Station reconnected cleanly, same destination hash, `/api/health` 200. **Not yet verified: whether the logo actually renders correctly** — no way to see the physical screen remotely; needs a human to hold the action button for ~1 second and look.
+
+MakerHawk's own OLED still has only a planned diagnostic layout ([hardware/makerhawk-v3.md](hardware/makerhawk-v3.md)) — the same icon+label approach applies once that hardware exists.
 
 ---
 
@@ -226,11 +241,19 @@ Each milestone has a **goal**, **exit criteria**, and **out of scope**. Complete
 
 ---
 
-### M6 — Outpost + Pocket courier network
+### M6 — Outpost + Pocket courier network 🟡
 
 **Goal:** Multi-hop and delay-tolerant coverage; Outposts **and** Pockets forward.
 
 **Exit criteria:** MakerHawk pinout verified; transport-node firmware; Pocket↔Outpost↔Pocket + courier-to-Station smoke; queues survive power cycle. Recipient reads now; copy still syncs to Station (`mid` dedup).
+
+**Progress (sim + first hardware attempt):** `OutpostNode` (`server/services/dispatch/outpost.py`) — uncapped relay hops (unlike Pockets' 3-hop cap), preferred-route caching to Station, direct hand-off between two Pockets co-located at the same Outpost. Sim-tested via `MockMesh` (`server/tests/test_mesh_dispatch.py`) — not yet against real MakerHawk hardware, which still doesn't exist (GPIO unverified, not confirmed ordered). A first real-radio attempt used the two RNode-flashed Heltec V3 boards as a Station+Outpost stand-in (same precedent as Heltec-before-RNode) — `tools/radio/outpost_airtest.py`. One run completed a full send→process round trip over real encrypted LoRa; later runs haven't reproduced it reliably. Two real bugs surfaced and got fixed along the way: `ReticulumTransport.get_route`/`reachable` never resolved logical node_ids to RNS hashes (only `send` did), and nothing taught Station how to resolve a reply back to an Outpost without an explicit bind. **Still open:** reliable hardware round-trip (RF/timing, not app logic, is the suspect), the Beacon origin-outpost extension, and the session-isolated Wi-Fi terminal (needs real MakerHawk-class hardware or firmware work either way).
+
+**Progress — Corkboard (sim, both sides) + standalone Outpost firmware (hardware bring-up started 2026-09-23):** per-outpost public note board — `server/services/corkboard/` (`{constants,store,service}.py`), `BOARD_SYNC` op, portal page `corkboard.html`. Outpost's copy is the durable primary, Station's is backup; a Station user reads/posts exactly one known outpost at a time, never a merged view (deliberate UX + security choice). Registration is automatic — the first `BOARD_SYNC` from any `env.src` creates the outpost entry. `OutpostNode.add_local_note`/`sync_corkboard` complete the loop: upload not-yet-synced notes (tracked via a `synced_at` marker, never deleted locally), ingest whatever Station piggybacks back. Posting from the portal queues into a per-outpost outbox and gets piggybacked into that outpost's next sync — proven end-to-end both in the browser (portal → outbox → simulated resync) and in sim (`OutpostNode` ↔ `CorkboardService` full round trip, `server/tests/test_mesh_dispatch.py`). `server/tests/test_corkboard.py` + mesh tests, 110 passed.
+
+A first standalone Outpost firmware now exists and is flashed to real hardware — `firmware/outpost` (Heltec V3 on `/dev/ttyUSB1`): Wi-Fi AP + Corkboard web UI + real on-device Reticulum via microReticulum (not plaintext — an earlier draft assumed real Reticulum needed a host computer; that was checked and found wrong, see `firmware/outpost/README.md`). Its identity/destination hash is confirmed stable across reboots (a real bug — the filesystem was silently reformatting every boot — found and fixed during bring-up).
+
+Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairing-code system exactly — a code generated on Corkboard's portal page, entered on the Outpost's own `/claim` Wi-Fi page, `learn_route` called before the reply so even the claim's own response is routable. Fixed a matching latent bug found along the way: the Pocket radio-pairing path (`PAIR_REDEEM`) accepted a `transport_dest` but never called `learn_route` either. Verified end-to-end over HTTP against a live Station (`server/tests/test_pairing.py` +5, 115 passed; a live curl round trip: code → claim → registered with the right hash). **Still open:** the physical leg — someone joining the Outpost's own Wi-Fi and using its `/claim` page over real LoRa, not yet done (this sandbox can't join that AP); role labels on the boards' onboard OLED so Station vs. Outpost hardware is visually distinguishable (requested 2026-09-23, spec captured above under M2's backlog note); the emergency-alert button; session isolation; the Beacon origin-outpost extension (separate agreed piece, not started).
 
 ---
 

@@ -43,7 +43,8 @@ Apps map domain language onto these (e.g. Dispatch `delivery_state` ↔ queue st
 ## Assumptions
 
 - Station remains the best canonical store when reachable.
-- Pocket courier queues are bounded; TTL/expiry applies.
+- Pocket courier queues are bounded; TTL/expiry applies (`DispatchStore.purge_expired_courier`, swept opportunistically on `flush_pending`/`handoff_to`/`sync_with_station` — default `COURIER_TTL_SECONDS` in `server/services/dispatch/peer.py`, 24h). A courier holds plaintext of messages it isn't a party to, so this bounds exposure as well as storage growth.
+- Device-to-device relay hops (travel device → travel device, i.e. `PeerDispatchNode.handoff_to`) are capped at `MAX_COURIER_HOPS` (3) — a message can still be delivered directly or synced to Station regardless of hop count, it just can't be handed to a 4th travel device. **`OutpostNode` (`server/services/dispatch/outpost.py`) is exempt from this cap** — fixed, always-on infrastructure, not a battery-constrained Pocket — and relays uncapped both toward Station (with preferred-route caching — find the shortest known path, keep using it while it works, rediscover if it stops) and between Outposts. Sim-tested (`server/tests/test_mesh_dispatch.py`); a first real-hardware attempt (two RNode-flashed Heltec V3 boards standing in for Station + one Outpost — `tools/radio/outpost_airtest.py`) got one full round trip through and surfaced two real transport-layer bugs (now fixed: `ReticulumTransport.get_route`/`reachable` never resolved logical node_ids to RNS hashes, and Station never learned an Outpost's hash without an explicit bind), but hasn't reproduced reliably since — likely RF/timing, not application logic; see `AGENT_HANDOFF.md` for the open thread.
 - Heltec 250B limit means progressive ops, not giant sync blobs.
 
 ## Open questions
