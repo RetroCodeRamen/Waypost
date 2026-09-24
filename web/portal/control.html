@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Control — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/control.css"/>
+</head>
+<body>
+  <div id="wp-page" class="control-page">
+    <article class="wp-card app-panel" id="not-admin-panel" hidden>
+      <h2 class="wp-card__title">Control</h2>
+      <p class="muted">This page is for Station admins only. Ask an existing admin if you need something changed here.</p>
+    </article>
+
+    <article class="wp-card app-panel" id="admin-panel" hidden>
+      <h2 class="wp-card__title">Pending registrations</h2>
+      <p class="muted">Accounts waiting on approval — only shown when the Station's registration mode is <code>ADMIN_APPROVAL</code>.</p>
+      <ul id="pending" class="pending-list"></ul>
+      <p id="pending-empty" class="muted" hidden>No pending registrations.</p>
+    </article>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "control",
+      user: "AJ",
+      title: "Control",
+      subtitle: "Station administration"
+    });
+  </script>
+  <script src="/static/control.js"></script>
+</body>
+</html>

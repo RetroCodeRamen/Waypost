@@ -40,8 +40,8 @@ Related truth sources (do not duplicate long plans here):
 
 **Date:** 2026-09-23  
 
-**Active milestone:** **M6** Outpost 🟡 — standalone Outpost firmware (`firmware/outpost`) exists, flashed to real hardware (`/dev/ttyUSB1`); identity persistence bugs found+fixed; Station can now reply to a claimed Outpost (`OUTPOST_CLAIM`, verified over live HTTP). Only remaining gap: the physical Outpost-Wi-Fi→`/claim`→real-LoRa leg needs a human to join the AP by hand — everything upstream is proven. Original `OutpostNode` sim done; the separate `outpost_airtest.py` Station+Outpost-stand-in hardware attempt (both boards as RNode) is superseded by this firmware existing, not resolved further. **M4** Identity depth 🟡 — slice 1 done; `ADMIN_APPROVAL`/admin-role + Stalwart decision open. **M1b** Pi — software prep done, waiting on SD card (human has it in the mail) — **Station is this dev machine, not a Pi, until then**; **M7** T-Deck also in the mail  
-**Just finished:** M6 `OUTPOST_CLAIM` — Station can reply to a claimed Outpost, reusing the M4 pairing-code system exactly; fixed a matching latent bug in Pocket radio-pairing along the way ([docs/protocol.md](docs/protocol.md), [docs/architecture.md](docs/architecture.md)); before that M6 standalone Outpost firmware — real Reticulum via microReticulum (not plaintext), Wi-Fi AP + Corkboard web UI, hardware-verified identity persistence across reboots ([firmware/outpost/README.md](firmware/outpost/README.md)); before that M6 Corkboard — both sides in sim; before that M6 slice 1 — `OutpostNode` LoRa relay (sim) + courier hop-cap/TTL; before that M4 slice 1 — pairing codes + per-device revocation; before that docs refresh; before that M1b prep; before that **M2e ✅** over real LoRa
+**Active milestone:** **M6** Outpost 🟡 — standalone Outpost firmware (`firmware/outpost`) exists, flashed to real hardware (`/dev/ttyUSB1`); identity persistence bugs found+fixed; Station can now reply to a claimed Outpost (`OUTPOST_CLAIM`, verified over live HTTP). Only remaining gap: the physical Outpost-Wi-Fi→`/claim`→real-LoRa leg needs a human to join the AP by hand — everything upstream is proven. **M4** Identity depth **✅ build-complete** — pairing codes, revocation, `ADMIN_APPROVAL`/admin-role all done; only the Stalwart-vs-SQLite decision remains, a human call not a build task. **M1b** Pi — software prep done, waiting on SD card (human has it in the mail) — **Station is this dev machine, not a Pi, until then**; **M7** T-Deck also in the mail. **No single obvious next milestone right now** — M4's completion means the next step is a genuine choice among independent Tier 2 software items (Postbox progressive sync, Noticeboard/Beacon depth, Groups, Today dashboard) — see `docs/priority-review.md` §8.  
+**Just finished:** M4 slice 2 — `ADMIN_APPROVAL` + admin-role, portal `/control.html` ([docs/identity.md](docs/identity.md)); before that a full docs refresh (`roadmap.md`, `priority-review.md`, `security.md`) plus committing all of M6 in one commit (`c4f0cc4`); before that M6 `OUTPOST_CLAIM` — Station can reply to a claimed Outpost, reusing the M4 pairing-code system exactly; fixed a matching latent bug in Pocket radio-pairing along the way ([docs/protocol.md](docs/protocol.md), [docs/architecture.md](docs/architecture.md)); before that M6 standalone Outpost firmware — real Reticulum via microReticulum (not plaintext), Wi-Fi AP + Corkboard web UI, hardware-verified identity persistence across reboots ([firmware/outpost/README.md](firmware/outpost/README.md)); before that M6 Corkboard — both sides in sim; before that M6 slice 1 — `OutpostNode` LoRa relay (sim) + courier hop-cap/TTL; before that M4 slice 1 — pairing codes + per-device revocation; before that **M2e ✅** over real LoRa
 
 **Have today**
 
@@ -65,7 +65,7 @@ Related truth sources (do not duplicate long plans here):
 - M1b on real Pi: run installer, `--enable-ap`, phone joins `WAYPOST` → trust → HTTPS; openNDS (Waygate)
 - Station clock bootstrap (no RTC) — TLS certs are only 30 days tolerant ([network-time.md](docs/network-time.md))
 - The physical claim test over real LoRa (join `WAYPOST-OUTPOST`, use its `/claim` page — needs a human, see 2026-09-23 message board entry); Station's board still shows RNode's own diagnostics, not a Waypost-branded splash (code's ready in `firmware/heltec`, human chose to hold off — see message board); Beacon origin-outpost extension; session-isolated Wi‑Fi terminal; Pocket firmware (M7)
-- `ADMIN_APPROVAL` registration mode + any admin-role concept (no `users.approved_at`/`is_admin`, no admin routes/UI); Stalwart integration-vs-cutover decision (M4)
+- Stalwart integration-vs-cutover decision (M4) — the only thing left in that milestone
 
 **Freezes:** no new portal apps; no Atlas; no Workshop until network depth advances.
 
@@ -83,7 +83,8 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | M1b Pi stack | Cursor | prep done, **committed** | Installer + HTTPS ready; run on Pi when SD card arrives ([pi-setup.md](docs/pi-setup.md)) |
 | M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
 | Docs refresh | Claude | done | `priority-review.md` rewrite + smaller fixes across roadmap/architecture/hardware docs — see message board |
-| M4 pairing codes + device revocation | Claude | **done (slice 1)** | Pairing codes + per-device revoke + honest registration-mode UI shipped. `ADMIN_APPROVAL`/admin-role and Stalwart cutover deliberately deferred (real scope of their own) — see message board |
+| M4 pairing codes + device revocation | Claude | **done (slice 1)** | Pairing codes + per-device revoke + honest registration-mode UI shipped |
+| M4 ADMIN_APPROVAL + admin-role | Claude | **done (slice 2)** | `/control.html`, first-user-bootstraps-admin, login gated on approval. Stalwart cutover still open — see message board |
 | M6 OutpostNode (sim) | Claude | **done** | Uncapped relay + preferred-route caching, sim-tested. Corkboard/Beacon-extension/Wi‑Fi terminal are follow-up slices, not started |
 | M6 OutpostNode (hardware, `outpost_airtest.py`) | Claude | **superseded** | Both-Heltecs-as-RNode stand-in; superseded by real Outpost firmware existing now, not pursued further |
 | M6 Corkboard | Claude | **done, both sides (sim)** | `OutpostNode.sync_corkboard` + `CorkboardService` full round trip verified in sim and browser |
@@ -91,7 +92,7 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | M6 OUTPOST_CLAIM | Claude | **done, verified over live HTTP** | Station can reply to a claimed Outpost; physical Wi-Fi→radio leg still needs a human — see message board |
 
 **Cursor last session:** M1b prep (Pi installer, offline HTTPS, SD guide); prior: RNode flash + M2e over-air PASS.  
-**Claude last session:** M6 — OUTPOST_CLAIM, Station-side claiming for Outposts (see message board).
+**Claude last session:** M4 finished — ADMIN_APPROVAL + admin-role, docs refresh, M6 committed (see message board).
 
 ---
 
@@ -129,6 +130,17 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-23 — Claude (M4 finished: ADMIN_APPROVAL + admin-role; docs refreshed; M6 committed)
+
+**Re:** "Fix stale docs, commit M6, then start the next set of things we can get to without the T-Deck or Pi up and running" — following a full project review (done/in-progress/needs-planning/doc-health) requested earlier the same turn.
+**Did, in order:** (1) Refreshed `docs/roadmap.md`'s top-level snapshot table and `docs/priority-review.md` (which predated this entire session's M6 work) to match reality, plus `docs/security.md`'s encryption table. (2) Committed all of M6 — standalone Outpost firmware, Corkboard, `OUTPOST_CLAIM`, role-label displays, the vendored/patched RNode firmware, 80 files, one commit (`c4f0cc4`). (3) Picked the priority review's own recommendation — the one remaining hardware-free piece of M4 — and built it: `ADMIN_APPROVAL` registration mode + admin-role.
+**M4 slice 2 — `ADMIN_APPROVAL` + admin-role:** `users` gained `is_admin`/`approved_at` (migration grandfathers every pre-existing account — nobody gets retroactively locked out). Registering under `ADMIN_APPROVAL` creates the account but issues no session; `POST /api/auth/login` rejects until `POST /api/auth/approve` (new `get_current_admin` dependency) sets `approved_at`. **The first account ever registered on a Station bootstraps as admin, auto-approved** — otherwise an `ADMIN_APPROVAL` Station could never have anyone able to approve anyone. Found and fixed a real regression risk before it shipped: `ensure_user` (used by device-bind flows and lab-user seeding, not the public register path) would have locked out the lab demo users (`aj`/`bob`) under my first draft of the unconditional login approval-check — fixed by auto-approving `ensure_user`-created accounts (safe: they get no password hash either way, so `ADMIN_APPROVAL`'s actual purpose — gating who can log in with a password — is untouched). Also made lab-seeded `aj` an admin so the new Control page is testable in dev without a separate bootstrap flow.
+**Portal:** `/control.html` — the "Control" nav item was a `soon: true` placeholder since the beginning of this project; now real. Lists pending registrations, one-click approve. `login.html`'s `ADMIN_APPROVAL` handling changed from "disable the button, say not available" (M4 slice 1's honest-but-incomplete stance) to actually working — button re-enabled, and a successful pending registration now shows "waiting on admin approval" instead of silently doing nothing.
+**Verified:** 9 new tests (`server/tests/test_auth.py`) — bootstrap-admin, pending-blocks-login, approval-unblocks-login, double-approve rejected, OPEN/INVITE_ONLY unaffected, full HTTP round trip, non-admin 403 on admin routes. Full suite 122 passed (up from 115), 1 skipped. Verified live in a browser against a throwaway `ADMIN_APPROVAL`-mode instance: registered "carol" → confirmed pending server-side → logged in as admin "aj" → Control page showed carol pending → clicked Approve in the real UI → confirmed carol could then log in. Browser login had the same intermittent first-attempt flakiness noted in earlier entries (unrelated to this feature — works on retry with explicit ref-based clicks).
+**Docs:** `identity.md`, `security.md`, `roadmap.md` (M4 marked ✅ build / 🟡 Stalwart decision), `priority-review.md` (marked done everywhere it was flagged unbuilt, replaced the stale "M4 next" recommendation with an honest "pick one, they're independent" list of what's left in Tier 2).
+**Next for other agent:** No single obvious next step — genuinely independent choice among Postbox progressive LoRa path, Noticeboard ack + Beacon auth, Groups/permissions core, or the Today/sync dashboard (`priority-review.md` §8). Separately, the app-catalog freeze has now been flagged as stale-adjacent three times across two reviews without a decision — worth raising directly with the human rather than a fourth silent flag.
+**Blocked:** Nothing.
 
 ### 2026-09-23 — Claude (OLED role labels — prioritized mid-session)
 

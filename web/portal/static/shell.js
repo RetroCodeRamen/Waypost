@@ -19,7 +19,7 @@
   var NAV_SYSTEM = [
     { id: "signal", label: "Signal", href: "/signal.html", icon: "signal" },
     { id: "devices", label: "Devices", href: "/devices.html", icon: "devices" },
-    { id: "control", label: "Control", href: "#", icon: "control", soon: true },
+    { id: "control", label: "Control", href: "/control.html", icon: "control" },
   ];
 
   function iconSvg(name) {

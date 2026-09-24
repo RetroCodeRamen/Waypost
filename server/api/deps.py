@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import Cookie, Header, HTTPException, Request
+from fastapi import Cookie, Depends, Header, HTTPException, Request
 
 
 def _extract_token(
@@ -55,9 +55,19 @@ def get_current_user(
             "display_name": user["display_name"],
             "status": user.get("status") or "",
             "bio": user.get("bio") or "",
+            # Permissive test/lab mode — same spirit as bypassing auth
+            # entirely here; don't make admin-gated routes untestable.
+            "is_admin": True,
+            "approved": True,
         }
 
     raise HTTPException(status_code=401, detail="authentication required")
+
+
+def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="admin only")
+    return user
 
 
 def get_optional_user(

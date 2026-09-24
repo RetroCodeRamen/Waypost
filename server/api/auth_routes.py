@@ -7,8 +7,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from server.api.deps import get_current_user, get_optional_user
+from server.api.deps import get_current_admin, get_current_user, get_optional_user
 from server.services.auth.pairing import CODE_LENGTH
+
+
+class ApproveUserBody(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
 
 
 class RegisterBody(BaseModel):
@@ -53,9 +57,14 @@ def build_auth_router() -> APIRouter:
                 username=body.username,
                 password=body.password,
                 display_name=body.display_name,
+                registration_mode=settings.waypost_registration_mode,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # ADMIN_APPROVAL: account created but not yet usable — no session
+        # to hand out until an admin approves it.
+        if result.get("pending_approval"):
+            return result
         _set_cookie(request, response, result["token"])
         return result
 
@@ -88,6 +97,19 @@ def build_auth_router() -> APIRouter:
     @router.get("/api/auth/registration_mode")
     def registration_mode(request: Request):
         return {"mode": request.app.state.settings.waypost_registration_mode}
+
+    @router.get("/api/auth/pending")
+    def pending_users(request: Request, admin=Depends(get_current_admin)):
+        _ = admin
+        return {"users": request.app.state.auth.list_pending_users()}
+
+    @router.post("/api/auth/approve")
+    def approve_user(body: ApproveUserBody, request: Request, admin=Depends(get_current_admin)):
+        _ = admin
+        try:
+            return request.app.state.auth.approve_user(body.username)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/api/auth/pairing/create")
     def create_pairing_code(request: Request, user=Depends(get_current_user)):

@@ -72,6 +72,7 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | **Standalone Outpost firmware** (Wi-Fi AP + real on-device Reticulum via microReticulum) | **Proven on real Heltec V3 hardware (M6)** — identity persists across reboots; see `firmware/outpost/README.md` |
 | **Device pairing codes + per-device revocation** | **Done (M4 slice 1 ✅)** — also now reused for `OUTPOST_CLAIM` (infrastructure claiming), not just Pocket devices |
 | Role-label OLED splash (both board types) | **Done (2026-09-23)** — Outpost hardware-verified; Station's board runs a patched-but-genuine RNode build (`firmware/RNode_Firmware/`), logo shown on a new button gesture |
+| `ADMIN_APPROVAL` registration mode + admin-role | **Done (M4 slice 2 ✅)** — first-ever account bootstraps as admin; portal `/control.html` approves pending registrations |
 
 ### Explicitly not done
 
@@ -86,7 +87,6 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | Outpost firmware **on MakerHawk specifically** | GPIO still unverified on that board — the Heltec V3 build above is proven, MakerHawk is the separate, not-yet-confirmed-ordered production SKU |
 | Physical Outpost claim over real LoRa | Everything upstream is verified (HTTP round trip proven live) — the join-the-AP-and-use-`/claim` step itself hasn't been done yet |
 | Stalwart / BookStack / Memos / Kiwix adapters | Placeholders |
-| `ADMIN_APPROVAL` registration mode + admin-role concept | No `users.approved_at`/`is_admin`, no admin routes/UI — the one unbuilt piece of M4 |
 | Stalwart-vs-SQLite decision for identity | Undecided — M4's own scope says decide, don't do both halfway (see `priority-review.md` §12) |
 | Fieldbook, Archive, Finder, Control | Not built (or nav “soon” only) |
 
@@ -115,7 +115,7 @@ Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticu
 
 **Remaining on this thread:** the physical claim test over real LoRa (join the Outpost's Wi-Fi, use `/claim`) — needs a human, not more code; MakerHawk GPIO verification whenever that board exists.
 
-**Next in the priority spine (no hardware needed):** M4's last unbuilt piece — `ADMIN_APPROVAL` registration mode + admin-role — or the Stalwart-vs-SQLite decision (a call for the human, not something to build around). See `priority-review.md` §8, §12.
+**Next in the priority spine (no hardware needed):** M4 is now build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around) — Tier 2 software-only items (Postbox/Fieldbook progressive sync, Groups, Noticeboard ack + Beacon auth, Today dashboard) are next. See `priority-review.md` §7, §8, §12.
 
 **Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
 
@@ -221,15 +221,17 @@ MakerHawk's own OLED still has only a planned diagnostic layout ([hardware/maker
 
 ---
 
-### M4 — Identity depth (Stalwart / OIDC / pairing UX) 🟡
+### M4 — Identity depth (Stalwart / OIDC / pairing UX) ✅ (build) / 🟡 (Stalwart decision)
 
 **Goal:** Production identity authority; polished Pocket pairing; revocation UX.
 
 **Exit criteria:** Stalwart path or scheduled cutover; pairing codes; registration modes enforced in UI.
 
-**Progress (slice 1):** Pairing codes — `POST /api/auth/pairing/create` (authenticated) / `POST /api/auth/pairing/redeem` (no session; also `PAIR_REDEEM` over Waylink) — bind a device without a password ever crossing LoRa. Per-device revocation — `GET /api/dispatch/devices`, `POST /api/dispatch/devices/unbind-one` — revokes one device, siblings survive (unlike the older `unbind` which wipes all of a user's devices). Portal: new `devices.html`. `OPEN`/`INVITE_ONLY` are now honest in `login.html` (the button hides/explains instead of letting a blocked registration submit). See `docs/identity.md`, `docs/security.md`.
+**Progress (slice 1):** Pairing codes — `POST /api/auth/pairing/create` (authenticated) / `POST /api/auth/pairing/redeem` (no session; also `PAIR_REDEEM` over Waylink) — bind a device without a password ever crossing LoRa. Per-device revocation — `GET /api/dispatch/devices`, `POST /api/dispatch/devices/unbind-one` — revokes one device, siblings survive (unlike the older `unbind` which wipes all of a user's devices). Portal: new `devices.html`. `OPEN`/`INVITE_ONLY` are now honest in `login.html` (the button hides/explains instead of letting a blocked registration submit). See `docs/identity.md`, `docs/security.md`. Same pairing codes reused as-is for `OUTPOST_CLAIM` in M6 — proof the design generalizes past just Pocket devices.
 
-**Still open:** `ADMIN_APPROVAL` — no admin-role concept exists anywhere in the codebase yet (no `users.approved_at`/`is_admin`, no admin routes, no approval UI); this is real scope, not wired up as a side effect of this slice. Stalwart integration-vs-cutover is still an open decision, not silently dropped — see `priority-review.md` §12.3.
+**Progress (slice 2 — `ADMIN_APPROVAL` + admin-role):** `users` gained `is_admin`/`approved_at` (migration grandfathers every pre-existing account so nobody gets retroactively locked out). Registering under `ADMIN_APPROVAL` creates the account but issues no session; `POST /api/auth/login` rejects until `POST /api/auth/approve` (admin-only, new `get_current_admin` dependency) sets `approved_at`. The **first account ever registered on a Station bootstraps as admin, auto-approved** — otherwise an `ADMIN_APPROVAL` Station could never have anyone able to approve anyone. `ensure_user`-created accounts (device binds, lab seeding) are auto-approved too — they're not the public self-registration path `ADMIN_APPROVAL` is actually gating, and they get no password hash either way. Portal: `/control.html` (the former "Control" nav placeholder, now real) lists pending registrations with one-click approve. `login.html` re-enabled "Create account" under `ADMIN_APPROVAL` (was previously disabled with an honest "not available" note) and now shows the account's pending status after registering instead of silently doing nothing. 9 new tests, verified live in a browser (register → pending → admin approves via the real UI → login succeeds).
+
+**Still open:** Stalwart integration-vs-cutover — a human decision, not something to build around. See `priority-review.md` §12.3.
 
 ---
 
@@ -309,7 +311,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 
 1. ~~**M2e** radio transport crypto~~ ✅ (over-air PASS 2026-09-22)  
 2. **M3** mesh/sim peer + shared sync adoption — sim ✅; hardware with Pocket firmware  
-3. **M4** identity depth — pairing codes + per-device revocation ✅ (slice 1); `ADMIN_APPROVAL`/admin-role + Stalwart decision open  
+3. **M4** identity depth — pairing codes + per-device revocation + `ADMIN_APPROVAL`/admin-role all ✅; Stalwart decision still open  
 4. **Hardware spikes (parallel):** MakerHawk GPIO; T-Deck Plus  
 5. **M1b Pi AP + TLS** when camp Wi‑Fi is the blocker  
 6. Then M5 → M6/M7  

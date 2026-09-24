@@ -40,7 +40,7 @@ Receiving a valid radio packet does **not** authorize:
 - Pocket radio identity is separate; linked via bind / pairing codes with revocation. **M4 ✅:** a signed-in user generates a 6-digit, 10-minute, single-use pairing code (`POST /api/auth/pairing/create`); a device redeems it (`POST /api/auth/pairing/redeem` or Waylink `PAIR_REDEEM`) with **no session and no password** — the code itself is the bounded-lifetime credential that's safe to send over an untrusted or radio-only path.  
 - **M6 ✅:** the same pairing codes now also authorize claiming Outpost infrastructure (`OUTPOST_CLAIM`, `server/services/auth/pairing.py`) — a human generates a code on Station, enters it on the Outpost's own Wi-Fi page, and the code is what proves intent before Station will `learn_route()` and start trusting that node's self-reported destination hash. Same trust model as device pairing (a human-provided code, not raw self-assertion), different redemption target (infrastructure has no username).  
 - Lost Pocket: `POST /api/dispatch/devices/unbind-one` revokes exactly that device (sibling devices keep working) — see [identity.md](identity.md).  
-- Disabled users: reject API and radio-authenticated app ops — **not implemented yet**; needs the `ADMIN_APPROVAL`/admin-role work noted in `identity.md`'s Deferred section.
+- **M4 ✅:** `ADMIN_APPROVAL` registration mode actually gates login now — a pending account (`approved_at IS NULL`) is created but issued no session, and `POST /api/auth/login` rejects it until an admin approves (`POST /api/auth/approve`, portal `/control.html`). The first account ever registered on a Station bootstraps as admin, auto-approved, so the mode can't deadlock a fresh Station.
 
 ---
 

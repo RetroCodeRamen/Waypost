@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
     status TEXT DEFAULT '',
     bio TEXT DEFAULT '',
     password_hash TEXT,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    approved_at REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -77,6 +80,18 @@ class Database:
         }
         if "password_hash" not in cols:
             self._conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        if "is_admin" not in cols:
+            self._conn.execute(
+                "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
+            )
+        if "approved_at" not in cols:
+            self._conn.execute("ALTER TABLE users ADD COLUMN approved_at REAL")
+            # Existing installs predate ADMIN_APPROVAL — grandfather every
+            # account already in the table rather than locking everyone out
+            # the moment this migration runs.
+            self._conn.execute(
+                "UPDATE users SET approved_at = strftime('%s','now') WHERE approved_at IS NULL"
+            )
 
     def close(self) -> None:
         self._conn.close()
@@ -91,13 +106,42 @@ class Database:
         display_name: str,
         *,
         password_hash: Optional[str] = None,
+        is_admin: bool = False,
+        approved_at: Optional[float] = None,
     ) -> dict[str, Any]:
         cur = self._conn.execute(
-            "INSERT INTO users (username, display_name, password_hash) VALUES (?, ?, ?)",
-            (username, display_name, password_hash),
+            "INSERT INTO users (username, display_name, password_hash, is_admin, approved_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (username, display_name, password_hash, int(is_admin), approved_at),
         )
         self._conn.commit()
         return self.get_user_by_id(cur.lastrowid)  # type: ignore[arg-type]
+
+    def count_users(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+        return int(row["n"])
+
+    def list_pending_users(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT id, username, display_name, created_at FROM users "
+            "WHERE approved_at IS NULL ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_admin(self, username: str, *, is_admin: bool) -> None:
+        self._conn.execute(
+            "UPDATE users SET is_admin = ? WHERE username = ? COLLATE NOCASE",
+            (int(is_admin), username),
+        )
+        self._conn.commit()
+
+    def approve_user(self, username: str, *, approved_at: float) -> Optional[dict[str, Any]]:
+        self._conn.execute(
+            "UPDATE users SET approved_at = ? WHERE username = ? COLLATE NOCASE AND approved_at IS NULL",
+            (approved_at, username),
+        )
+        self._conn.commit()
+        return self.get_user_by_username(username)
 
     def set_password_hash(self, username: str, password_hash: str) -> None:
         self._conn.execute(
@@ -127,7 +171,15 @@ class Database:
         existing = self.get_user_by_username(username)
         if existing:
             return existing
-        return self.create_user(username, display_name or username)
+        # Not the public self-registration path (that's AuthService.register,
+        # which is what ADMIN_APPROVAL actually gates) — callers here are
+        # trusted server-side flows (device bind, lab-user seeding) creating
+        # an operational record, so there's nothing to approve. These
+        # accounts also get no password_hash, so ADMIN_APPROVAL's real
+        # purpose (gating who can log in with a password) is untouched.
+        return self.create_user(
+            username, display_name or username, approved_at=time.time()
+        )
 
     def create_session(
         self, *, token: str, username: str, created_at: float, expires_at: float

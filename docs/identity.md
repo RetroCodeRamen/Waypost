@@ -1,12 +1,11 @@
 # Identity and presence
 
-**Status:** ADR [0003](adr/0003-identity.md) · **N2 ✅** username/password on Station (local stand-in before Stalwart) · **M4 (slice 1) ✅** pairing codes + per-device revocation.
+**Status:** ADR [0003](adr/0003-identity.md) · **N2 ✅** username/password on Station (local stand-in before Stalwart) · **M4 ✅** pairing codes + per-device revocation + `ADMIN_APPROVAL`/admin-role.
 
-**M4 scope note:** this slice deliberately shipped pairing codes and per-device
-revocation only — see `docs/roadmap.md`'s M4 section for what's still open
-(`ADMIN_APPROVAL` needs an admin-role concept that doesn't exist anywhere in
-the codebase yet; the Stalwart integration-vs-cutover decision is still
-undecided). Both are flagged there rather than half-built here.
+**M4 scope note:** the one remaining open item is the Stalwart integration-vs-cutover
+decision — a human call, not a build task (see `priority-review.md` §12). Everything
+else in M4's original acceptance shape (pairing, revocation, registration-mode UI,
+`ADMIN_APPROVAL`) is done.
 
 ---
 
@@ -49,7 +48,8 @@ Rollcall answers: **who exists, and who can I reach?**
 | Portal pairing-code create | Authenticated only; 6 digits, 10-minute TTL, single use |
 | Device pairing-code redeem | **No session required**; binds `node_id` to the code's owner, same flush-on-bind as direct bind |
 | Lost Pocket | `POST /api/dispatch/devices/unbind-one` revokes that device only; password change invalidates sessions (when implemented) |
-| Disabled user | Reject API and radio-authenticated app ops (needs the `ADMIN_APPROVAL`/admin-role work below — no `disabled` flag exists yet) |
+| Registration under `ADMIN_APPROVAL` | Account is created but issued no session; `POST /api/auth/login` rejects until an admin approves (`users.approved_at`) |
+| Admin approves a pending user | `POST /api/auth/approve` (admin-only; portal: `/control.html`); the first account ever registered on a Station bootstraps as admin and is auto-approved, so `ADMIN_APPROVAL` can never deadlock a fresh Station with no one able to approve anyone |
 
 ## Open questions
 
@@ -60,7 +60,7 @@ Rollcall answers: **who exists, and who can I reach?**
 
 ## Deferred
 
-- Full OIDC / Stalwart cutover  
-- **`ADMIN_APPROVAL` registration mode** — needs a `users.approved_at` column, a first-admin bootstrap, and an approval UI; none of that exists yet. `OPEN`/`INVITE_ONLY` are honest end-to-end (server + portal UI); `ADMIN_APPROVAL` correctly refuses to pretend it works ([roadmap.md](roadmap.md) M4)  
+- Full OIDC / Stalwart cutover — the one remaining M4 item, a human decision (`priority-review.md` §12)
 - Cross-Station identity ([federation-future.md](federation-future.md))  
 - Password over LoRa (forbidden by design)
+- `ensure_user`-created accounts (device binds, lab seeding) are auto-approved and never gated by `ADMIN_APPROVAL` — they get no password hash either way, so there's nothing for that mode to actually protect there; see `Database.ensure_user`'s docstring-equivalent comment for why this is safe, not a loophole

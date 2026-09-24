@@ -255,6 +255,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 if not u.get("password_hash"):
                     db.set_password_hash(uname, hash_password("waypost1"))
                     logger.info("seeded password for demo user %s (lab: waypost1)", uname)
+            # One lab admin so the Control page (ADMIN_APPROVAL) is testable
+            # without a separate real bootstrap-first-user flow in dev.
+            db.set_admin("aj", is_admin=True)
 
         logger.info(
             "Waypost API starting env=%s transport=%s auth_required=%s",
@@ -459,6 +462,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/corkboard.html")
         def portal_corkboard():
             return FileResponse(PORTAL_DIR / "corkboard.html")
+
+        @app.get("/control.html")
+        def portal_control():
+            return FileResponse(PORTAL_DIR / "control.html")
 
     return app
 

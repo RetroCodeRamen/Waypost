@@ -6,7 +6,9 @@
 
 Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md)
 
-**What changed since the earlier 2026-09-23 review:** M6 went from "sim only, first hardware attempt flaky" to **real standalone Outpost firmware, flashed and verified on hardware** — Heltec V3, Wi-Fi AP + Corkboard + genuine on-device Reticulum (microReticulum, not plaintext, not host-dependent). `OUTPOST_CLAIM` closed the loop that made this only partially useful before: Station can now actually `learn_route()` and reply to a claimed Outpost, reusing the M4 pairing-code system rather than inventing a new one — verified over a live HTTP round trip. That same pass also fixed a real latent bug in Pocket's own radio-pairing path (`PAIR_REDEEM` accepted a `transport_dest` but never called `learn_route`, so a first-time radio pairing couldn't have gotten its own reply). Both physical boards now carry a role-label OLED splash. **Net effect: "No Pocket/Outpost code" is no longer true** — Outpost code is real and hardware-proven; only Pocket (T-Deck) and MakerHawk-specific firmware remain genuinely not started. M4 is now down to exactly one undecided/unbuilt piece (see §8).
+**What changed since the earlier 2026-09-23 review:** M6 went from "sim only, first hardware attempt flaky" to **real standalone Outpost firmware, flashed and verified on hardware** — Heltec V3, Wi-Fi AP + Corkboard + genuine on-device Reticulum (microReticulum, not plaintext, not host-dependent). `OUTPOST_CLAIM` closed the loop that made this only partially useful before: Station can now actually `learn_route()` and reply to a claimed Outpost, reusing the M4 pairing-code system rather than inventing a new one — verified over a live HTTP round trip. That same pass also fixed a real latent bug in Pocket's own radio-pairing path (`PAIR_REDEEM` accepted a `transport_dest` but never called `learn_route`, so a first-time radio pairing couldn't have gotten its own reply). Both physical boards now carry a role-label OLED splash. **Net effect: "No Pocket/Outpost code" is no longer true** — Outpost code is real and hardware-proven; only Pocket (T-Deck) and MakerHawk-specific firmware remain genuinely not started.
+
+**Later the same day:** `ADMIN_APPROVAL` + admin-role — the recommendation from §8 below — got built. `users` gained `is_admin`/`approved_at`; the first account ever registered on a Station bootstraps as admin and auto-approves, so the mode can never deadlock a Station with nobody able to approve anyone; portal `/control.html` (formerly a nav placeholder) lists pending registrations with one-click approve; verified live in a browser end-to-end (register → pending → admin approves → login succeeds), plus 9 new tests. **M4 is now fully built; only the Stalwart-vs-SQLite decision remains, and it's a human call, not a build task** — the rest of this document's references to `ADMIN_APPROVAL` as unbuilt are now historical (kept for the build-order narrative in §6, §8) rather than current status; treat §1's tables as the live source of truth.
 
 ---
 
@@ -31,7 +33,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 115 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 122 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -41,13 +43,13 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | Outpost | Real firmware + real encryption + claiming all proven on Heltec V3; multi-hop relay *logic* is deliberately not hand-built (Reticulum's own Transport mode handles it) and the physical claim-over-real-LoRa step hasn't been run by a human yet; MakerHawk (the intended production SKU) has unverified GPIO and isn't confirmed ordered |
 | Delivery / offline | Durable per-device pending now (Wi‑Fi↔LoRa failover slice); still Dispatch-only — other apps (Postbox, Fieldbook) haven't adopted the shared queue states from `offline-sync.md` |
 | Signal | Lists radios / airtest / RNode security state; still no unified "Today" sync surface across apps |
-| Identity | Real username/password accounts (N2); pairing UX + revocation now real and dual-purpose (Pocket devices and Outposts); still no crypto device identity beyond that, no `ADMIN_APPROVAL`, and the Stalwart-vs-SQLite decision is still open |
+| Identity | Real username/password accounts (N2); pairing UX + revocation + `ADMIN_APPROVAL`/admin-role all real now (M4 fully built); still no crypto device identity beyond that, and the Stalwart-vs-SQLite decision is still open |
 | Pi / Waygate | Installer + HTTPS proven in containers; AP + openNDS (Waygate) staged but unrun on real hardware |
 | Home dashboard | Aggregates some counts; not a real "Today / sync" surface |
 
 ### Not started (architectural / planned)
 
-Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Groups/permissions subsystem · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Fieldbook · Atlas · Finder · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate) · `ADMIN_APPROVAL`/admin-role
+Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Groups/permissions subsystem · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Fieldbook · Atlas · Finder · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate)
 
 ---
 
@@ -66,7 +68,7 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 
 - **Hardware is now the pacing item for Pocket and Pi specifically, not Outpost anymore.** M1b and T-Deck-based M3 are still blocked purely on physical arrival. Outpost moved out of this category this session — real firmware exists and runs on Heltec V3; only the MakerHawk-specific build and the physical claim-over-air test remain hardware/human-gated.
 - **250-byte LoRa frames** still force compacted Dispatch payloads; easy to regress as more ops move to RNode.
-- **Identity** has real pairing/revocation now (M4 slice 1, reused for Outposts too), but still no crypto device identity beyond that, no `ADMIN_APPROVAL`, and the Stalwart decision is still open.
+- **Identity** has real pairing/revocation/`ADMIN_APPROVAL` now (M4 fully built, reused for Outposts too), but still no crypto device identity beyond that, and the Stalwart decision is still open.
 - **This document's own freeze condition is now stale-adjacent — more so than when this line was first written.** The roadmap's "no Atlas / Workshop / new portal apps until network depth advances" freeze predates M2e, M3-sim, *and* M6. All three have since landed. Whether "network depth" has now advanced enough to revisit the freeze is a call for the human, not this review — flagged here again so it isn't silently forgotten a second time.
 
 ---
@@ -81,7 +83,7 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 6. Groups as shared authz (rooms today ≠ Groups)
 7. Multi-hop Outpost path + Pocket-as-courier **on real hardware** — **partially done**: Outpost firmware is real and hardware-proven (M6), and Reticulum's own Transport mode handles multi-hop path discovery without app code; Pocket-as-courier still has no real hardware since T-Deck firmware doesn't exist
 8. Federation / home-Station assumptions (document only for now)
-9. `ADMIN_APPROVAL` registration mode + admin-role — no `users.approved_at`/`is_admin`, no admin routes/UI (new this refresh — the one clearly unbuilt piece of M4)
+9. ~~`ADMIN_APPROVAL` registration mode + admin-role~~ — **done, same day** (see header)
 
 ---
 
@@ -126,7 +128,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 115 passed as of this review
+- ~~Keep **radio regression** green~~ — 122 passed as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -137,7 +139,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - T-Deck Pocket communications foundation (Dispatch + queue + sync-to-Station) — **hardware in transit; sim (`PeerDispatchNode`) is ready to port once firmware exists**
 - ~~Outpost store-and-forward firmware~~ — **done on Heltec V3 (M6 ✅)**; MakerHawk-specific build still pending that hardware
 - Pocket↔Outpost↔Pocket / courier smoke — Outpost's half is ready; still blocked on real Pocket hardware
-- `ADMIN_APPROVAL` + admin-role — not started, software-only, **the one unbuilt piece of M4** (see §8)
+- ~~`ADMIN_APPROVAL` + admin-role~~ — **done** (M4 fully built now — see header)
 - Postbox progressive LoRa path — not started, no hardware dependency, software-only
 - Fieldbook progressive path — not started, software-only
 - Noticeboard ack + Beacon auth/propagation — not started, software-only
@@ -157,18 +159,23 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 ## 8. Recommended next milestone (ONE)
 
-### **Finish M4 — `ADMIN_APPROVAL` + admin-role**
-
-**Why this one:** M4's acceptance shape had four parts (below); three are now done. Pairing codes and revocation shipped in slice 1 and got real mileage this session (reused as-is for `OUTPOST_CLAIM`, proving the design generalizes). Registration-mode *display* logic (hiding/disabling "Create account" per mode) shipped alongside them. What's left — `ADMIN_APPROVAL` actually gating registration, and an admin-role concept to approve pending users — is the only remaining unbuilt piece, is software-only, and needs no hardware.
-
-**Explicitly not resolved by this recommendation — a human decision, not a build task:** Stalwart vs. SQLite for the account authority. M4's own scope says decide, don't do both halfway; this review still isn't the place to decide it. `ADMIN_APPROVAL`/admin-role works the same either way (it's about gating registration, not which store holds credentials), so it doesn't need to wait on that decision.
-
-**Acceptance shape:**
-1. ~~Pairing code flow~~ — **done**, and proven reusable (Pocket devices + Outpost claiming both use it).
+**M4 is done, same day as this line was written** — see the header. Its acceptance shape:
+1. ~~Pairing code flow~~ — **done**, proven reusable (Pocket devices + Outpost claiming both use it).
 2. ~~Revocation~~ — **done**.
-3. ~~Registration modes enforced in the portal UI~~ — **done** (`login.html` hides/disables per mode).
-4. `ADMIN_APPROVAL` actually gating new registrations (`users.approved_at`, or equivalent), plus a minimal admin-role concept (`is_admin` or similar) so *someone* can approve a pending user — **not built**. This is the recommended next slice.
-5. Stalwart decision — **separate, still open, needs the human** (unchanged from the prior review).
+3. ~~Registration modes enforced in the portal UI~~ — **done**.
+4. ~~`ADMIN_APPROVAL` gating registrations + admin-role~~ — **done**: first-ever account bootstraps as admin; `/control.html` approves the rest.
+5. Stalwart decision — **the only thing left, and it's a human call, not a build task.**
+
+### **Next up: Tier 2 software-only work (pick one)**
+
+With M4 build-complete, nothing left in the priority spine's hardware-free lane is a single obvious next step the way M4 was — it's genuinely a choice among independent Tier 2 items (§7), none blocking each other:
+
+- **Postbox progressive LoRa path** — extends the same progressive-retrieval pattern Dispatch already proved, no new design needed.
+- **Noticeboard ack + Beacon auth/propagation** — both apps exist as prototypes; this is depth, not new surface area.
+- **Groups/permissions core** — bigger and more foundational (rooms ≠ Groups is flagged as real debt in §5), but no other Tier 2 item depends on it yet, so it's not blocking to defer.
+- **Unified Today/sync dashboard** — the most user-visible of the four, pulls together state that already exists (Signal, Rollcall, per-app queues) rather than building new backend.
+
+This review doesn't pick one — they're independent enough that the choice is preference/priority, not dependency order. Also worth revisiting now, separately: **the app-catalog freeze** (§3, §11, §12.3) — it's been flagged as stale-adjacent twice now without a decision.
 
 **Out of scope:** anything that needs the Pi or T-Deck; full OIDC for third-party apps; the Stalwart cutover itself.
 
@@ -182,7 +189,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 | ~~Sync visibility (Signal/Today)~~ | Partially done — Signal shows it; a real Today view is still open |
 | ~~Device bind / reachability in Rollcall~~ | **Done** |
 | ~~Standalone Outpost firmware~~ | **Done on Heltec V3 (M6)** — real encryption, real hardware, not sim |
-| `ADMIN_APPROVAL` + admin-role | Now the only unbuilt piece of M4, and the only hardware-free item left in the priority spine — see §8 |
+| ~~`ADMIN_APPROVAL` + admin-role~~ | **Done** — M4 is now fully built except the Stalwart decision |
 
 ## 10. Roadmap moves — later
 
@@ -192,7 +199,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 | MakerHawk GPIO verify (spike) | Still blocked — hardware not confirmed ordered, unlike Pi/T-Deck |
 | Pi AP (M1b) | Software done; genuinely just waiting on the physical Pi now |
 | Commons / Locker depth | Already prototyped; networking > polish |
-| Fieldbook / rich Postbox | After `ADMIN_APPROVAL` closes M4 — but otherwise software-only, could move earlier if that stalls |
+| Fieldbook / rich Postbox | Tier 2, software-only, no longer blocked on anything — see §8's "next up" list |
 | Workshop / Arcade / Planner | Pocket platform Tier 4 |
 | Federation | Document only |
 
@@ -206,14 +213,14 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 ## 12. Decisions before more implementation
 
-1. ~~N1 is next~~ — done; ~~M4 is next~~ — mostly done; **`ADMIN_APPROVAL`/admin-role is next** per §8, unless the human wants to spend the hardware-blocked wait on other Tier 2 software items (Postbox/Fieldbook/Groups) instead.
+1. ~~N1 is next~~ — done; ~~M4 is next~~ — **done** (build-complete same day). **Next is a choice among independent Tier 2 software items** — see §8.
 2. **Heltec = dev transport; Reticulum/RNode is production** (ADR 0002) — no longer just a target, **proven over real LoRa, and now on Outpost's own standalone firmware too (M6)**.
 3. **Revisit the app-catalog freeze.** It was set when Tier 1 was open; Tier 1 has exited (sim-complete through M3, *and now real hardware through M6*). Options: lift it now that transport + mesh semantics + real Outpost hardware are all proven, keep it until M1b/T-Deck land, or redefine "network depth" explicitly. This review still doesn't decide it — flagging it a second time as the most consequential open call.
 4. **T-Deck Plus** remains the Pocket SKU; it's now physically in transit, not just a decision.
 5. When hardware arrives: MakerHawk GPIO verify *before* writing Outpost product firmware (unchanged) — note the Heltec V3 firmware is already a proven reference to adapt from, not a from-scratch job.
 6. ~~Commit the uncommitted M1b work~~ — **done, along with all of M6, as of this refresh.**
 7. Open: MakerHawk order/arrival timeline — unlike Pi and T-Deck, not yet confirmed in the handoff.
-8. **Stalwart vs. SQLite** — still open, still a human call, unchanged from the prior review. Doesn't block `ADMIN_APPROVAL`/admin-role.
+8. **Stalwart vs. SQLite** — still open, still a human call, unchanged from the prior review. The only thing left in M4; didn't block `ADMIN_APPROVAL`/admin-role, which is now done.
 
 ---
 

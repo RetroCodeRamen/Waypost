@@ -8,7 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.api.config import Settings
+from server.api.db import Database
 from server.api.main import create_app
+from server.services.auth.service import AuthService
 
 
 @pytest.fixture()
@@ -122,3 +124,155 @@ def test_production_has_no_lab_users(tmp_path: Path):
         r = c.post("/api/auth/login", json={"username": "aj", "password": "waypost1"})
         assert r.status_code == 401
         assert c.get("/trust.html").status_code == 200
+
+
+# -- M4: ADMIN_APPROVAL registration mode + admin role --
+
+# Service-level: no lab-seeded aj/bob (those only exist via the app's
+# lifespan), so the first registration in a fresh Database is genuinely
+# the first user — the bootstrap-admin path this exercises.
+
+
+@pytest.fixture()
+def auth(tmp_path: Path) -> AuthService:
+    db = Database(tmp_path / "test.db")
+    return AuthService(db)
+
+
+def test_first_user_bootstraps_as_admin_and_approved(auth: AuthService):
+    result = auth.register(
+        username="carol", password="secret123", registration_mode="ADMIN_APPROVAL"
+    )
+    assert "token" in result  # not pending — bootstrap admin skips approval
+    assert result["user"]["is_admin"] is True
+    assert result["user"]["approved"] is True
+
+
+def test_second_user_pending_under_admin_approval(auth: AuthService):
+    auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    result = auth.register(
+        username="dave", password="secret123", registration_mode="ADMIN_APPROVAL"
+    )
+    assert result.get("pending_approval") is True
+    assert "token" not in result
+    assert result["user"]["is_admin"] is False
+    assert result["user"]["approved"] is False
+
+    with pytest.raises(ValueError, match="pending"):
+        auth.login(username="dave", password="secret123")
+
+
+def test_approval_unblocks_login(auth: AuthService):
+    auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    auth.register(username="dave", password="secret123", registration_mode="ADMIN_APPROVAL")
+
+    pending = auth.list_pending_users()
+    assert [u["username"] for u in pending] == ["dave"]
+
+    approved = auth.approve_user("dave")
+    assert approved["approved"] is True
+
+    result = auth.login(username="dave", password="secret123")
+    assert "token" in result
+
+
+def test_approving_twice_rejected(auth: AuthService):
+    auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    auth.register(username="dave", password="secret123", registration_mode="ADMIN_APPROVAL")
+    auth.approve_user("dave")
+    with pytest.raises(ValueError, match="already approved"):
+        auth.approve_user("dave")
+
+
+def test_open_and_invite_only_modes_do_not_require_approval(auth: AuthService):
+    result = auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    assert "token" in result
+    # Second user, so not the bootstrap-admin path
+    result2 = auth.register(username="dave", password="secret123", registration_mode="OPEN")
+    assert "token" in result2
+    assert result2["user"]["approved"] is True
+
+
+# -- HTTP-level: routes, admin-only gating --
+
+
+@pytest.fixture()
+def admin_approval_client(tmp_path: Path):
+    settings = Settings(
+        waypost_data_dir=tmp_path,
+        waypost_sqlite_path=tmp_path / "test.db",
+        waypost_transport="mock",
+        waypost_env="production",  # no aj/bob lab seeding
+        waypost_registration_mode="ADMIN_APPROVAL",
+    )
+    app = create_app(settings)
+    with TestClient(app) as c:
+        yield c
+
+
+def test_http_register_pending_then_approve_flow(admin_approval_client: TestClient):
+    c = admin_approval_client
+    # First registrant bootstraps as admin, gets a session immediately.
+    admin_reg = c.post(
+        "/api/auth/register", json={"username": "carol", "password": "secret123"}
+    )
+    assert admin_reg.status_code == 200
+    admin_token = admin_reg.json()["token"]
+
+    # Second registrant is gated.
+    pending_reg = c.post(
+        "/api/auth/register", json={"username": "dave", "password": "secret123"}
+    )
+    assert pending_reg.status_code == 200
+    assert pending_reg.json()["pending_approval"] is True
+    assert "token" not in pending_reg.json()
+
+    blocked_login = c.post(
+        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+    )
+    assert blocked_login.status_code == 401
+
+    # A non-admin can't see or approve pending users.
+    c.post("/api/auth/login", json={"username": "dave", "password": "secret123"})
+    forbidden = c.get(
+        "/api/auth/pending", headers={"Authorization": f"Bearer {admin_token}bad"}
+    )
+    assert forbidden.status_code == 401  # bad token entirely
+
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    listed = c.get("/api/auth/pending", headers=admin_headers)
+    assert listed.status_code == 200
+    assert [u["username"] for u in listed.json()["users"]] == ["dave"]
+
+    approve = c.post(
+        "/api/auth/approve", json={"username": "dave"}, headers=admin_headers
+    )
+    assert approve.status_code == 200
+
+    now_login = c.post(
+        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+    )
+    assert now_login.status_code == 200
+
+
+def test_non_admin_cannot_reach_admin_routes(admin_approval_client: TestClient):
+    c = admin_approval_client
+    c.post("/api/auth/register", json={"username": "carol", "password": "secret123"})
+    dave_reg = c.post(
+        "/api/auth/register", json={"username": "dave", "password": "secret123"}
+    )
+    assert dave_reg.json()["pending_approval"] is True
+
+    admin_headers = {
+        "Authorization": "Bearer "
+        + c.post(
+            "/api/auth/login", json={"username": "carol", "password": "secret123"}
+        ).json()["token"]
+    }
+    c.post("/api/auth/approve", json={"username": "dave"}, headers=admin_headers)
+    dave_token = c.post(
+        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+    ).json()["token"]
+
+    r = c.get("/api/auth/pending", headers={"Authorization": f"Bearer {dave_token}"})
+    assert r.status_code == 403

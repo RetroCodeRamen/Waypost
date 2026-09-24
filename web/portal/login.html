@@ -111,9 +111,8 @@
             hint.hidden = false;
             hint.textContent = "Registration is invite-only — ask an existing member.";
           } else if (m.mode === "ADMIN_APPROVAL") {
-            btn.disabled = true;
             hint.hidden = false;
-            hint.textContent = "Registration requires admin approval (not yet available on this Station).";
+            hint.textContent = "Registration requires admin approval — you can sign up, but won't be able to sign in until an admin approves your account.";
           }
         })
         .catch(function () {});
@@ -138,6 +137,7 @@
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         err.textContent = "";
+        err.style.color = "";
         var body = {
           username: document.getElementById("username").value.trim(),
           password: document.getElementById("password").value,
@@ -161,6 +161,12 @@
           .then(function (res) {
             if (!res.ok) {
               err.textContent = (res.body && res.body.detail) || "Sign-in failed";
+              return;
+            }
+            if (res.body.pending_approval) {
+              err.style.color = "var(--muted, #666)";
+              err.textContent = "Account created — waiting on admin approval before you can sign in.";
+              setMode("login");
               return;
             }
             if (res.body.token) {
