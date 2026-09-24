@@ -94,6 +94,10 @@ ser.setDTR(False); ser.setRTS(True); time.sleep(0.3); ser.setRTS(False)
 real Reticulum identity + destination, persisted in flash; `BOARD_SYNC`
 round trip to Station.
 
+**In (2026-09-24):** local DNS (`out.post` → `192.168.4.1`) via ESP32
+`DNSServer` + DHCP DNS offer; **Waygate** splash at `/` with Continue →
+`/board` (Corkboard). Captive-portal probe URLs redirect to the splash.
+
 **Out, deliberately:** multi-hop relay logic (microReticulum's own
 Transport mode handles Reticulum-level path discovery for free —
 `transport_enabled(true)` is set, so this board already relays

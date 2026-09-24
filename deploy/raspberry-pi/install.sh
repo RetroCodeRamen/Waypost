@@ -168,6 +168,7 @@ WAYPOST_ENV=production
 WAYPOST_DATA_DIR=$DATA/data
 WAYPOST_SQLITE_PATH=$DATA/data/waypost.db
 WAYPOST_SECRET_KEY=$(openssl rand -hex 32)
+WAYPOST_DOMAIN=way.post
 WAYPOST_SSID=$SSID
 WAYPOST_RADIO_REGION=$COUNTRY
 WAYPOST_TRANSPORT=$TRANSPORT
@@ -293,6 +294,8 @@ fi
 
 # ---------------------------------------------------------------------------
 step "Done"
-note "Portal (after joining $SSID):  https://waypost.home.arpa/"
-note "First visit on a new device:   http://waypost.home.arpa/  → trust page → install certificate"
+note "Portal (after joining $SSID):  https://way.post/"
+note "First visit on a new device:   Waygate splash → trust cert → sign in"
+note "Manual entry if no popup:      http://way.post/"
+note "Aliases still work:            waypost.home.arpa, waypost, 10.42.0.1"
 note "Logs: journalctl -u waypost-api -u caddy -f"

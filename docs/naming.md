@@ -15,7 +15,9 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 | **Waypost Pocket** | The LilyGO T-Deck handheld computer — a Cybiko-like personal device, not a LoRa terminal. Also a **mobile courier**: can carry/forward messages for peers when Station is unreachable. |
 | **Waypost Outpost** | Autonomous ESP32 LoRa hop / coverage node (e.g. MakerHawk ESP32 LoRa V3). Always-on courier; not a Station and not a Pocket. |
 | **Waylink** | The logical communications / transport layer. First implementation: Reticulum/LXMF. Transport-agnostic. |
-| **Waygate** | Captive portal and browser entry point when joining Waypost Wi-Fi. |
+| **Waygate** | Captive portal splash when joining Waypost Wi‑Fi — explains off‑grid / local-only access, then Continue to trust + sign-in (Station) or the Corkboard (Outpost). |
+| **way.post** | Local DNS name for the Station portal when connected to `WAYPOST` Wi‑Fi (Pi dnsmasq → `10.42.0.1`). Not a public website — only resolves on-network. |
+| **out.post** | Local DNS name for an Outpost Corkboard when connected to `WAYPOST-OUTPOST` Wi‑Fi (Outpost AP → `192.168.4.1`). Same local-only rules as `way.post`. |
 
 ---
 

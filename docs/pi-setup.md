@@ -67,17 +67,17 @@ Wi‑Fi password: `sudo cat /etc/waypost/wifi-psk`.
 
 ## 4. First visit from a phone or laptop
 
-1. Join `WAYPOST`.
-2. Open `http://waypost.home.arpa/` → you land on **Trust this Station**.
-3. Download and install the certificate (per-device steps are on the page); compare the fingerprint with `cat /etc/waypost/public/waypost-ca.sha256` on the Pi.
-4. The page detects the trust and moves you to `https://waypost.home.arpa/`. Register an account there — the same username/password signs in on Waypost Pocket.
+1. Join `WAYPOST`. Your phone should pop a **Waygate** welcome page (off‑grid notice). If it doesn’t, open `http://way.post/` manually.
+2. Tap **Continue** → **Trust this Station** (install the local certificate once per device). Compare the fingerprint with `cat /etc/waypost/public/waypost-ca.sha256` on the Pi.
+3. Sign in or register on the portal at `https://way.post/`. (The Pi’s dnsmasq on `10.42.0.1` resolves `way.post` only on this Wi‑Fi; `waypost.home.arpa` and `waypost` still work as aliases.)
 
 ## Notes and limits
 
 - **Clock:** the Pi has no battery clock by default and boots with the time it last shut down. Certificates last 30 days so a lagging clock still works, but a Pi that was off for more than ~3 weeks can serve certs phones reject. Until [network-time](network-time.md) lands, set the time on boot if needed: `sudo date -s "2026-09-22 17:00"`, then `sudo systemctl restart caddy`. A Pi 5 RTC battery avoids this.
 - **Production mode:** `WAYPOST_ENV=production` means no demo users (`aj`/`bob`/`waypost1` are lab-only), and session cookies are HTTPS-only.
 - **One radio:** the udev rule maps the first supported USB radio to `/dev/waypost-lora`. For several radios, pin by `ID_PATH` (see `deploy/raspberry-pi/udev/99-waypost-lora.rules`).
-- **Not yet:** Waygate captive portal (openNDS), backups, firewall rules.
+- **Waygate:** HTTP splash + captive redirects ship in Caddy/dnsmasq templates; full openNDS session gating is still future work.
+- **Not yet:** openNDS network-level login, backups, firewall rules.
 
 ## Troubleshooting
 

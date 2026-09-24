@@ -21,18 +21,19 @@ Configs live under `deploy/raspberry-pi/`. Compose under `docker-compose.yml` / 
 
 ## Local DNS
 
-- Canonical suffix: `waypost.home.arpa` (avoid `.local` / mDNS clash)  
-- Short name: `waypost` → portal where practical  
-- Examples: `postbox.waypost.home.arpa`, `fieldbook.waypost.home.arpa`, …
+- **Portal URL (user-facing):** `https://way.post/` — resolved by the Station’s dnsmasq (`10.42.0.1`) for clients on `WAYPOST` Wi‑Fi only. `.post` is a real public TLD; off-network browsers use public DNS and will not reach your Pi. That is intentional: the name is a local alias, like a captive-portal hostname.
+- **Technical suffix:** `waypost.home.arpa` (avoid `.local` / mDNS clash) — still wired as aliases in dnsmasq and Caddy.
+- **Short name:** `waypost` → same portal.
+- **Service hostnames (future):** `postbox.waypost.home.arpa`, `fieldbook.waypost.home.arpa`, …
 
 Do not hardcode service IPs in applications.
 
 ## Default Wi-Fi
 
 - SSID: `WAYPOST` (configurable)  
-- Captive portal: **Waygate** (openNDS)  
+- Captive portal: **Waygate** — HTTP splash at `/waygate.html` plus dnsmasq wildcard DNS and Caddy redirects for OS captive probes. Full **openNDS** session gating is still to add.
 
-After captive mini-browser auth, tell users the permanent URL: `http://waypost.home.arpa/` lands on **Trust this Station** (CA download), which forwards to `https://waypost.home.arpa/` once the device trusts the CA. Plain HTTP serves nothing else.
+After joining Wi‑Fi, phones should land on **Waygate** (off‑grid welcome) → **Trust this Station** (CA download) → sign in at `https://way.post/`. Plain HTTP serves Waygate, trust, static assets, and CA files only.
 
 ## Data directories
 

@@ -24,7 +24,7 @@
 	reverse_proxy 127.0.0.1:8000
 }
 
-https://waypost.home.arpa, https://waypost, https://10.42.0.1 {
+https://way.post, https://www.way.post, https://waypost.home.arpa, https://waypost, https://10.42.0.1 {
 	tls {
 		issuer internal {
 			lifetime 30d
@@ -44,6 +44,13 @@ http:// {
 		header Content-Type text/plain
 		file_server
 	}
+	@captive path /generate_204 /gen_204 /hotspot-detect.html /library/test/success.html /connecttest.txt /ncsi.txt /success.txt /canonical.html /redirect
+	handle @captive {
+		redir * /waygate.html 302
+	}
+	handle /waygate.html {
+		import waypost_api
+	}
 	handle /trust.html {
 		import waypost_api
 	}
@@ -51,6 +58,6 @@ http:// {
 		import waypost_api
 	}
 	handle {
-		redir * /trust.html?next={http.request.uri.path} 302
+		redir * /waygate.html 302
 	}
 }

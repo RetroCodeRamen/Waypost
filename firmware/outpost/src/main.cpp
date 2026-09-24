@@ -24,6 +24,7 @@
 #include <vector>
 
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Wire.h>
@@ -46,6 +47,14 @@
 #ifndef WAYPOST_AP_SSID
 #define WAYPOST_AP_SSID "WAYPOST-OUTPOST"
 #endif
+#ifndef WAYPOST_AP_DOMAIN
+#define WAYPOST_AP_DOMAIN "out.post"
+#endif
+
+static const IPAddress OUTPOST_AP_IP(192, 168, 4, 1);
+static const IPAddress OUTPOST_AP_GATEWAY(192, 168, 4, 1);
+static const IPAddress OUTPOST_AP_NETMASK(255, 255, 255, 0);
+static const IPAddress OUTPOST_DHCP_START(192, 168, 4, 2);
 
 static const char* STATION_NODE_ID = "station";        // shared/... peer.py STATION_DEST
 static const char* WAYPOST_APP_NAME = "waypost";        // must match server/transports/reticulum.py
@@ -74,6 +83,7 @@ static RNS::Identity g_identity({RNS::Type::NONE});
 static RNS::Destination g_destination({RNS::Type::NONE});
 
 static WebServer g_server(80);
+static DNSServer g_dns;
 
 // OLED role splash — RST_OLED/SDA_OLED/SCL_OLED come from the board's own
 // pins_arduino.h (verified against real hardware 2026-09-23: 21/17/18),
@@ -415,12 +425,72 @@ static void claim_with_station(const std::string& code) {
 
 // -- Web UI --
 
-static void send_redirect_home() {
-  g_server.sendHeader("Location", "/", true);
+static const char* OUTPOST_GATE_COOKIE = "Waygate=1";
+
+static bool gate_cookie_set() {
+  if (!g_server.hasHeader("Cookie")) return false;
+  return g_server.header("Cookie").indexOf(OUTPOST_GATE_COOKIE) >= 0;
+}
+
+static void send_redirect(const char* path) {
+  g_server.sendHeader("Location", path, true);
   g_server.send(303, "text/plain", "");
 }
 
-static void handle_root() {
+static void send_redirect_home() {
+  send_redirect("/board");
+}
+
+static String gate_page_html() {
+  String body = "<!doctype html><html><head><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                "<title>Waygate — The Outpost</title>"
+                "<style>body{font-family:sans-serif;max-width:640px;margin:2rem auto;"
+                "padding:0 1rem;background:#faf7f0;color:#222;line-height:1.45}"
+                ".panel{border:1px solid #d8cfae;border-radius:10px;padding:1.1rem 1.2rem;"
+                "background:#fffdf7;box-shadow:0 2px 8px rgba(0,0,0,.04)}"
+                ".eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.12em;"
+                "text-transform:uppercase;color:#666;margin:0 0 .35rem}"
+                ".callout{border-left:4px solid #2f6b4f;background:#f3f7f2;"
+                "padding:.75rem .9rem;margin:1rem 0;border-radius:6px;font-size:.95rem}"
+                ".callout strong{display:block;margin-bottom:.2rem}"
+                "ul{color:#555;font-size:.92rem;padding-left:1.2rem;margin:0 0 1rem}"
+                ".continue{display:inline-block;padding:.75rem 1.2rem;border-radius:8px;"
+                "background:#2f6b4f;color:#fff;font-weight:600;text-decoration:none}"
+                ".foot{margin-top:1rem;font-size:.85rem;color:#666}"
+                "code{font-family:monospace;font-size:.82rem}</style></head><body>";
+  body += "<div class='panel'>";
+  body += "<p class='eyebrow'>Waygate</p>";
+  body += "<h1 style='margin:.2rem 0 .5rem'>The Outpost</h1>";
+  body += "<p>You joined <strong>" + String(WAYPOST_AP_SSID) +
+          "</strong> — a local off&#8209;grid Wi&#8209;Fi network.</p>";
+  body += "<div class='callout'><strong>No public internet</strong>"
+          "This radio only serves the Outpost bulletin board and syncs with "
+          "Station over LoRa when a path exists. Your messages stay on this mesh.</div>";
+  body += "<ul><li>Leave public trail notes for others nearby.</li>"
+          "<li>Notes sync to Station when radio links up.</li>"
+          "<li>No account needed to read or post here.</li></ul>";
+  body += "<a class='continue' href='/continue'>Continue to the board</a>";
+  body += "<p class='foot'>Open <code>http://" + String(WAYPOST_AP_DOMAIN) +
+          "/</code> or <code>http://192.168.4.1/</code> (not https).</p>";
+  body += "</div></body></html>";
+  return body;
+}
+
+static void handle_gate() {
+  if (gate_cookie_set()) {
+    send_redirect("/board");
+    return;
+  }
+  g_server.send(200, "text/html", gate_page_html());
+}
+
+static void handle_gate_continue() {
+  g_server.sendHeader("Set-Cookie", String(OUTPOST_GATE_COOKIE) + "; Path=/; Max-Age=43200");
+  send_redirect("/board");
+}
+
+static void handle_board() {
   String body = "<!doctype html><html><head><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                 "<title>The Outpost</title>"
@@ -527,7 +597,7 @@ static void handle_claim_get() {
   body += "<button type='submit'>Claim</button></form>";
   body += "<p class='hash'>This Outpost's own address: " +
           String(g_destination.hash().toHex().c_str()) + "</p>";
-  body += "<p><a href='/'>Back to the board</a></p>";
+  body += "<p><a href='/board'>Back to the board</a></p>";
   body += "</body></html>";
   g_server.send(200, "text/html", body);
 }
@@ -544,19 +614,53 @@ static void handle_claim_post() {
   g_server.send(303, "text/plain", "");
 }
 
+static void handle_captive_probe() {
+  // iOS/Android captive checks need a portal page, not a bare redirect.
+  if (gate_cookie_set()) {
+    send_redirect("/board");
+    return;
+  }
+  g_server.send(200, "text/html", gate_page_html());
+}
+
 static void web_setup() {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(WAYPOST_AP_SSID);
+  WiFi.setSleep(WIFI_PS_NONE);
+  // Last arg is DNS offered to DHCP clients — required for out.post resolution on phones.
+  if (!WiFi.softAPConfig(OUTPOST_AP_IP, OUTPOST_AP_GATEWAY, OUTPOST_AP_NETMASK,
+                         OUTPOST_DHCP_START, OUTPOST_AP_IP)) {
+    Serial.println("AP config failed — DNS may not be offered to clients");
+  }
+  if (!WiFi.softAP(WAYPOST_AP_SSID)) {
+    Serial.println("AP start failed");
+  }
+  // Wildcard catches out.post, www.out.post, and captive-portal probe hostnames.
+  g_dns.start(53, "*", OUTPOST_AP_IP);
   Serial.print("AP up: ");
   Serial.print(WAYPOST_AP_SSID);
   Serial.print(" @ ");
-  Serial.println(WiFi.softAPIP());
+  Serial.print(WiFi.softAPIP());
+  Serial.print(" — open http://");
+  Serial.print(WAYPOST_AP_DOMAIN);
+  Serial.println("/");
 
-  g_server.on("/", HTTP_GET, handle_root);
+  g_server.on("/", HTTP_GET, handle_gate);
+  g_server.on("/continue", HTTP_GET, handle_gate_continue);
+  g_server.on("/board", HTTP_GET, handle_board);
   g_server.on("/post", HTTP_POST, handle_post);
   g_server.on("/refresh", HTTP_GET, handle_refresh);
   g_server.on("/claim", HTTP_GET, handle_claim_get);
   g_server.on("/claim", HTTP_POST, handle_claim_post);
+  g_server.on("/generate_204", HTTP_GET, handle_captive_probe);
+  g_server.on("/gen_204", HTTP_GET, handle_captive_probe);
+  g_server.on("/hotspot-detect.html", HTTP_GET, handle_captive_probe);
+  g_server.on("/library/test/success.html", HTTP_GET, handle_captive_probe);
+  g_server.on("/connecttest.txt", HTTP_GET, handle_captive_probe);
+  g_server.on("/ncsi.txt", HTTP_GET, handle_captive_probe);
+  g_server.on("/success.txt", HTTP_GET, handle_captive_probe);
+  g_server.on("/canonical.html", HTTP_GET, handle_captive_probe);
+  g_server.on("/redirect", HTTP_GET, handle_captive_probe);
+  g_server.onNotFound([]() { send_redirect("/"); });
   g_server.begin();
 }
 
@@ -573,13 +677,17 @@ void setup() {
   oled_init();
   oled_splash();
 
-  reticulum_setup();
   web_setup();
+  reticulum_setup();
 
   Serial.println("Waypost Outpost ready.");
 }
 
 void loop() {
-  g_server.handleClient();
+  // Web + DNS first — reticulum.loop() can run long while waiting on LoRa.
+  for (int i = 0; i < 4; i++) {
+    g_dns.processNextRequest();
+    g_server.handleClient();
+  }
   g_reticulum.loop();
 }

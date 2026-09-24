@@ -63,7 +63,7 @@ def user_from_addr(addr: str, domain: str = DEFAULT_MAIL_DOMAIN) -> Optional[str
     if "@" not in addr:
         return addr
     local, _, host = addr.partition("@")
-    if host and host not in (domain, "waypost.home.arpa", "localhost"):
+    if host and host not in (domain, "way.post", "waypost.home.arpa", "localhost"):
         pass
     return local or None
 
