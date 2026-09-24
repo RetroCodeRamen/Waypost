@@ -181,7 +181,7 @@ With M4 build-complete, nothing left in the priority spine's hardware-free lane 
 - ~~**Fieldbook progressive path**~~ — **done 2026-09-24**. Was genuinely empty (package marker only — verified before building, per the note below). Now `server/services/fieldbook/`, HTTP + four Waylink ops, portal `fieldbook.html`, 17 tests.
 - ~~**Groups/permissions core**~~ — **done 2026-09-24**, see header. Was genuinely unstarted (unlike the three false alarms above) — now the one authz model, integrated with Locker + Dispatch.
 - ~~**Unified Today/sync dashboard**~~ — **done 2026-09-24**, see header. Was already ~80% there; the "not started" label was wrong.
-- **Beacon propagation through Outposts** — deliberately cut from the auth-fix slice; store-and-forward relay for Beacon the way Dispatch's courier queue already works, real scope of its own.
+- ~~**Beacon propagation through Outposts**~~ — **done (2026-09-24)**: `BEACON_SYNC` (Station, security-fixed to require a claimed Outpost and outpost-attributed authorship) + the Outpost firmware's own walk-up `/beacon` push form, push-only by design. Flashed and boots clean; the real-LoRa round trip itself still needs a human with both radio boards.
 - **Extend Groups scoping to Noticeboard/Commons** — same injected-lookup pattern as Locker, not built because M8's exit criteria only asked for ≥2 services.
 
 **Before picking the next one, verify the item against the actual code first** — this same review nearly recommended re-building already-finished Postbox work. Two stale-claim near-misses in one project (this one, and the `ADMIN_APPROVAL` staleness the previous refresh caught) is enough to treat every "not started" line in this document as a hypothesis to check, not a fact.

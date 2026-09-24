@@ -119,15 +119,25 @@ it's been claimed (walk-up or auto) via a `claimed` field on its own
 periodic `BOARD_SYNC` reply (also new: this now runs automatically every
 5 min, not just when a human visits `/refresh`).
 
+**In (2026-09-24, later still):** the emergency Beacon button — `/beacon`,
+a walk-up web form (no login, same trust posture as `/post`) to report a
+real emergency. Deliberately **push-only**: there's no walk-up "clear,"
+since anonymously silencing someone else's real active alert is a very
+different risk than anonymously reporting one — clearing stays a
+Station-side action. Queues locally, tries to send immediately on submit,
+and retries on the same 5-min timer as `BOARD_SYNC` if no path exists
+yet. `BeaconStore` dedups by `mid`, so a retry after an unconfirmed send
+never creates a duplicate beacon.
+
 **Out, deliberately:** multi-hop relay logic (microReticulum's own
 Transport mode handles Reticulum-level path discovery for free —
 `transport_enabled(true)` is set, so this board already relays
 announces/paths for others even though this firmware writes none of that
-logic itself); private Dispatch relay; the emergency Beacon button; flash
-persistence of the note board itself (in-RAM ring buffer, capped at 40
-notes, oldest evicted first — the Reticulum *identity* does persist, see
-below); un-claiming or transferring an already-claimed Outpost to a
-different Station.
+logic itself); private Dispatch relay; a walk-up Beacon *clear* (see
+above); flash persistence of the note board or Beacon queue (in-RAM
+only, capped, oldest evicted first for notes — the Reticulum *identity*
+does persist, see below); un-claiming or transferring an already-claimed
+Outpost to a different Station.
 
 ## Known limitations (hardware-verified 2026-09-23)
 
@@ -153,15 +163,17 @@ different Station.
   and would silently reformat the filesystem (wiping the identity) on
   every single boot. Confirmed empirically before this was found: the
   destination hash changed on every reset until fixed.
-- **Auto-claim (2026-09-24) compiles clean (`pio run`) and is verified
-  live against a real Reticulum stack — TCP lab, not real LoRa, and not
-  yet flashed to the physical Outpost** (`tools/radio/auto_claim_airtest.py`
-  proves the Station-side announce handler end-to-end: a fake outpost
-  peer announces with the marker, Station claims it with the correct
-  hash, all through the real `rns` package, no mocks). The button/OLED
-  and periodic-announce/auto-sync pieces are new code on real hardware
-  that hasn't been power-cycled yet — reflash and a physical check (does
-  the button actually toggle, does the OLED status show correctly, does
-  a real over-LoRa announce reach a real Station) are the next steps
-  before calling this hardware-verified the way the rest of this
-  document's claims are.
+- **Auto-claim + the emergency Beacon button (2026-09-24) are flashed to
+  the physical Outpost (`/dev/ttyUSB1`) and boot cleanly** — identity
+  hash unchanged across both reflashes (`0e2147d6a17a5113c0dd70f50c192b5b`),
+  canary passes, no new boot-time errors from either feature. Auto-claim's
+  Station-side half is verified against a real Reticulum stack, not just
+  sim — TCP lab, `tools/radio/auto_claim_airtest.py` (a fake outpost peer
+  announces with the marker, Station claims it with the correct hash, all
+  through the real `rns` package, no mocks). **Still not verified: the
+  physical button press, the OLED status render, and the real-LoRa half
+  of both features end to end** (needs a human at the board, and a second
+  radio — Station's own RNode board wasn't connected to this machine when
+  this was built, so the full Outpost→air→Station round trip for either
+  feature hasn't been exercised over real LoRa yet, only over TCP for the
+  parts that don't need the physical firmware at all).

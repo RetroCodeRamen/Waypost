@@ -318,6 +318,60 @@ RNS::Bytes encode_outpost_claim_request(
   return out;
 }
 
+RNS::Bytes encode_beacon_sync_request(
+    const char* src,
+    const char* dst,
+    const std::string& mid,
+    const std::string& rid,
+    uint32_t ttl,
+    const std::vector<OutgoingBeaconPush>& pending) {
+  RNS::Bytes out;
+  CborWriter w(out);
+
+  w.write_map_header(11);
+  w.write_text("v");
+  w.write_uint(1);
+  w.write_text("mid");
+  w.write_text(mid);
+  w.write_text("rid");
+  w.write_text(rid);
+  w.write_text("src");
+  w.write_text(src);
+  w.write_text("dst");
+  w.write_text(dst);
+  w.write_text("svc");
+  w.write_text("BEACON");
+  w.write_text("op");
+  w.write_text("BEACON_SYNC");
+  w.write_text("flags");
+  w.write_uint(1);  // Flags.REQUEST
+  w.write_text("ts");
+  w.write_uint(0);
+  w.write_text("ttl");
+  w.write_uint(ttl);
+  w.write_text("payload");
+
+  // payload: {pending: [{op: "push", mid, title, body, severity}, ...]}
+  w.write_map_header(1);
+  w.write_text("pending");
+  w.write_array_header(pending.size());
+  for (const auto& p : pending) {
+    w.write_map_header(5);
+    w.write_text("op");
+    w.write_text("push");
+    w.write_text("mid");
+    w.write_text(p.mid);
+    w.write_text("title");
+    w.write_text(p.title);
+    w.write_text("body");
+    w.write_text(p.body);
+    w.write_text("severity");
+    w.write_text(p.severity);
+  }
+
+  return out;
+}
+
 std::string new_hex_id() {
   uint8_t raw[8];
 #ifdef ARDUINO

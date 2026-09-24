@@ -56,6 +56,28 @@ RNS::Bytes encode_outpost_claim_request(
     const std::string& own_transport_dest,
     const char* display_name);  // nullptr => CBOR null
 
+// BEACON_SYNC request: upload queued walk-up emergency pushes. Push-only,
+// deliberately — see main.cpp's comment on why this firmware never exposes
+// a walk-up "clear" (anonymously silencing a real active alert is a
+// materially different risk than anonymously reporting one). Station
+// attributes every ingested push to this Outpost's own claimed identity,
+// never to anything in the payload (server/services/beacon/service.py's
+// sync()) — no author field needed here.
+struct OutgoingBeaconPush {
+  std::string mid;
+  std::string title;
+  std::string body;
+  std::string severity;  // "emergency" | "urgent" | "advisory"
+};
+
+RNS::Bytes encode_beacon_sync_request(
+    const char* src,
+    const char* dst,
+    const std::string& mid,
+    const std::string& rid,
+    uint32_t ttl,
+    const std::vector<OutgoingBeaconPush>& pending);
+
 // -- Decoding: pull what OutpostNode.sync_corkboard needs out of the reply --
 
 struct PendingNote {
@@ -83,6 +105,9 @@ struct SyncReplyResult {
 // returns true with result.error set. Reused as-is for OUTPOST_CLAIM
 // replies too — same ok/error/rid shape; `pending` just stays empty since
 // a claim reply has no "pending" key, and unrecognized keys are skipped.
+// Also reused as-is for BEACON_SYNC replies (`{ok, ingested, active}`) —
+// `ingested`/`active` are simply skipped as unrecognized keys; the walk-up
+// UI only needs to know whether the sync succeeded at all.
 bool decode_sync_reply(const uint8_t* data, size_t len, SyncReplyResult& result);
 
 }  // namespace waylink

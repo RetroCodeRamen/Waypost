@@ -66,6 +66,15 @@ static const size_t MAX_BODY = 500;       // server/services/corkboard/constants
 static const size_t MAX_SIGNATURE = 80;   // ...MAX_SIGNATURE
 static const size_t MAX_NOTES = 40;       // in-RAM ring buffer cap, this slice only
 
+// -- Beacon: walk-up emergency push, push-only (no walk-up clear — see the
+// comment on handle_beacon_post() for why). Same in-RAM-only, no-flash-
+// persistence scope decision as the note board above: a reboot before
+// syncing loses an unsent report, same risk profile Corkboard already
+// accepts, not a new tradeoff introduced here.
+static const size_t MAX_BEACON_TITLE = 120;   // server/services/beacon/constants.py MAX_TITLE
+static const size_t MAX_BEACON_BODY = 2000;   // ...MAX_BODY
+static const size_t MAX_BEACON_PENDING = 10;  // in-RAM cap
+
 // -- Auto-claim: Station can claim this Outpost from a genuine Reticulum
 // announce alone, no walk-up pairing code — see server/transports/
 // reticulum.py's AUTO_CLAIM_MARKER (must match exactly) and
@@ -94,6 +103,9 @@ struct Note {
 
 static std::vector<Note> g_notes;
 static String g_status = "Not synced with Station yet.";
+
+static std::vector<waylink::OutgoingBeaconPush> g_beacon_pending;
+static String g_beacon_status = "No emergency reported from this Outpost.";
 
 static RNS::Reticulum g_reticulum({RNS::Type::NONE});
 static RNS::Interface g_lora_interface({RNS::Type::NONE});
@@ -472,6 +484,32 @@ static void refresh_board() {
   }
 }
 
+// -- Beacon: upload queued walk-up emergency pushes --
+
+static void sync_beacon() {
+  if (g_beacon_pending.empty()) return;  // nothing to send, don't bother a round trip
+  RNS::Destination station_destination({RNS::Type::NONE});
+  if (!connect_to_station(station_destination, "Will retry.")) {
+    g_beacon_status = "Queued, but no path to Station yet — will retry. " + g_status;
+    return;
+  }
+
+  std::string mid = waylink::new_hex_id();
+  std::string rid = waylink::new_hex_id();
+  RNS::Bytes payload = waylink::encode_beacon_sync_request(
+      WAYPOST_OUTPOST_ID, STATION_NODE_ID, mid, rid, /*ttl=*/8, g_beacon_pending);
+
+  waylink::SyncReplyResult result;
+  if (!send_and_await_reply(station_destination, payload, rid, result, "Will retry.")) {
+    g_beacon_status = "Queued, but Station didn't confirm — will retry.";
+    return;
+  }
+
+  size_t sent = g_beacon_pending.size();
+  g_beacon_pending.clear();
+  g_beacon_status = "Sent " + String((unsigned)sent) + " report(s) to Station.";
+}
+
 // -- Claiming: teach Station this Outpost's destination hash --
 
 static String g_claim_status = "Not yet claimed by a Station.";
@@ -588,7 +626,8 @@ static void handle_board() {
           "to Station when a radio path exists. Anyone can read what's posted.</p>";
   body += "<p class='status'>" + g_status + "</p>";
   body += "<p><a href='/refresh'>Refresh / sync with Station</a> &middot; "
-          "<a href='/claim'>Pair with Station</a></p>";
+          "<a href='/claim'>Pair with Station</a> &middot; "
+          "<a href='/beacon' style='color:#b3261e;font-weight:600'>Report an emergency</a></p>";
   body += "<form method='POST' action='/post'>";
   body += "<textarea name='body' rows='3' maxlength='" + String((unsigned)MAX_BODY) +
           "' placeholder='Note (bear sighting, trail closure, ...)' required></textarea>";
@@ -654,6 +693,88 @@ static void handle_post() {
 static void handle_refresh() {
   refresh_board();
   send_redirect_home();
+}
+
+static void handle_beacon_get() {
+  String body = "<!doctype html><html><head><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                "<title>Report an emergency — The Outpost</title>"
+                "<style>body{font-family:sans-serif;max-width:640px;margin:1.5rem auto;"
+                "padding:0 1rem;background:#faf7f0;color:#222}"
+                "textarea,input,select{width:100%;box-sizing:border-box;margin:.25rem 0;"
+                "font-family:inherit;font-size:1rem}"
+                ".warn{border-left:4px solid #b3261e;background:#fdf0ef;"
+                "padding:.75rem .9rem;margin:1rem 0;border-radius:6px;font-size:.92rem}"
+                ".status{color:#555;font-size:.9rem}"
+                "button{padding:.5rem 1rem;font-size:1rem;background:#b3261e;color:#fff;"
+                "border:none;border-radius:6px}</style></head><body>";
+  body += "<h1>Report an emergency</h1>";
+  body += "<div class='warn'>This reaches every Station user, community-wide, as soon as "
+          "a radio path exists — use it for real emergencies (injury, fire, evacuation), "
+          "not routine trail notes (use <a href='/board'>the board</a> for those).</div>";
+  body += "<p class='status'>" + g_beacon_status + "</p>";
+  if (!g_beacon_pending.empty()) {
+    body += "<p class='status'>" + String((unsigned)g_beacon_pending.size()) +
+            " report(s) queued, not yet confirmed sent.</p>";
+  }
+  body += "<form method='POST' action='/beacon'>";
+  body += "<input name='title' maxlength='" + String((unsigned)MAX_BEACON_TITLE) +
+          "' placeholder='What happened (short)' required>";
+  body += "<textarea name='body' rows='3' maxlength='" + String((unsigned)MAX_BEACON_BODY) +
+          "' placeholder='Details — where, how many people, what help is needed' required>"
+          "</textarea>";
+  body += "<select name='severity'>"
+          "<option value='emergency' selected>Emergency — immediate danger</option>"
+          "<option value='urgent'>Urgent — needs attention soon</option>"
+          "<option value='advisory'>Advisory — awareness only</option>"
+          "</select>";
+  body += "<button type='submit'>Send</button></form>";
+  body += "<p><a href='/board'>Back to the board</a></p>";
+  body += "</body></html>";
+  g_server.send(200, "text/html", body);
+}
+
+static void handle_beacon_post() {
+  String title_arg = g_server.hasArg("title") ? g_server.arg("title") : "";
+  String body_arg = g_server.hasArg("body") ? g_server.arg("body") : "";
+  String severity_arg = g_server.hasArg("severity") ? g_server.arg("severity") : "emergency";
+  title_arg.trim();
+  body_arg.trim();
+
+  if (title_arg.length() == 0 || body_arg.length() == 0) {
+    g_beacon_status = "Both a short title and details are required.";
+    g_server.sendHeader("Location", "/beacon", true);
+    g_server.send(303, "text/plain", "");
+    return;
+  }
+  if (title_arg.length() > MAX_BEACON_TITLE || body_arg.length() > MAX_BEACON_BODY) {
+    g_beacon_status = "Title or details too long.";
+    g_server.sendHeader("Location", "/beacon", true);
+    g_server.send(303, "text/plain", "");
+    return;
+  }
+  if (g_beacon_pending.size() >= MAX_BEACON_PENDING) {
+    g_beacon_status = "Too many unsent reports queued already — try Send again shortly.";
+    g_server.sendHeader("Location", "/beacon", true);
+    g_server.send(303, "text/plain", "");
+    return;
+  }
+
+  waylink::OutgoingBeaconPush push;
+  push.mid = waylink::new_hex_id();
+  push.title = std::string(title_arg.c_str());
+  push.body = std::string(body_arg.c_str());
+  push.severity = std::string(severity_arg.c_str());
+  g_beacon_pending.push_back(std::move(push));
+  g_beacon_status = "Report queued — sending to Station now.";
+
+  // Emergencies don't wait for the next periodic sync — try immediately.
+  // sync_beacon() leaves it queued (with an honest status) if no path
+  // exists yet; the periodic auto-sync in loop() retries from there.
+  sync_beacon();
+
+  g_server.sendHeader("Location", "/beacon", true);
+  g_server.send(303, "text/plain", "");
 }
 
 static void handle_claim_get() {
@@ -748,6 +869,8 @@ static void web_setup() {
   g_server.on("/board", HTTP_GET, handle_board);
   g_server.on("/post", HTTP_POST, handle_post);
   g_server.on("/refresh", HTTP_GET, handle_refresh);
+  g_server.on("/beacon", HTTP_GET, handle_beacon_get);
+  g_server.on("/beacon", HTTP_POST, handle_beacon_post);
   g_server.on("/claim", HTTP_GET, handle_claim_get);
   g_server.on("/claim", HTTP_POST, handle_claim_post);
   g_server.on("/generate_204", HTTP_GET, handle_captive_probe);
@@ -805,6 +928,7 @@ void loop() {
   if (now - last_auto_sync > AUTO_SYNC_INTERVAL_MS) {
     last_auto_sync = now;
     refresh_board();
+    sync_beacon();  // retries any report that couldn't send immediately on submit
   }
 
   g_reticulum.loop();
