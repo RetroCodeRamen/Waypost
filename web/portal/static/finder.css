@@ -1,0 +1,48 @@
+.finder-page { max-width: 44rem; }
+
+.finder-results {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.finder-item {
+  border-bottom: 1px solid var(--line);
+}
+.finder-item a {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  padding: 0.75rem 0;
+  text-decoration: none;
+  color: inherit;
+}
+.finder-item__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+.finder-item__meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.finder-item__snippet {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.finder-badge {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2, #eee);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.finder-badge--commons { background: #e8f0fc; color: #2c5aa0; }
+.finder-badge--noticeboard { background: #fdf0ef; color: #b3261e; }
+.finder-badge--fieldbook { background: #eef7ee; color: #2f6b4f; }
+.finder-badge--locker { background: #f3f0fa; color: #5b3fa0; }

@@ -128,6 +128,47 @@ class NoticeStore:
         acked_ids = self.acked_ids_for(username) if username is not None else set()
         return [self._row(r, acked=r["id"] in acked_ids) for r in rows]
 
+    def search(
+        self,
+        query: str,
+        *,
+        active_only: bool = True,
+        limit: int = 50,
+        username: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """Case-insensitive substring match on title or body, title hits
+        first — same shape as FieldbookStore.search(). group_id is not
+        filtered here; callers (NoticeboardService) apply the same
+        _can_view visibility check list_notices results already get."""
+        self._expire_due()
+        limit = max(1, min(int(limit), 500))
+        q = (query or "").strip()
+        if not q:
+            return []
+        like = f"%{q}%"
+        active_clause = " AND active = 1" if active_only else ""
+        rows = self._conn.execute(
+            f"""
+            SELECT *,
+                   instr(lower(title), lower(?)) AS title_hit,
+                   instr(lower(body), lower(?)) AS body_hit
+              FROM notices
+             WHERE (title LIKE ? OR body LIKE ?){active_clause}
+             ORDER BY CASE WHEN instr(lower(title), lower(?)) > 0 THEN 0 ELSE 1 END,
+                      created_at DESC
+             LIMIT ?
+            """,
+            (q, q, like, like, q, limit),
+        ).fetchall()
+        acked_ids = self.acked_ids_for(username) if username is not None else set()
+        out = []
+        for r in rows:
+            item = self._row(r, acked=r["id"] in acked_ids)
+            item["title_hit"] = int(r["title_hit"] or 0)
+            item["body_hit"] = int(r["body_hit"] or 0)
+            out.append(item)
+        return out
+
     def ack(self, notice_id: str, username: str) -> None:
         self._conn.execute(
             """

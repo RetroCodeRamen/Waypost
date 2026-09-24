@@ -230,6 +230,23 @@ def test_group_notice_requires_membership_to_create(client: TestClient):
     assert r.status_code == 400
 
 
+def test_store_search_ranks_title_hits_first(client: TestClient):
+    client.post(
+        "/api/noticeboard/notices",
+        json={"author": "aj", "title": "Unrelated", "body": "mentions ferry crossing once"},
+    )
+    client.post(
+        "/api/noticeboard/notices",
+        json={"author": "aj", "title": "Ferry crossing closed", "body": "use the north trail"},
+    )
+    hits = client.app.state.db.noticeboard.search("ferry")
+    assert len(hits) == 2
+    assert hits[0]["title"] == "Ferry crossing closed"
+    assert hits[0]["title_hit"] > 0
+
+    assert client.app.state.db.noticeboard.search("") == []
+
+
 def test_dashboard_noticeboard(client: TestClient):
     client.post(
         "/api/noticeboard/notices",

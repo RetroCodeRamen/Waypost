@@ -245,6 +245,31 @@ HTTP (Station portal, any signed-in user): `GET /api/corkboard/outposts`,
 that outpost's next `BOARD_SYNC`); `POST /api/auth/pairing/create` (shared
 with Pocket pairing) generates the claim code shown in the portal.
 
+### Finder (`FINDER`)
+
+Cross-app search — "titles → selected result," never a search index of its
+own (`server/services/finder/`). A live fan-out query across each
+already-existing service's own listing/search method, every time; no
+persisted index, no new subsystem. Deliberately scoped to
+consciously-public-or-already-scoped content only:
+
+| Included | Excluded, deliberately |
+|----------|------------------------|
+| Commons, Noticeboard, Fieldbook, Locker | Dispatch, Postbox — private by design, see `docs/security.md`'s "must never authorize... private Dispatch threads / another user's Postbox" |
+| | Corkboard — its own design explicitly rules out a merged cross-outpost view |
+
+Every result passes through the *same* visibility check that service's own
+native listing already applies — a group-scoped Noticeboard notice never
+surfaces to a non-member via Finder, a personal Locker file never surfaces
+to anyone but its owner, exactly as if they'd asked that service directly.
+Finder is a new way to *find* things, never a new way to *see* them.
+
+| Operation | Purpose |
+|-----------|---------|
+| `SEARCH` | `{q, limit}` → `[{service, id, title, snippet, updated_at, url}, ...]`, ranked title-hits-first then most-recent. Snippets only, matching the bandwidth philosophy and Locker's own "metadata only over Waylink" precedent — never full bodies or file contents. |
+
+HTTP: `GET /api/finder/search?q=...` (portal, any signed-in user).
+
 ### Locker (`LOCKER`)
 
 Shared and personal files stored on the Station. **Wi‑Fi only for bodies** — Waylink exposes metadata (`FILE_LIST` / `FILE_INFO`), not file bytes.

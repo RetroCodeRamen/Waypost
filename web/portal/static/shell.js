@@ -13,7 +13,7 @@
     { id: "archive", label: "Archive", href: "#", icon: "archive", soon: true },
     { id: "atlas", label: "Atlas", href: "#", icon: "atlas", soon: true },
     { id: "rollcall", label: "Rollcall", href: "/rollcall.html", icon: "rollcall" },
-    { id: "finder", label: "Finder", href: "#", icon: "finder", soon: true },
+    { id: "finder", label: "Finder", href: "/finder.html", icon: "finder" },
   ];
 
   var NAV_SYSTEM = [

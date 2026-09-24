@@ -57,7 +57,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 ### Not started (architectural / planned)
 
-Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Fieldbook · Atlas · Finder · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate)
+Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Atlas · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate) — Fieldbook and Finder were both on this list; both are now built (2026-09-24)
 
 ---
 
@@ -157,7 +157,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 ### TIER 3 — After network is useful
 
-- Commons depth · Locker group folders · Finder · Archive · **Atlas** (GPS/origin already designed — implement after Pocket reports exist)
+- Commons depth · Locker group folders · Archive · **Atlas** (GPS/origin already designed — implement after Pocket reports exist) — ~~Finder~~ built 2026-09-24
 
 ### TIER 4 — Pocket platform expansion
 

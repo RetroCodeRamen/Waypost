@@ -133,6 +133,37 @@ class CommonsStore:
         ).fetchone()
         return int(row["n"])
 
+    def search(self, query: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Case-insensitive substring match on title or body, title hits
+        first — same shape as FieldbookStore.search(). group_id is not
+        filtered here; callers (CommonsService) apply the same _can_view
+        visibility check search results already get from list_posts."""
+        limit = max(1, min(int(limit), 500))
+        q = (query or "").strip()
+        if not q:
+            return []
+        like = f"%{q}%"
+        rows = self._conn.execute(
+            """
+            SELECT *,
+                   instr(lower(title), lower(?)) AS title_hit,
+                   instr(lower(body), lower(?)) AS body_hit
+              FROM commons_posts
+             WHERE title LIKE ? OR body LIKE ?
+             ORDER BY CASE WHEN instr(lower(title), lower(?)) > 0 THEN 0 ELSE 1 END,
+                      created_at DESC
+             LIMIT ?
+            """,
+            (q, q, like, like, q, limit),
+        ).fetchall()
+        out = []
+        for r in rows:
+            item = self._row(r)
+            item["title_hit"] = int(r["title_hit"] or 0)
+            item["body_hit"] = int(r["body_hit"] or 0)
+            out.append(item)
+        return out
+
     @staticmethod
     def _row(row: sqlite3.Row) -> dict[str, Any]:
         return {

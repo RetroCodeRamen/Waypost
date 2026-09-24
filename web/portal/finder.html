@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Finder — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/finder.css"/>
+</head>
+<body>
+  <div id="wp-page" class="finder-page">
+    <section class="app-toolbar">
+      <label class="grow">Search Waypost
+        <input id="search" type="search" placeholder="notices, wiki pages, posts, files…" autocomplete="off" autofocus/>
+      </label>
+    </section>
+    <p class="meta muted" id="status-line">Searches Commons, Noticeboard, Fieldbook, and Locker — only what you can already see in each.</p>
+
+    <ul id="results" class="finder-results"></ul>
+    <p class="muted" id="empty-state">Type to search.</p>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "finder",
+      user: "AJ",
+      title: "Finder",
+      subtitle: "Search across Waypost"
+    });
+  </script>
+  <script src="/static/finder.js"></script>
+</body>
+</html>

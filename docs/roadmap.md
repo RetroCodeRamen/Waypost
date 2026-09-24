@@ -89,7 +89,8 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | Stalwart / BookStack / Memos / Kiwix adapters | Placeholders |
 | Stalwart-vs-SQLite decision for identity | Undecided — M4's own scope says decide, don't do both halfway (see `priority-review.md` §12) |
 | Fieldbook | **Built 2026-09-24** (SQLite pages + revisions, `WIKI_SEARCH/GET/UPDATE/CREATE` with outline/section/diff, portal `fieldbook.html`) — offline edit *queueing* on Pocket still waits on the shared sync subsystem |
-| Archive, Finder | Not built (nav “soon” only) |
+| Finder | **Built 2026-09-24** — cross-app search (`SEARCH` over Waylink + `GET /api/finder/search`), portal `finder.html`. Deliberately scoped to Commons/Noticeboard/Fieldbook/Locker, all through each service's own existing visibility rules; Dispatch/Postbox (private) and Corkboard (no merged cross-outpost view by design) stay out — see `docs/protocol.md`'s Finder section |
+| Archive | Not built (nav “soon” only) — Kiwix integration, a meaningfully bigger undertaking than Finder was (external ZIM-format content server), see M10 |
 
 Apps marked *prototype* mean: local store + HTTP UI + some Waylink RPC ops — **not** production auth, sync, or multi-Station federation.
 
@@ -345,7 +346,9 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Signal | ✅ | Partial | ✅ airtest/ping | — |
 | Fieldbook | ✅ | `WIKI_SEARCH/GET/UPDATE/CREATE` (outline/section/diff) | ⬜ | BookStack later |
 | **Atlas** | ⬜ | Spec (M9) | ⬜ `LOC_*` | Offline tiles on Station |
-| Finder / Archive / Control | ⬜ | Spec / stub | ⬜ | — |
+| Finder | ✅ | `SEARCH` | ⬜ | — |
+| Control | ✅ (M4) | — | N/A | — |
+| Archive | ⬜ | Spec (M10) | ⬜ | Kiwix |
 
 ---
 

@@ -106,6 +106,24 @@ def test_group_post_requires_membership_to_create(client: TestClient):
     assert r.status_code == 400
 
 
+def test_store_search_ranks_title_hits_first(client: TestClient):
+    client.post(
+        "/api/commons/posts",
+        json={"author": "aj", "title": "Unrelated", "body": "mentions lantern once"},
+    )
+    client.post(
+        "/api/commons/posts",
+        json={"author": "aj", "title": "Lantern repair", "body": "fixed the shed light"},
+    )
+    hits = client.app.state.db.commons.search("lantern")
+    assert len(hits) == 2
+    assert hits[0]["title"] == "Lantern repair"
+    assert hits[0]["title_hit"] > 0
+
+    assert client.app.state.db.commons.search("") == []
+    assert client.app.state.db.commons.search("no-such-term-anywhere") == []
+
+
 def test_dashboard_includes_commons(client: TestClient):
     client.post(
         "/api/commons/posts",

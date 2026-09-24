@@ -116,6 +116,23 @@ class NoticeboardService:
             return None
         return notice
 
+    def search(
+        self, query: str, *, username: Optional[str] = None, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        query = (query or "").strip()
+        if not query:
+            return []
+        rows = self.store.search(query, limit=500, username=username)
+        out: list[dict[str, Any]] = []
+        cap = max(1, min(int(limit), 200))
+        for notice in rows:
+            if not self._can_view(notice, username):
+                continue
+            out.append(notice)
+            if len(out) >= cap:
+                break
+        return out
+
     def expire(
         self, notice_id: str, *, username: Optional[str] = None
     ) -> Optional[dict[str, Any]]:
