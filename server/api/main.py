@@ -40,6 +40,7 @@ from server.services.beacon.constants import (
     OP_BEACON_GET,
     OP_BEACON_LIST,
     OP_BEACON_PUSH,
+    OP_BEACON_SYNC,
 )
 from server.services.beacon.service import BeaconService
 from server.services.commons.constants import OP_POST_CREATE, OP_POST_GET, OP_POST_LIST
@@ -132,11 +133,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             db.mail,
             nodes_for_user=lambda u: db.dispatch.nodes_for_user(u),
         )
-        commons = CommonsService(db.commons)
+        commons = CommonsService(db.commons, is_group_member=db.groups.is_member)
         noticeboard = NoticeboardService(
-            db.noticeboard, get_binding=lambda n: db.dispatch.get_binding(n)
+            db.noticeboard,
+            get_binding=lambda n: db.dispatch.get_binding(n),
+            is_group_member=db.groups.is_member,
         )
-        beacon = BeaconService(db.beacon, get_binding=lambda n: db.dispatch.get_binding(n))
+        beacon = BeaconService(
+            db.beacon,
+            get_binding=lambda n: db.dispatch.get_binding(n),
+            is_claimed_outpost=lambda n: db.corkboard.is_claimed(n),
+        )
         corkboard = CorkboardService(db.corkboard)
         groups = GroupsService(db.groups)
         locker = LockerService(db.locker, is_group_member=db.groups.is_member)
@@ -191,7 +198,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             OP_NOTICE_ACK,
         ):
             gateway.register(SVC_NOTICEBOARD, op, noticeboard.handle_rpc)
-        for op in (OP_BEACON_GET, OP_BEACON_PUSH, OP_BEACON_CLEAR, OP_BEACON_LIST):
+        for op in (
+            OP_BEACON_GET,
+            OP_BEACON_PUSH,
+            OP_BEACON_CLEAR,
+            OP_BEACON_LIST,
+            OP_BEACON_SYNC,
+        ):
             gateway.register(SVC_BEACON, op, beacon.handle_rpc)
         gateway.register(SVC_CORKBOARD, OP_BOARD_SYNC, corkboard.handle_rpc)
         gateway.register(
@@ -442,6 +455,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 </html>"""
 
     if PORTAL_DIR.is_dir():
+
+        @app.middleware("http")
+        async def _brand_cache_headers(request, call_next):
+            response = await call_next(request)
+            if request.url.path.startswith("/static/brand/") and response.status_code == 200:
+                response.headers["Cache-Control"] = "public, max-age=604800"
+            return response
+
         app.mount("/static", StaticFiles(directory=PORTAL_DIR / "static"), name="static")
 
         @app.get("/")
@@ -483,6 +504,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/login.html")
         def portal_login():
             return FileResponse(PORTAL_DIR / "login.html")
+
+        @app.get("/waygate.html")
+        def portal_waygate():
+            return FileResponse(PORTAL_DIR / "waygate.html")
 
         @app.get("/trust.html")
         def portal_trust():

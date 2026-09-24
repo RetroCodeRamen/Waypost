@@ -146,7 +146,7 @@ Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or
 | `PROFILE` | `PROFILE_GET`, `PROFILE_UPDATE` (not yet implemented); `PAIR_REDEEM` (M4 ✅ — redeem a pairing code created via `POST /api/auth/pairing/create`, binding `node_id` to that code's account without a password ever crossing the radio link) |
 | `COMMONS` | `POST_LIST`, `POST_CREATE`, `POST_GET` |
 | `NOTICEBOARD` | `NOTICE_LIST`, `NOTICE_GET`, `NOTICE_CREATE`, `NOTICE_EXPIRE` |
-| `BEACON` | `BEACON_GET`, `BEACON_PUSH`, `BEACON_CLEAR`, `BEACON_LIST` |
+| `BEACON` | `BEACON_GET`, `BEACON_PUSH`, `BEACON_CLEAR`, `BEACON_LIST`, `BEACON_SYNC` (M6 ✅ — Outpost uploads queued push/clear events; Station returns current active beacon for local cache) |
 | `LOCKER` | `FILE_LIST`, `FILE_INFO`, `FILE_DELETE` |
 | `FINDER` | `SEARCH` |
 | `SIGNAL` | `SIGNAL_STATUS`, `SIGNAL_ROUTE` |
@@ -190,7 +190,9 @@ Emergency / high-priority alerts (distinct from Noticeboard). One active Beacon 
 
 Severities: `emergency`, `urgent`, `advisory`.
 
-**Security (M6-era fix, 2026-09-23):** before this, `BEACON_PUSH`/`BEACON_CLEAR` over Waylink trusted whatever the packet's own payload claimed (`author`, or just `envelope.src` raw) — for an emergency-alert system, that meant anyone with a working radio could push, or silence, an alert as anyone. Both ops now resolve the acting username from `device_bindings` (same fix, same mechanism, as Noticeboard above) and reject with `unauthorized_device` if the sender isn't a bound device. **Out of scope, not silently dropped:** propagating an active Beacon through Outposts (store-and-forward relay, the way Dispatch's courier queue does) — Beacon today is Station-only; extending it to Outpost relay is real scope of its own, not a quick add to this fix.
+**Security (M6-era fix, 2026-09-23):** before this, `BEACON_PUSH`/`BEACON_CLEAR` over Waylink trusted whatever the packet's own payload claimed (`author`, or just `envelope.src` raw) — for an emergency-alert system, that meant anyone with a working radio could push, or silence, an alert as anyone. Both ops now resolve the acting username from `device_bindings` (same fix, same mechanism, as Noticeboard above) and reject with `unauthorized_device` if the sender isn't a bound device.
+
+**Outpost propagation (2026-09-24):** `BEACON_SYNC` mirrors Corkboard's `BOARD_SYNC` — an Outpost uploads a batch of queued `{op: push|clear, ...}` events (dedup by `mid` on push), Station applies them and returns `{active}` for the Outpost to cache locally. Sim-tested via `OutpostNode.sync_beacon()`. **Still out of scope:** multi-hop beacon courier parallel to Dispatch, firmware emergency button, Pocket reading the Outpost cache over Wi‑Fi.
 
 ### Signal (`SIGNAL`)
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from server.services.beacon.constants import OP_BEACON_SYNC
 from server.services.corkboard.constants import OP_BOARD_SYNC
 from server.services.corkboard.store import CorkboardStore
 from server.services.dispatch.constants import OP_MSG_PUSH, OP_MSG_SEND
@@ -31,7 +32,14 @@ from server.services.dispatch.peer import COURIER_TTL_SECONDS, STATION_DEST
 from server.services.dispatch.store import DispatchStore
 from server.services.dispatch.waylink_node import WaylinkPeerNode
 from server.transports.base import Transport
-from shared.protocol.envelope import SVC_CORKBOARD, SVC_DISPATCH, Envelope, Flags, new_id
+from shared.protocol.envelope import (
+    SVC_BEACON,
+    SVC_CORKBOARD,
+    SVC_DISPATCH,
+    Envelope,
+    Flags,
+    new_id,
+)
 
 logger = logging.getLogger("waypost.dispatch.outpost")
 
@@ -56,6 +64,8 @@ class OutpostNode(WaylinkPeerNode):
         self.display_name = display_name
         self.station_node_id = station_node_id
         self._preferred_station_hop: Optional[str] = None
+        self._cached_beacon: Optional[dict[str, Any]] = None
+        self._beacon_pending: list[dict[str, Any]] = []
         self._handlers = {
             (SVC_DISPATCH, OP_MSG_SEND): self._on_incoming,
             (SVC_DISPATCH, OP_MSG_PUSH): self._on_incoming,
@@ -371,3 +381,71 @@ class OutpostNode(WaylinkPeerNode):
                 if created:
                     received += 1
         return {"ok": ok, "synced": len(unsynced) if ok else 0, "received": received}
+
+    # -- Beacon: cache + relay toward Station --
+
+    def get_cached_beacon(self) -> Optional[dict[str, Any]]:
+        """Active emergency alert cached from the last successful sync."""
+        return self._cached_beacon
+
+    def queue_beacon_push(
+        self,
+        *,
+        author: str,
+        title: str,
+        body: str,
+        severity: str = "emergency",
+        mid: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Queue a field-initiated push for the next sync_beacon() round trip."""
+        event = {
+            "op": "push",
+            "mid": mid or new_id(),
+            "author": author,
+            "title": title,
+            "body": body,
+            "severity": severity,
+        }
+        self._beacon_pending.append(event)
+        return event
+
+    def queue_beacon_clear(
+        self, *, beacon_id: Optional[str] = None, mid: Optional[str] = None
+    ) -> dict[str, Any]:
+        event = {"op": "clear", "mid": mid or new_id(), "id": beacon_id}
+        self._beacon_pending.append(event)
+        return event
+
+    async def sync_beacon(
+        self, station_node_id: Optional[str] = None, *, timeout: float = 5.0
+    ) -> dict[str, Any]:
+        """Upload queued beacon events and refresh the local active cache."""
+        dst = station_node_id or self.station_node_id
+        batch = list(self._beacon_pending)
+        env = Envelope(
+            src=self.node_id,
+            dst=dst,
+            svc=SVC_BEACON,
+            op=OP_BEACON_SYNC,
+            flags=int(Flags.REQUEST),
+            mid=new_id(),
+            payload={
+                "pending": batch,
+                "origin_outpost_id": self.node_id,
+            },
+        )
+        reply = await self.request(env, timeout=timeout)
+        ok = bool(reply and not (reply.flags & int(Flags.ERROR)))
+        ingested = 0
+        if ok:
+            self._beacon_pending.clear()
+            payload = reply.payload or {}
+            ingested = int(payload.get("ingested") or 0)
+            active = payload.get("active")
+            self._cached_beacon = active if isinstance(active, dict) else None
+        return {
+            "ok": ok,
+            "uploaded": len(batch) if ok else 0,
+            "ingested": ingested,
+            "active": self._cached_beacon,
+        }

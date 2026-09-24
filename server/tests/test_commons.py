@@ -65,6 +65,47 @@ def test_commons_page(client: TestClient):
     assert "commons.js" in r.text
 
 
+def test_group_scoped_post_visible_only_to_members(client: TestClient):
+    group = client.post("/api/groups", json={"name": "Trail Crew"}).json()
+    gid = group["id"]
+    client.post(f"/api/groups/{gid}/members", json={"username": "bob"})
+
+    r = client.post(
+        "/api/commons/posts",
+        json={
+            "author": "aj",
+            "title": "Crew update",
+            "body": "Brush clearing Saturday.",
+            "group_id": gid,
+        },
+    )
+    assert r.status_code == 201
+    post_id = r.json()["id"]
+    assert r.json()["group_id"] == gid
+
+    as_member = client.get("/api/commons/posts", params={"viewer": "bob"})
+    assert any(p["id"] == post_id for p in as_member.json()["posts"])
+
+    as_stranger = client.get("/api/commons/posts", params={"viewer": "carol"})
+    assert all(p["id"] != post_id for p in as_stranger.json()["posts"])
+
+    deny = client.get(f"/api/commons/posts/{post_id}", params={"viewer": "carol"})
+    assert deny.status_code == 404
+
+
+def test_group_post_requires_membership_to_create(client: TestClient):
+    group = client.post("/api/groups", json={"name": "Ops"}).json()
+    r = client.post(
+        "/api/commons/posts",
+        json={
+            "author": "carol",
+            "body": "Should fail.",
+            "group_id": group["id"],
+        },
+    )
+    assert r.status_code == 400
+
+
 def test_dashboard_includes_commons(client: TestClient):
     client.post(
         "/api/commons/posts",

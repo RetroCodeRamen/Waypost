@@ -184,6 +184,52 @@ def test_noticeboard_page(client: TestClient):
     assert "Noticeboard" in r.text
 
 
+def test_group_scoped_notice_visible_only_to_members(client: TestClient):
+    group = client.post("/api/groups", json={"name": "Trail Crew"}).json()
+    gid = group["id"]
+    client.post(f"/api/groups/{gid}/members", json={"username": "bob"})
+
+    r = client.post(
+        "/api/noticeboard/notices",
+        json={
+            "author": "aj",
+            "title": "Crew-only briefing",
+            "body": "Meet at the pump house.",
+            "group_id": gid,
+        },
+    )
+    assert r.status_code == 201
+    notice_id = r.json()["id"]
+    assert r.json()["group_id"] == gid
+
+    as_member = client.get(
+        "/api/noticeboard/notices", params={"viewer": "bob"}
+    )
+    assert any(n["id"] == notice_id for n in as_member.json()["notices"])
+
+    as_stranger = client.get(
+        "/api/noticeboard/notices", params={"viewer": "carol"}
+    )
+    assert all(n["id"] != notice_id for n in as_stranger.json()["notices"])
+
+    deny = client.get(f"/api/noticeboard/notices/{notice_id}", params={"viewer": "carol"})
+    assert deny.status_code == 404
+
+
+def test_group_notice_requires_membership_to_create(client: TestClient):
+    group = client.post("/api/groups", json={"name": "Ops"}).json()
+    r = client.post(
+        "/api/noticeboard/notices",
+        json={
+            "author": "carol",
+            "title": "Intruder post",
+            "body": "Should fail.",
+            "group_id": group["id"],
+        },
+    )
+    assert r.status_code == 400
+
+
 def test_dashboard_noticeboard(client: TestClient):
     client.post(
         "/api/noticeboard/notices",

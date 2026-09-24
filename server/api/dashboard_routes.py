@@ -48,7 +48,9 @@ def build_dashboard_router() -> APIRouter:
         mail = postbox.status(username)
         convs = dispatch.list_conversations(username)
         people = rollcall.list_people()
-        commons_new = commons.recent_count(hours=24.0, exclude_author=username)
+        commons_new = commons.recent_count(
+            hours=24.0, exclude_author=username, username=username
+        )
         notices_unread = noticeboard.count_unacked(username)
         active_beacon = beacon.get_active()
         locker_shared = locker.count_shared()
@@ -100,7 +102,7 @@ def build_dashboard_router() -> APIRouter:
                 }
             )
 
-        for post in commons.list_posts(limit=5):
+        for post in commons.list_posts(limit=5, username=username):
             preview = post.get("title") or post.get("body") or ""
             if len(preview) > 120:
                 preview = preview[:117] + "…"
@@ -115,7 +117,9 @@ def build_dashboard_router() -> APIRouter:
                 }
             )
 
-        for notice in noticeboard.list_notices(active_only=True, limit=5):
+        for notice in noticeboard.list_notices(
+            active_only=True, limit=5, username=username
+        ):
             activity.append(
                 {
                     "actor": notice.get("author"),

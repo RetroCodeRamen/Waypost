@@ -40,7 +40,18 @@ class NoticeStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
         self._conn.executescript(NOTICE_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        cols = {
+            r["name"] for r in self._conn.execute("PRAGMA table_info(notices)").fetchall()
+        }
+        if "group_id" not in cols:
+            self._conn.execute("ALTER TABLE notices ADD COLUMN group_id TEXT")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notices_group ON notices(group_id)"
+        )
 
     def create(
         self,
@@ -52,16 +63,17 @@ class NoticeStore:
         expires_at: Optional[float] = None,
         notice_id: Optional[str] = None,
         created_at: Optional[float] = None,
+        group_id: Optional[str] = None,
     ) -> dict[str, Any]:
         nid = notice_id or new_id()
         ts = created_at if created_at is not None else time.time()
         self._conn.execute(
             """
             INSERT INTO notices
-                (id, author, title, body, priority, created_at, expires_at, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                (id, author, title, body, priority, created_at, expires_at, active, group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
             """,
-            (nid, author, title, body, priority, ts, expires_at),
+            (nid, author, title, body, priority, ts, expires_at, group_id),
         )
         self._conn.commit()
         return self.get(nid)  # type: ignore[return-value]
@@ -83,30 +95,36 @@ class NoticeStore:
         active_only: bool = True,
         limit: int = 50,
         username: Optional[str] = None,
+        group_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         self._expire_due()
         limit = max(1, min(int(limit), 200))
+        group_clause = " AND group_id = ?" if group_id else ""
+        params: list[Any] = []
         if active_only:
-            rows = self._conn.execute(
-                """
+            sql = f"""
                 SELECT * FROM notices
-                WHERE active = 1
+                WHERE active = 1{group_clause}
                 ORDER BY
                     CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                     created_at DESC
                 LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
                 """
+            if group_id:
+                params.append(group_id)
+            params.append(limit)
+            rows = self._conn.execute(sql, params).fetchall()
+        else:
+            sql = f"""
                 SELECT * FROM notices
+                WHERE 1=1{group_clause}
                 ORDER BY created_at DESC
                 LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+                """
+            if group_id:
+                params.append(group_id)
+            params.append(limit)
+            rows = self._conn.execute(sql, params).fetchall()
         acked_ids = self.acked_ids_for(username) if username is not None else set()
         return [self._row(r, acked=r["id"] in acked_ids) for r in rows]
 
@@ -179,6 +197,7 @@ class NoticeStore:
             "created_at": row["created_at"],
             "expires_at": row["expires_at"],
             "active": bool(row["active"]),
+            "group_id": row["group_id"] if "group_id" in row.keys() else None,
         }
         # Only present when a username was given to annotate against — a
         # global/anonymous read (no username) shouldn't imply "unacked by

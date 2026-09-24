@@ -16,6 +16,7 @@ class PostCreate(BaseModel):
     body: str = Field(min_length=1, max_length=MAX_BODY)
     title: str = Field(default="", max_length=MAX_TITLE)
     id: Optional[str] = None
+    group_id: Optional[str] = None
 
 
 def build_commons_router() -> APIRouter:
@@ -27,16 +28,25 @@ def build_commons_router() -> APIRouter:
         user=Depends(get_current_user),
         limit: int = 50,
         since: Optional[float] = None,
+        group_id: Optional[str] = None,
+        viewer: Optional[str] = None,
     ):
-        _ = user
+        username = actor_username(request, user, viewer)
         return {
-            "posts": request.app.state.commons.list_posts(limit=limit, since=since),
+            "posts": request.app.state.commons.list_posts(
+                limit=limit, since=since, username=username, group_id=group_id
+            ),
         }
 
     @router.get("/api/commons/posts/{post_id}")
-    def get_post(post_id: str, request: Request, user=Depends(get_current_user)):
-        _ = user
-        post = request.app.state.commons.get(post_id)
+    def get_post(
+        post_id: str,
+        request: Request,
+        user=Depends(get_current_user),
+        viewer: Optional[str] = None,
+    ):
+        username = actor_username(request, user, viewer)
+        post = request.app.state.commons.get(post_id, username=username)
         if not post:
             raise HTTPException(status_code=404, detail="Post not found")
         return post
@@ -53,6 +63,7 @@ def build_commons_router() -> APIRouter:
                 body=body.body,
                 title=body.title,
                 post_id=body.id,
+                group_id=body.group_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

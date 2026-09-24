@@ -18,6 +18,7 @@ class NoticeCreate(BaseModel):
     priority: str = Field(default="normal", max_length=16)
     expires_at: Optional[float] = None
     id: Optional[str] = None
+    group_id: Optional[str] = None
 
 
 class NoticeAck(BaseModel):
@@ -33,21 +34,29 @@ def build_noticeboard_router() -> APIRouter:
         user=Depends(get_current_user),
         active_only: bool = True,
         limit: int = 50,
+        group_id: Optional[str] = None,
+        viewer: Optional[str] = None,
     ):
-        username = actor_username(request, user)
+        username = actor_username(request, user, viewer)
         return {
             "notices": request.app.state.noticeboard.list_notices(
-                active_only=active_only, limit=limit, username=username
+                active_only=active_only,
+                limit=limit,
+                username=username,
+                group_id=group_id,
             ),
-            "active_count": request.app.state.noticeboard.count_active(),
+            "active_count": request.app.state.noticeboard.count_active(username=username),
             "unacked_count": request.app.state.noticeboard.count_unacked(username),
         }
 
     @router.get("/api/noticeboard/notices/{notice_id}")
     def get_notice(
-        notice_id: str, request: Request, user=Depends(get_current_user)
+        notice_id: str,
+        request: Request,
+        user=Depends(get_current_user),
+        viewer: Optional[str] = None,
     ):
-        username = actor_username(request, user)
+        username = actor_username(request, user, viewer)
         notice = request.app.state.noticeboard.get(notice_id, username=username)
         if not notice:
             raise HTTPException(status_code=404, detail="Notice not found")
@@ -80,6 +89,7 @@ def build_noticeboard_router() -> APIRouter:
                 priority=body.priority,
                 expires_at=body.expires_at,
                 notice_id=body.id,
+                group_id=body.group_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -87,10 +97,13 @@ def build_noticeboard_router() -> APIRouter:
 
     @router.post("/api/noticeboard/notices/{notice_id}/expire")
     def expire_notice(
-        notice_id: str, request: Request, user=Depends(get_current_user)
+        notice_id: str,
+        request: Request,
+        user=Depends(get_current_user),
+        viewer: Optional[str] = None,
     ):
-        _ = user
-        notice = request.app.state.noticeboard.expire(notice_id)
+        username = actor_username(request, user, viewer)
+        notice = request.app.state.noticeboard.expire(notice_id, username=username)
         if not notice:
             raise HTTPException(status_code=404, detail="Notice not found")
         return notice

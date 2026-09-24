@@ -103,6 +103,16 @@ class CorkboardStore:
         ).fetchone()
         return dict(row) if row else None
 
+    def is_claimed(self, node_id: str) -> bool:
+        """True once a human has actually claimed this Outpost (OUTPOST_CLAIM
+        set a transport_dest) — not just "something sent a packet claiming
+        this node_id once" (that's all touch_outpost/BOARD_SYNC requires)."""
+        row = self._conn.execute(
+            "SELECT 1 FROM outposts WHERE node_id = ? AND transport_dest IS NOT NULL AND transport_dest != ''",
+            (node_id,),
+        ).fetchone()
+        return row is not None
+
     def list_outposts(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM outposts ORDER BY last_seen_at DESC"

@@ -39,10 +39,10 @@ separate from Groups, used directly or seeded from a Group at creation time.
 First-class **Groups** (Family, Trail Crew, Maintenance, …) that can eventually scope:
 
 - Dispatch room(s) — done (seed-on-create)
-- Noticeboard — not yet (same pattern as Locker, straightforward when needed)
+- Noticeboard — done (2026-09-24; optional `group_id`, membership-gated reads)
 - Fieldbook area — not yet (Fieldbook exists as of 2026-09-24, all pages community-wide; group-scoped pages are a later slice)
 - Locker folder — done
-- Commons feed — not yet
+- Commons feed — done (2026-09-24; optional `group_id`, membership-gated reads)
 
 Shared roles (original starting set):
 
@@ -70,9 +70,7 @@ and were already true beforehand.
 
 ## Deferred
 
-- Noticeboard/Commons/Fieldbook group-scoping — same pattern as Locker
-  (`is_group_member` injection), not built because nothing in M8's exit criteria required
-  more than 2 services; Fieldbook (built 2026-09-24) is community-wide for now.
+- Fieldbook group-scoping — not yet (Fieldbook pages are community-wide for now).
 - Full 5-role permission semantics — v1 needed "who can manage membership" (admin) vs.
   "who's just in the group" (member); richer roles (Moderator/Editor/Operator) wait for a
   concrete feature that needs the distinction.

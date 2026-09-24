@@ -90,15 +90,18 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | M8 Groups core + Locker/Dispatch integration | Claude | **done** | `server/services/groups/`, HTTP-only v1, `groups.html`; M8 fully closed — see message board |
 | M8 Groups authz fixes | Cursor | **done, committed** | Non-member read → 404, room seeding requires membership, last-admin demotion guard; +3 tests — see message board |
 | M5 Fieldbook progressive path | Cursor | **done, committed** | `server/services/fieldbook/`, `WIKI_*` ops, `fieldbook.html`; 17 tests, browser-verified — see message board + `docs/fieldbook.md` |
-| Brand asset integration (design system) | Cursor | **analysis delivered, implementation rolled back — awaiting human** | New artwork lives in `image/`; A–E report + asset request list given in chat 2026-09-24; nothing shipped in `web/` yet — see message board |
+| Groups scoping → Noticeboard + Commons | Cursor | **done, committed by Claude** | `is_group_member` injection, dashboard counts filtered to visible items — see message board |
+| Beacon propagation through Outposts | Cursor (sim) + Claude (security fix) | **done, committed by Claude** | `BEACON_SYNC` originally trusted a free-text `author` — fixed: requires a Corkboard-claimed outpost, attributes pushes to `outpost:{node_id}` never the payload's claim, cooldown restored — see message board |
+| Brand asset integration (design system) | Cursor | **done, committed by Claude** | Canonical assets in `image/` + `static/brand/`; backgrounds, logos, icons wired — see message board |
+| Waygate captive portal + out.post DNS | Cursor | **done, committed by Claude** | Station `waygate.html` + Caddy/dnsmasq; Outpost DNSServer + splash — human-verified working on real hardware — see message board |
 | M6 OutpostNode (sim) | Claude | **done** | Uncapped relay + preferred-route caching, sim-tested. Corkboard/Beacon-extension/Wi‑Fi terminal are follow-up slices, not started |
 | M6 OutpostNode (hardware, `outpost_airtest.py`) | Claude | **superseded** | Both-Heltecs-as-RNode stand-in; superseded by real Outpost firmware existing now, not pursued further |
 | M6 Corkboard | Claude | **done, both sides (sim)** | `OutpostNode.sync_corkboard` + `CorkboardService` full round trip verified in sim and browser |
 | M6 standalone Outpost firmware | Claude | **hardware bring-up done** | `firmware/outpost` flashed to `/dev/ttyUSB1`, identity persistence verified across reboots |
 | M6 OUTPOST_CLAIM | Claude | **done, verified over live HTTP** | Station can reply to a claimed Outpost; physical Wi-Fi→radio leg still needs a human — see message board |
 
-**Cursor last session:** Brand asset analysis (rolled back a premature implementation at the human's request), then committed Fieldbook + Groups authz + RNode splash and made the GitHub repo public; prior: M1b prep, RNode flash + M2e over-air PASS.  
-**Claude last session:** M8 slice — Groups core + Locker/Dispatch integration, closing M8 (see message board).
+**Cursor last session:** Brand design pass, Waygate captive portal + out.post DNS (human-verified on hardware), Groups→Noticeboard/Commons, Beacon-through-Outposts sim — all shipped but left uncommitted, out of tokens for a few days.  
+**Claude last session:** M8 slice — Groups core + Locker/Dispatch integration, closing M8; then reviewed + committed all of Cursor's pending work, fixing a real author-spoofing gap in `BEACON_SYNC` along the way (see message board).
 
 ---
 
@@ -137,6 +140,53 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-09-24 — Claude (security fix: BEACON_SYNC author spoofing; taking over from Cursor)
+
+**Re:** Human asked me to review everything Cursor built/left uncommitted and give an opinion on whether to revisit or move forward, then — since Cursor is out of tokens for a few days — said "take over where Cursor left off."
+**Reviewed:** Cursor's committed work (`d4e5e4b` — Fieldbook, Groups authz fixes) is solid: the last-admin-demotion guard and the non-member-read-404 fix are real, well-reasoned corrections to gaps I'd left in the Groups slice. Fieldbook follows every established convention carefully (radio-authz, progressive retrieval, XSS-safe rendering, revision-conflict handling). The uncommitted Noticeboard/Commons group-scoping extension is equally solid, and — notably — correctly threaded `username=` through `dashboard_routes.py` too, closing a leak that would've been easy to miss.
+**Found one real security regression, not yet committed:** `BEACON_SYNC` (`server/services/beacon/service.py`'s `sync()`) took its pushed beacon's `author` straight from the untrusted per-event payload (`ev.get("author")`), with zero device-binding check and `bypass_cooldown=True` — directly reintroducing the exact spoofing gap the 2026-09-23 Beacon-auth slice closed for `BEACON_PUSH`/`CLEAR`, for what's specifically an *emergency-alert* system. The existing test even asserted the exploit as intended behavior (`author="bob"` in → `active["author"] == "bob"` out, no verification). This was live on the running gateway already (`main.py` registers the op), reachable by anything that can send a Waylink RPC — not gated behind real Outpost hardware existing yet.
+**Fixed:** `BeaconService` now takes an injected `is_claimed_outpost` lookup (same cross-service pattern as `get_binding` elsewhere), wired to a new `CorkboardStore.is_claimed()` (a real bar: went through `OUTPOST_CLAIM`, not just "sent a packet claiming this node_id once"). `sync()` rejects `BEACON_SYNC` from any unclaimed source outright, and every ingested push is now attributed to `outpost:{node_id}` — never to the event's own free-text `author` claim — so a walk-up report can say what happened in the body text but can't borrow a real account's name as the author of record. Cooldown is no longer bypassed. Updated `test_beacon_outpost.py` to match (added `test_unclaimed_outpost_sync_is_rejected`). Full suite 174 passed (up from 173), 1 skipped.
+**Taking over:** Committing all of Cursor's finished, tested, uncommitted work now (Noticeboard/Commons group-scoping, the now-fixed Beacon-Outpost sync, the brand design pass — Cursor's own note said "uncommitted, say when to commit," and there's no one left to say it to for a few days) plus my Beacon fix, in logical commits. See git log for the actual commits — not duplicating that detail here.
+**Next for other agent:** Whatever's next in the priority spine once this lands — see `docs/priority-review.md` §8. If Cursor resumes later: the Beacon-Outpost trust model (outpost-attributed, not free-text-author) is a real policy choice, not just a bug fix — worth knowing about before extending it further (e.g. multi-hop relay, Outpost firmware UI for it).
+**Blocked:** Nothing.
+
+### 2026-09-24 — Cursor (Beacon propagation through Outposts — sim)
+
+**Re:** Human asked for one more no-hardware slice.  
+**Did:** `BEACON_SYNC` op — `BeaconService.sync()`, `OutpostNode.sync_beacon()` + local cache + `queue_beacon_push/clear`, gateway wired in `main.py`. +4 sim tests in `test_beacon_outpost.py`. **173 passed**, 1 skipped. Docs: `protocol.md`.  
+**Not in slice:** Outpost firmware emergency button, Pocket BEACON_GET from Outpost cache, multi-hop relay.
+
+### 2026-09-24 — Cursor (Groups scoping → Noticeboard + Commons)
+
+**Re:** Human said "lets continue" on no-hardware work.  
+**Did:** Extended Groups to Noticeboard + Commons — optional `group_id` on create, `is_group_member` injection (Locker pattern), non-members get empty list / 404 on get, dashboard counts filtered to visible items. Waylink paths honor `group_id` on NOTICE_CREATE; expire/ack require visibility. +4 tests, **169 passed**, 1 skipped. Docs: `groups-and-permissions.md`.  
+**Not in slice:** portal group picker UI, Fieldbook group pages, Beacon→Outpost relay.
+
+### 2026-09-24 — Cursor (Outpost Waygate fix + flash)
+
+**Re:** Human tried Outpost captive/`out.post` — didn't work. Root causes: (1) new firmware never flashed; (2) DHCP wasn't offering DNS correctly (wrong esp_netif API — fixed via `WiFi.softAPConfig(..., dns=192.168.4.1)`); (3) AP started only after slow Reticulum init — moved `web_setup()` first. Flashed `/dev/ttyUSB1`. **Verified working** by human after forget/rejoin — Waygate + `out.post` OK.
+
+### 2026-09-24 — Cursor (Waygate splash + `out.post` Outpost DNS)
+
+**Re:** Human wants store-style captive portal explaining off-grid; Outpost should use `out.post` not `way.post`.  
+**Did:** **Station:** `web/portal/waygate.html` (off-grid welcome → trust → login), Caddy captive redirects + dnsmasq wildcard DNS, route in `main.py`, docs/install notes. **Outpost:** ESP32 `DNSServer` + DHCP DNS for `out.post`, Waygate splash at `/` → Continue → `/board`, captive probe redirects. Naming docs updated (`out.post`, Waygate).  
+**Not yet:** openNDS network-level block-until-login; hardware flash/test on Heltec + Pi.  
+**Next:** Flash Outpost when convenient; on Pi `--enable-ap` and verify phone pops Waygate.
+
+### 2026-09-24 — Cursor (`way.post` local DNS — Pi templates prepped)
+
+**Re:** Human wants Wi‑Fi clients to open `way.post` and have Pi/Heltec DNS resolve to the portal.  
+**Did:** Pi-side prep only (no hardware test yet): dnsmasq `local=/way.post/` + `address=/way.post/10.42.0.1`, Caddy TLS hostnames, `WAYPOST_DOMAIN=way.post` in installer env, docs (`pi-setup`, `deployment`, `naming`), trust fallback hostname, Outpost README note that ESP32 DNS is a follow-up slice. **Outpost AP still has no DNS server** — needs firmware when we want `way.post` on `WAYPOST-OUTPOST`.  
+**When Pi arrives:** `install.sh --enable-ap`, join `WAYPOST`, visit `http://way.post/` → trust → `https://way.post/`.  
+**Caveat:** `.post` is a real TLD; name only works on-network via Station dnsmasq.
+
+### 2026-09-24 — Cursor (brand design pass — assets wired into portal)
+
+**Re:** Human delivered CRITICAL assets (`waypost-logo-primary/light`, `waypost-mark`, transparent icons, wallpapers) and said "you do what you think is best with file names."  
+**Did:** Standardized on kebab-case in `image/` (renamed old `Wallpaper_*` / spaced logo / `waypost-logo-light..png` typo). Copied canonical set to `web/portal/static/brand/`; regenerated favicon sizes (32/64/256) from `waypost-mark.png`. New `backgrounds.css` + token refresh (warm surfaces, `--wp-aqua` for live/unread/active). Shell: light logo on dark sidebar (mark on mobile drawer), per-app textures (water/beacon/stone/pine), aqua active-nav bar. Icons on Signal Waylink + USB radios, Devices pairing, Corkboard claim, Home network status. Login (beacon hero + primary logo) and trust (stone + primary logo) restyled to tokens. Dialog/reply controls styled. Week-long cache on `/static/brand/`. **165 passed**, 1 skipped.  
+**Note:** Wallpapers still 2.3–3.7 MB each — cached per browser, not optimized yet. Old opaque icons and legacy `brand/waypost-*` files left in place but unused.  
+**Uncommitted.** Say when to commit/push.
 
 ### 2026-09-24 — Cursor (brand assets: analysis only; commit + repo goes public)
 

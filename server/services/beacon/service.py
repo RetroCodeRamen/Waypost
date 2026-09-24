@@ -12,6 +12,7 @@ from server.services.beacon.constants import (
     OP_BEACON_GET,
     OP_BEACON_LIST,
     OP_BEACON_PUSH,
+    OP_BEACON_SYNC,
     PUSH_COOLDOWN_SEC,
 )
 from server.services.beacon.store import BeaconStore
@@ -26,6 +27,7 @@ class BeaconService:
         store: BeaconStore,
         *,
         get_binding: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+        is_claimed_outpost: Optional[Callable[[str], bool]] = None,
     ) -> None:
         self.store = store
         # Same injected cross-service lookup as PostboxService/NoticeboardService
@@ -34,6 +36,9 @@ class BeaconService:
         # claimed — for an emergency-alert system, that meant anyone with a
         # working radio could push (or silence) an alert as anyone.
         self._get_binding = get_binding or (lambda _node_id: None)
+        # Same shape, for BEACON_SYNC: is envelope.src a Corkboard-claimed
+        # Outpost (went through OUTPOST_CLAIM, not just "sent a packet once")?
+        self._is_claimed_outpost = is_claimed_outpost or (lambda _node_id: False)
 
     def _bound_username(self, node_id: str) -> Optional[str]:
         binding = self._get_binding(node_id)
@@ -93,6 +98,55 @@ class BeaconService:
     def clear(self, beacon_id: Optional[str] = None) -> Optional[dict[str, Any]]:
         return self.store.clear(beacon_id)
 
+    def sync(
+        self,
+        *,
+        outpost_id: str,
+        pending: list[Any],
+    ) -> dict[str, Any]:
+        """Ingest a claimed Outpost's queued push/clear events and return the
+        current active beacon — same round-trip shape as Corkboard sync.
+
+        Outposts are walk-up, no-account devices (like Corkboard), so there's
+        no real Station identity to bind a push to the way BEACON_PUSH does
+        for a paired Pocket. But Beacon is an emergency-alert system, not a
+        noteboard — a free-text `author` field would let anyone relaying
+        through *any* self-declared node_id impersonate a real account (e.g.
+        "aj says evacuate now"). So: (1) the source must be a Corkboard-
+        *claimed* Outpost (went through OUTPOST_CLAIM, not just "sent a
+        packet claiming this node_id once"), and (2) the pushed beacon's
+        author is always attributed to that outpost, never the event's own
+        free-text claim — whoever physically reported it can say who they
+        are in the body text, but they can't borrow someone else's name as
+        the author of record. Cooldown is not bypassed, for the same reason
+        it isn't for BEACON_PUSH.
+        """
+        if not self._is_claimed_outpost(outpost_id):
+            return {"error": "unauthorized_outpost", "ingested": 0, "active": self.get_active()}
+        ingested = 0
+        for ev in pending:
+            if not isinstance(ev, dict):
+                continue
+            op = str(ev.get("op") or "")
+            mid = ev.get("mid")
+            if op == "push":
+                try:
+                    self.push(
+                        author=f"outpost:{outpost_id}",
+                        title=str(ev.get("title") or ""),
+                        body=str(ev.get("body") or ""),
+                        severity=str(ev.get("severity") or "emergency"),
+                        beacon_id=ev.get("id"),
+                        mid=str(mid) if mid else None,
+                    )
+                    ingested += 1
+                except ValueError:
+                    continue
+            elif op == "clear":
+                self.clear(ev.get("id"))
+                ingested += 1
+        return {"ingested": ingested, "active": self.get_active()}
+
     def handle_rpc(self, envelope: Envelope) -> Envelope:
         op = envelope.op
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
@@ -128,6 +182,19 @@ class BeaconService:
                     )
                 cleared = self.clear(payload.get("id"))
                 return envelope.make_response(op=op, payload={"beacon": cleared})
+            if op == OP_BEACON_SYNC:
+                pending = payload.get("pending")
+                result = self.sync(
+                    outpost_id=str(envelope.src or ""),
+                    pending=pending if isinstance(pending, list) else [],
+                )
+                if result.get("error"):
+                    return envelope.make_response(op=op, payload=result, error=True)
+                return envelope.make_response(
+                    op=op,
+                    payload={"ok": True, **result},
+                    flags=Flags.RESPONSE | Flags.ACK,
+                )
             return envelope.make_response(
                 op=op,
                 payload={"error": f"unknown_op:{op}"},
