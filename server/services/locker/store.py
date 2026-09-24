@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from server.services.locker.constants import SCOPE_PERSONAL, SCOPE_SHARED
+from server.services.locker.constants import SCOPE_GROUP, SCOPE_PERSONAL, SCOPE_SHARED
 from shared.protocol.envelope import new_id
 
 
@@ -39,7 +39,16 @@ class LockerStore:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self._conn.executescript(LOCKER_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        cols = {
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(locker_files)").fetchall()
+        }
+        if "group_id" not in cols:
+            self._conn.execute("ALTER TABLE locker_files ADD COLUMN group_id TEXT")
 
     def path_for(self, stored_name: str) -> Path:
         return self.root / stored_name
@@ -56,14 +65,15 @@ class LockerStore:
         note: str = "",
         file_id: Optional[str] = None,
         created_at: Optional[float] = None,
+        group_id: Optional[str] = None,
     ) -> dict[str, Any]:
         fid = file_id or new_id()
         ts = created_at if created_at is not None else time.time()
         self._conn.execute(
             """
             INSERT INTO locker_files
-                (id, owner, scope, filename, content_type, size, note, stored_name, created_at, deleted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                (id, owner, scope, filename, content_type, size, note, stored_name, created_at, deleted, group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             """,
             (
                 fid,
@@ -75,6 +85,7 @@ class LockerStore:
                 note or "",
                 stored_name,
                 ts,
+                group_id,
             ),
         )
         self._conn.commit()
@@ -99,11 +110,14 @@ class LockerStore:
         owner: Optional[str] = None,
         viewer: Optional[str] = None,
         limit: int = 100,
+        is_group_member: Optional[Any] = None,
+        group_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """List visible files.
 
         - shared: visible to everyone
         - personal: visible only to owner (viewer must match)
+        - group: visible only to members of item["group_id"] (via is_group_member)
         """
         limit = max(1, min(int(limit), 500))
         rows = self._conn.execute(
@@ -121,8 +135,14 @@ class LockerStore:
                 continue
             if owner and item["owner"].lower() != owner.lower():
                 continue
+            if group_id and item.get("group_id") != group_id:
+                continue
             if item["scope"] == SCOPE_PERSONAL:
                 if not viewer or viewer.lower() != item["owner"].lower():
+                    continue
+            elif item["scope"] == SCOPE_GROUP:
+                gid = item.get("group_id")
+                if not viewer or not gid or not is_group_member or not is_group_member(gid, viewer):
                     continue
             elif item["scope"] != SCOPE_SHARED:
                 continue
@@ -162,4 +182,5 @@ class LockerStore:
             "stored_name": row["stored_name"],
             "created_at": row["created_at"],
             "deleted": bool(row["deleted"]),
+            "group_id": row["group_id"] if "group_id" in row.keys() else None,
         }

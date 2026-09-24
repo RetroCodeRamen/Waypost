@@ -100,6 +100,54 @@ def test_locker_page(client: TestClient):
     assert "locker.js" in r.text
 
 
+def test_group_scoped_file_visible_only_to_members(client: TestClient):
+    group = client.post("/api/groups", json={"name": "Trail Crew"}).json()
+    gid = group["id"]
+    client.post(f"/api/groups/{gid}/members", json={"username": "bob"})
+
+    r = client.post(
+        "/api/locker/files",
+        data={"owner": "aj", "scope": "group", "group_id": gid},
+        files={"file": ("crew-map.txt", b"crew only", "text/plain")},
+    )
+    assert r.status_code == 201
+    fid = r.json()["id"]
+    assert r.json()["group_id"] == gid
+
+    as_member = client.get(
+        "/api/locker/files", params={"viewer": "bob", "scope": "group", "group_id": gid}
+    )
+    assert any(f["id"] == fid for f in as_member.json()["files"])
+
+    as_stranger = client.get(
+        "/api/locker/files", params={"viewer": "carol", "scope": "group", "group_id": gid}
+    )
+    assert all(f["id"] != fid for f in as_stranger.json()["files"])
+
+    deny = client.get(f"/api/locker/files/{fid}/download", params={"viewer": "carol"})
+    assert deny.status_code == 404
+
+    ok = client.get(f"/api/locker/files/{fid}/download", params={"viewer": "bob"})
+    assert ok.status_code == 200
+
+
+def test_group_scope_requires_membership_and_group_id(client: TestClient):
+    missing_group = client.post(
+        "/api/locker/files",
+        data={"owner": "aj", "scope": "group"},
+        files={"file": ("x.txt", b"x", "text/plain")},
+    )
+    assert missing_group.status_code == 400
+
+    group = client.post("/api/groups", json={"name": "Ops"}).json()
+    not_a_member = client.post(
+        "/api/locker/files",
+        data={"owner": "carol", "scope": "group", "group_id": group["id"]},
+        files={"file": ("x.txt", b"x", "text/plain")},
+    )
+    assert not_a_member.status_code == 400
+
+
 def test_empty_rejected(client: TestClient):
     r = client.post(
         "/api/locker/files",

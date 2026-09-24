@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Groups — Waypost</title>
+  <link rel="stylesheet" href="/static/tokens.css"/>
+  <link rel="stylesheet" href="/static/shell.css"/>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="/static/groups.css"/>
+</head>
+<body>
+  <div id="wp-page" class="groups-page">
+    <article class="wp-card app-panel">
+      <h2 class="wp-card__title">Create a group</h2>
+      <p class="muted">Groups can scope Locker files and seed Dispatch rooms. You become its first admin.</p>
+      <form id="create-form" class="groups-create">
+        <label class="grow">Name <input id="group-name" maxlength="80" required placeholder="Trail Crew"/></label>
+        <button type="submit">Create</button>
+      </form>
+    </article>
+
+    <div class="groups-layout">
+      <article class="wp-card app-panel">
+        <h2 class="wp-card__title">My groups</h2>
+        <ul id="group-list" class="groups-list"></ul>
+        <p id="group-list-empty" class="muted" hidden>Not a member of any group yet.</p>
+      </article>
+
+      <article class="wp-card app-panel" id="detail-panel" hidden>
+        <h2 class="wp-card__title" id="detail-name">—</h2>
+        <ul id="member-list" class="groups-members"></ul>
+        <form id="add-member-form" class="groups-add" hidden>
+          <label class="grow">Username <input id="add-username" maxlength="32" required/></label>
+          <label>Role
+            <select id="add-role">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <button type="submit">Add</button>
+        </form>
+        <p class="muted" id="not-admin-hint" hidden>Only a group admin can add or remove members.</p>
+      </article>
+    </div>
+  </div>
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <script>
+    WaypostShell.mount({
+      active: "groups",
+      user: "AJ",
+      title: "Groups",
+      subtitle: "Shared membership for Locker and Dispatch"
+    });
+  </script>
+  <script src="/static/groups.js"></script>
+</body>
+</html>

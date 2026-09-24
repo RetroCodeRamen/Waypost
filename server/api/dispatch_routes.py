@@ -54,8 +54,13 @@ class DirectOpen(BaseModel):
 
 class RoomCreate(BaseModel):
     title: str = Field(min_length=1, max_length=80)
-    members: list[str] = Field(min_length=1)
+    members: list[str] = Field(default_factory=list)
     slug: Optional[str] = Field(default=None, max_length=64)
+    group_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Seed membership from a Group's current members (one-time, not live-linked)",
+    )
 
 
 class RoomJoin(BaseModel):
@@ -158,7 +163,17 @@ def build_dispatch_router() -> APIRouter:
         body: RoomCreate, request: Request, user=Depends(get_current_user)
     ):
         db = request.app.state.db
-        members = list(dict.fromkeys(body.members))
+        members = list(body.members)
+        if body.group_id:
+            group = request.app.state.groups.get_group(body.group_id)
+            if not group:
+                raise HTTPException(status_code=404, detail="Group not found")
+            members.extend(m["username"] for m in group["members"])
+        members = list(dict.fromkeys(members))
+        if not members:
+            raise HTTPException(
+                status_code=400, detail="members or group_id required"
+            )
         if auth_enforced(request) and user["username"] not in members:
             members.insert(0, user["username"])
         for u in members:

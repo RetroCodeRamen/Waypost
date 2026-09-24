@@ -24,6 +24,7 @@ from server.api.dashboard_routes import build_dashboard_router
 from server.api.db import Database
 from server.api.deps import get_current_user
 from server.api.dispatch_routes import build_dispatch_router
+from server.api.groups_routes import build_groups_router
 from server.api.locker_routes import build_locker_router
 from server.api.noticeboard_routes import build_noticeboard_router
 from server.api.postbox_routes import build_postbox_router
@@ -52,6 +53,7 @@ from server.services.dispatch.constants import (
     OP_MSG_SYNC,
 )
 from server.services.dispatch.service import DispatchService
+from server.services.groups.service import GroupsService
 from server.services.locker.constants import OP_FILE_DELETE, OP_FILE_INFO, OP_FILE_LIST
 from server.services.locker.service import LockerService
 from server.services.mail.constants import (
@@ -127,7 +129,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         beacon = BeaconService(db.beacon, get_binding=lambda n: db.dispatch.get_binding(n))
         corkboard = CorkboardService(db.corkboard)
-        locker = LockerService(db.locker)
+        groups = GroupsService(db.groups)
+        locker = LockerService(db.locker, is_group_member=db.groups.is_member)
         rollcall = RollcallService(db)
         app.state.db = db
         app.state.settings = settings
@@ -137,6 +140,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.noticeboard = noticeboard
         app.state.beacon = beacon
         app.state.corkboard = corkboard
+        app.state.groups = groups
         app.state.locker = locker
         app.state.rollcall = rollcall
         app.state.signal = SignalService(lambda: app.state)
@@ -300,6 +304,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(build_noticeboard_router())
     app.include_router(build_beacon_router())
     app.include_router(build_corkboard_router())
+    app.include_router(build_groups_router())
     app.include_router(build_locker_router())
     app.include_router(build_signal_router())
     app.include_router(build_rollcall_router())
@@ -322,6 +327,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "commons": True,
             "noticeboard": True,
             "beacon": True,
+            "groups": True,
             "locker": True,
             "signal": True,
             "rollcall": True,
@@ -340,6 +346,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "Fieldbook",
                 "Noticeboard",
                 "Beacon",
+                "Groups",
                 "Locker",
                 "Archive",
                 "Atlas",
@@ -475,6 +482,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/control.html")
         def portal_control():
             return FileResponse(PORTAL_DIR / "control.html")
+
+        @app.get("/groups.html")
+        def portal_groups():
+            return FileResponse(PORTAL_DIR / "groups.html")
 
     return app
 

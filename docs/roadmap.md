@@ -115,7 +115,7 @@ Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticu
 
 **Remaining on this thread:** the physical claim test over real LoRa (join the Outpost's Wi-Fi, use `/claim`) — needs a human, not more code; MakerHawk GPIO verification whenever that board exists.
 
-**Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). Noticeboard ack + Beacon auth (M8 slice) are also now done (2026-09-23) — see below. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Remaining Tier 2 software-only items: Fieldbook progressive path, Groups (biggest, nothing else depends on it yet), Today dashboard. See `priority-review.md` §7, §8, §12.
+**Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). M8 is now fully done (2026-09-24) — Noticeboard ack, Beacon auth, Today/sync dashboard, and Groups (core + Locker/Dispatch integration) all shipped. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Remaining Tier 2 software-only items: Fieldbook progressive path (still genuinely empty — package marker only), extending Groups scoping to Noticeboard/Commons (not required for M8's exit criteria, same pattern as Locker once needed). See `priority-review.md` §7, §8, §12.
 
 **Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
 
@@ -267,7 +267,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 
 ---
 
-### M8 — Groups, Today view, Notice/Beacon polish 🟡
+### M8 — Groups, Today view, Notice/Beacon polish ✅
 
 **Goal:** Shared authz + homepage that answers what happened / what’s waiting; trustworthy notices and Beacon.
 
@@ -276,6 +276,8 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 **Progress (2026-09-23):** Notice ack ✅ — `NOTICE_ACK` (Waylink) + `POST /api/noticeboard/notices/{id}/ack`, idempotent, per-user, portal shows an unread count and a "Mark as read" action. Beacon auth ✅ — `BEACON_PUSH`/`CLEAR` (and Noticeboard's `NOTICE_CREATE`/`EXPIRE`) now resolve the acting username from the radio device's binding rather than trusting the payload's own `author` field, closing a real spoofing gap (see `docs/security.md`, `docs/protocol.md`). Replay protection for Beacon was already covered generically — `WaylinkGateway` dedups every op by `mid`, and `PUSH_COOLDOWN_SEC` rate-limits repeat pushes from one author — so nothing new was needed there specifically.
 
 **Progress (2026-09-24):** Today view's "aggregates unread + sync" exit criterion — turned out to be much further along than "not started": `/api/dashboard` already aggregated 5 services' activity, an active-Beacon banner, and network/online-user status. Two real gaps, both fixed: (1) the Noticeboard card showed the *global* active-notice count, not *this user's* unread count — now uses yesterday's `count_unacked(username)`, label changed "Active Notices" → "Unread Notices". (2) The home page's "Sync" status line only ever reflected Dispatch's pending queue — extended to a genuine cross-app aggregate (`pending_total` = Dispatch pending + Postbox outbox), without building the full shared offline-sync subsystem that's still separately tracked as open debt (`priority-review.md` #2). 4 new tests, full suite 133 passed. **Still open:** Groups (not started — no file exists yet, biggest remaining piece of this milestone), Beacon propagation through Outposts (explicitly out of scope for the auth fix — see `docs/protocol.md`'s Beacon section).
+
+**Progress (2026-09-24, later):** Groups core shipped — `server/services/groups/` (`GroupsStore`/`GroupsService`), HTTP routes at `/api/groups*` (portal/HTTP-only in v1, same precedent as Rollcall — no Waylink ops), and a `groups.html` portal page. v1 enforces exactly two ranks (member/admin), not the doc's full 5-role sketch — an explicit, doc-acknowledged v2 deferral. Used by 2 services, meeting the exit criterion: **Locker** (`locker_files.group_id` + `scope='group'`, gated by an injected `is_group_member` lookup — same cross-service pattern as `NoticeboardService.get_binding`) and **Dispatch** (`POST /api/dispatch/conversations/rooms` takes an optional `group_id` that seeds room membership from the group's *current* members — a one-time copy, not live-linked). 12 new tests, full suite 145 passed, 1 skipped. Verified live against the running Station (curl with real per-user sessions for aj/bob/carol — confirmed a non-member genuinely can't see or download a group-scoped file — and a browser pass through the portal UI). M8 is now fully done; all four exit criteria met. See `docs/groups-and-permissions.md` for what's deferred to v2.
 
 ---
 

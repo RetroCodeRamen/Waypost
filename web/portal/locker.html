@@ -17,7 +17,11 @@
           <option value="shared">Shared (everyone)</option>
           <option value="mine">My personal</option>
           <option value="all">Shared + mine</option>
+          <option value="group">A group</option>
         </select>
+      </label>
+      <label id="view-group-field" hidden>Group
+        <select id="view-group-id"></select>
       </label>
       <button type="button" id="refresh">Refresh</button>
     </section>
@@ -31,7 +35,11 @@
           <select id="scope">
             <option value="shared">Shared</option>
             <option value="personal">Personal</option>
+            <option value="group">Group</option>
           </select>
+        </label>
+        <label id="group-field" hidden>Group
+          <select id="group-id"></select>
         </label>
       </div>
       <label class="grow">Note <input id="note" maxlength="240" placeholder="Optional description"/></label>

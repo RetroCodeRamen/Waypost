@@ -14,6 +14,8 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 **Next day (2026-09-24):** picked the Today/sync dashboard next. Same pattern a third time: checked the code before building, found `/api/dashboard` was already substantially built (5-service activity feed, Beacon banner, network status) — this document's "not started" label undersold it. Two real gaps fixed instead of a rebuild: the Noticeboard card showed the global active-notice count, not the caller's own unread count; the home page's "Sync" line only ever reflected Dispatch, not Postbox's outbox too. 4 new tests, full suite 133 passed. **Three stale "not started" claims caught in two days (Postbox, `ADMIN_APPROVAL`'s actual scope, now this) — treat every status label in this document as a hypothesis, not a fact, per §8's note.**
 
+**Same day, later still:** built Groups/permissions core — this one genuinely *was* "not started" (no file existed, unlike the last three false alarms). `server/services/groups/` (`GroupsStore`/`GroupsService`), HTTP-only routes at `/api/groups*` (no Waylink — same precedent as Rollcall), v1's two enforced roles (member/admin, not the doc's original five), and portal `groups.html`. Integrated with 2 services per M8's exit criterion: Locker (`scope='group'` + `group_id`, membership-gated) and Dispatch (rooms can seed membership from a group at creation, one-time copy not a live link). 12 new tests, full suite 145 passed, 1 skipped. Verified live against the running Station with real per-user sessions (not just the aj-cookie-with-claimed-viewer trick, which — worth noting for future verification — silently no-ops when auth is enforced, since `actor_username()` ignores the claimed name and uses the session's own identity). **This closes M8 entirely** — all four exit criteria met, see `roadmap.md`.
+
 ---
 
 ## 1. Current state
@@ -37,7 +39,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 133 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 145 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -53,7 +55,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 ### Not started (architectural / planned)
 
-Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Groups/permissions subsystem · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Fieldbook · Atlas · Finder · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate)
+Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Fieldbook · Atlas · Finder · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate)
 
 ---
 
@@ -84,7 +86,7 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 3. ~~Account ≠ radio identity depth — pairing UX, revocation~~ — **done (M4 slice 1 ✅, extended to Outposts in M6)**; cryptographic device identity beyond that is still open
 4. Network time without public NTP — no RTC on the Pi means 30-day certs are already the practical ceiling (`network-time.md`)
 5. Provisioning: Outpost enroll is **done** (`OUTPOST_CLAIM`, M6); Pocket join still needs T-Deck firmware first
-6. Groups as shared authz (rooms today ≠ Groups)
+6. ~~Groups as shared authz (rooms today ≠ Groups)~~ — **done (v1, 2026-09-24)**: `server/services/groups/`, 2 services integrated (Locker, Dispatch); rooms remain their own concept, seedable from a Group
 7. Multi-hop Outpost path + Pocket-as-courier **on real hardware** — **partially done**: Outpost firmware is real and hardware-proven (M6), and Reticulum's own Transport mode handles multi-hop path discovery without app code; Pocket-as-courier still has no real hardware since T-Deck firmware doesn't exist
 8. Federation / home-Station assumptions (document only for now)
 9. ~~`ADMIN_APPROVAL` registration mode + admin-role~~ — **done, same day** (see header)
@@ -97,7 +99,7 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 |------|-----------------|--------|
 | Treating Heltec as production mesh | Would fight Reticulum/RNode if apps grew Heltec-specific assumptions | **Retired** — M2e is done; Heltec plaintext is explicitly lab-only now, and the same boards double as RNode hardware |
 | Per-app offline queues | Dispatch/mail already diverge; Fieldbook will fork again | Still open — only Dispatch has adopted `offline-sync.md`'s states |
-| Rooms ≠ Groups | Permission sprawl if each app invents ACL | Still open |
+| Rooms ≠ Groups | Permission sprawl if each app invents ACL | **Resolved (2026-09-24)** — Groups v1 is the one model; Locker/Dispatch consult it via injected lookups, no per-app ACL |
 | Portal feature momentum | Tempting to polish Commons/Locker instead of transport | Still open — freeze still in effect |
 | Clock skew | Notice/Beacon expiry and certs fail off-grid without Station time | **Sharper now**: Caddy issues real 30-day certs on the Pi, so a Pi that boots weeks behind serves certs phones reject — see `network-time.md` and `pi-setup.md#notes-and-limits` |
 | Payload size | LoRa MAX_FRAME 250 — fragmentation or progressive ops needed before rich messages | Still open |
@@ -117,7 +119,7 @@ proven air path (done)
             → multi-hop courier with a real Pocket ← hardware-blocked
               → identity/presence depth (M4) ← ALMOST DONE, one software-only piece left
                 → Postbox / Fieldbook / Notice+Beacon polish
-                  → Groups → Commons/Locker → Atlas/Archive → Pocket PDA apps
+                  → Groups (done ✅) → Commons/Locker → Atlas/Archive → Pocket PDA apps
 ```
 
 M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware-verified, Station can address it" — genuinely done, not just de-risked. That leaves exactly two things still hardware-blocked (T-Deck-dependent Pocket work, and M1b's Pi), and one thing nearly done in software (M4 — see §8).
@@ -132,7 +134,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 133 passed as of this review
+- ~~Keep **radio regression** green~~ — 145 passed, 1 skipped as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -147,7 +149,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - ~~Postbox progressive LoRa path~~ — **turned out to already be built**, this line was stale (see header)
 - Fieldbook progressive path — not started, software-only
 - ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts explicitly still not started (real scope of its own, not part of the auth fix)
-- Groups/permissions core — not started, software-only
+- ~~Groups/permissions core~~ — **done (2026-09-24)**, see header — core + Locker/Dispatch integration
 - ~~Unified Today / sync dashboard~~ — **turned out to already be substantially built**; two real gaps fixed 2026-09-24 (see header) — this line was stale, third instance this session
 - **M1b Pi AP + TLS** — software done and tested in containers; blocked purely on physical Pi
 
@@ -174,10 +176,11 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 With M4 build-complete, nothing left in the priority spine's hardware-free lane is a single obvious next step the way M4 was. **Noticeboard ack + Beacon auth got picked and built the same day** (see header) — while implementing it, checked Postbox against this same list and found its "progressive LoRa path" line was simply wrong: `MAIL_STATUS`/`MAIL_LIST`/`MAIL_GET` already implement exactly that pattern (compact headers, full body on demand, attachments kept Wi-Fi-only) — nothing to build there. What's left, still independent, none blocking each other:
 
-- **Fieldbook progressive path** — the same pattern Dispatch and (it turns out) Postbox already prove; likely the most mechanical of what's left.
-- **Groups/permissions core** — bigger and more foundational (rooms ≠ Groups is flagged as real debt in §5), but no other Tier 2 item depends on it yet, so it's not blocking to defer. No existing file/scaffolding at all — genuinely starts from zero.
+- **Fieldbook progressive path** — the same pattern Dispatch and (it turns out) Postbox already prove; likely the most mechanical of what's left. Still genuinely not started (package marker only).
+- ~~**Groups/permissions core**~~ — **done 2026-09-24**, see header. Was genuinely unstarted (unlike the three false alarms above) — now the one authz model, integrated with Locker + Dispatch.
 - ~~**Unified Today/sync dashboard**~~ — **done 2026-09-24**, see header. Was already ~80% there; the "not started" label was wrong.
 - **Beacon propagation through Outposts** — deliberately cut from the auth-fix slice; store-and-forward relay for Beacon the way Dispatch's courier queue already works, real scope of its own.
+- **Extend Groups scoping to Noticeboard/Commons** — same injected-lookup pattern as Locker, not built because M8's exit criteria only asked for ≥2 services.
 
 **Before picking the next one, verify the item against the actual code first** — this same review nearly recommended re-building already-finished Postbox work. Two stale-claim near-misses in one project (this one, and the `ADMIN_APPROVAL` staleness the previous refresh caught) is enough to treat every "not started" line in this document as a hypothesis to check, not a fact.
 
@@ -196,6 +199,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 | ~~Device bind / reachability in Rollcall~~ | **Done** |
 | ~~Standalone Outpost firmware~~ | **Done on Heltec V3 (M6)** — real encryption, real hardware, not sim |
 | ~~`ADMIN_APPROVAL` + admin-role~~ | **Done** — M4 is now fully built except the Stalwart decision |
+| ~~Groups/permissions core~~ | **Done (2026-09-24)** — M8 now fully closed; see header |
 
 ## 10. Roadmap moves — later
 
@@ -213,7 +217,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 
 - Stop adding portal apps until Tier 1 exits — **Tier 1 has now exited, more thoroughly than at the last review** (M6 landed on real hardware since); this is the trigger to revisit the freeze (see §3, §6).
 - Do not build Heltec-specific "product" features (keep bridge minimal) — moot now that Heltec's production role is RNode firmware, not the CBOR bridge.
-- Do not invent per-app ACL — wait for Groups doc + one authz model.
+- ~~Do not invent per-app ACL — wait for Groups doc + one authz model.~~ — **the model now exists** (`server/services/groups/`); this is a live constraint, not a future one — any new group-scoped feature integrates with it, never a bespoke table.
 - Cardputer as Pocket reference — **rejected**; T-Deck Plus remains Pocket goal (now in transit).
 - Live tracking / sub-minute GPS — out; 10–15 min reports only.
 

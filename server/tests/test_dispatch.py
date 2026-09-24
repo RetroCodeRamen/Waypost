@@ -239,3 +239,40 @@ def test_room_messaging(client: TestClient):
     assert bind_sarah.json()["flushed"] == 1
     sarah_out = client.get("/api/waylink/outbox/pocket-sarah").json()["envelopes"]
     assert sarah_out[0]["payload"]["message"]["body"] == "Meet at the outpost"
+
+
+def test_create_room_from_group_seeds_membership(client: TestClient):
+    group = client.post("/api/groups", json={"name": "River Crew"}).json()
+    gid = group["id"]
+    client.post(f"/api/groups/{gid}/members", json={"username": "bob"})
+    client.post(f"/api/groups/{gid}/members", json={"username": "sarah"})
+
+    room = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "River Crew", "group_id": gid},
+    )
+    assert room.status_code == 200
+    members = set(room.json()["conversation"]["members"])
+    assert {"aj", "bob", "sarah"} <= members
+
+    # Not live-linked: adding someone to the group afterward doesn't
+    # retroactively change the room's membership.
+    client.post(f"/api/groups/{gid}/members", json={"username": "carol"})
+    conv = client.get(f"/api/dispatch/conversations/{room.json()['conversation']['id']}")
+    assert "carol" not in conv.json()["conversation"]["members"]
+
+
+def test_create_room_requires_members_or_group(client: TestClient):
+    r = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "Empty"},
+    )
+    assert r.status_code == 400
+
+
+def test_create_room_unknown_group_404s(client: TestClient):
+    r = client.post(
+        "/api/dispatch/conversations/rooms",
+        json={"title": "Ghost", "group_id": "nope"},
+    )
+    assert r.status_code == 404

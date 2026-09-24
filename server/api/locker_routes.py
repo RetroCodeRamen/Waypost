@@ -27,11 +27,12 @@ def build_locker_router() -> APIRouter:
         owner: Optional[str] = None,
         viewer: Optional[str] = None,
         limit: int = 100,
+        group_id: Optional[str] = None,
     ):
         viewer_name = actor_username(request, user, viewer)
         return {
             "files": request.app.state.locker.list_files(
-                scope=scope, owner=owner, viewer=viewer_name, limit=limit
+                scope=scope, owner=owner, viewer=viewer_name, limit=limit, group_id=group_id
             ),
             "shared_count": request.app.state.locker.count_shared(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
@@ -76,6 +77,7 @@ def build_locker_router() -> APIRouter:
         owner: str = Form("aj"),
         scope: str = Form(SCOPE_SHARED),
         note: str = Form(""),
+        group_id: Optional[str] = Form(None),
     ):
         owner_name = actor_username(request, user, owner)
         request.app.state.db.ensure_user(owner_name)
@@ -88,6 +90,7 @@ def build_locker_router() -> APIRouter:
                 data=raw,
                 scope=scope,
                 note=note,
+                group_id=group_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO, Callable, Optional
 
 from server.services.locker.constants import (
     ALLOWED_SCOPES,
@@ -14,6 +14,7 @@ from server.services.locker.constants import (
     OP_FILE_DELETE,
     OP_FILE_INFO,
     OP_FILE_LIST,
+    SCOPE_GROUP,
     SCOPE_PERSONAL,
     SCOPE_SHARED,
 )
@@ -43,8 +44,16 @@ def format_size(n: int) -> str:
 
 
 class LockerService:
-    def __init__(self, store: LockerStore) -> None:
+    def __init__(
+        self,
+        store: LockerStore,
+        *,
+        is_group_member: Optional[Callable[[str, str], bool]] = None,
+    ) -> None:
         self.store = store
+        # Injected rather than importing GroupsStore directly — same
+        # cross-service lookup pattern as NoticeboardService's get_binding.
+        self._is_group_member = is_group_member or (lambda _gid, _username: False)
 
     def list_files(
         self,
@@ -53,9 +62,15 @@ class LockerService:
         owner: Optional[str] = None,
         viewer: Optional[str] = None,
         limit: int = 100,
+        group_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         items = self.store.list_files(
-            scope=scope, owner=owner, viewer=viewer, limit=limit
+            scope=scope,
+            owner=owner,
+            viewer=viewer,
+            limit=limit,
+            is_group_member=self._is_group_member,
+            group_id=group_id,
         )
         return [self._public(i) for i in items]
 
@@ -88,6 +103,7 @@ class LockerService:
         scope: str = SCOPE_SHARED,
         note: str = "",
         file_id: Optional[str] = None,
+        group_id: Optional[str] = None,
     ) -> dict[str, Any]:
         owner = owner.strip()
         scope = (scope or SCOPE_SHARED).strip().lower()
@@ -95,9 +111,17 @@ class LockerService:
         if not owner:
             raise ValueError("owner required")
         if scope not in ALLOWED_SCOPES:
-            raise ValueError("scope must be shared or personal")
+            raise ValueError("scope must be shared, personal, or group")
         if len(note) > MAX_NOTE_LEN:
             raise ValueError(f"note too long (max {MAX_NOTE_LEN})")
+        if scope == SCOPE_GROUP:
+            group_id = (group_id or "").strip()
+            if not group_id:
+                raise ValueError("group_id required for group scope")
+            if not self._is_group_member(group_id, owner):
+                raise ValueError("owner must be a member of the group")
+        else:
+            group_id = None
 
         safe_name = sanitize_filename(filename)
         if isinstance(data, (bytes, bytearray)):
@@ -124,6 +148,7 @@ class LockerService:
             stored_name=stored,
             note=note,
             file_id=fid,
+            group_id=group_id,
         )
         return self._public(item)
 
@@ -186,12 +211,14 @@ class LockerService:
         except ValueError as exc:
             return envelope.make_response(op=op, payload={"error": str(exc)}, error=True)
 
-    @staticmethod
-    def _can_access(item: dict[str, Any], viewer: Optional[str]) -> bool:
+    def _can_access(self, item: dict[str, Any], viewer: Optional[str]) -> bool:
         if item["scope"] == SCOPE_SHARED:
             return True
         if item["scope"] == SCOPE_PERSONAL:
             return bool(viewer) and viewer.lower() == item["owner"].lower()
+        if item["scope"] == SCOPE_GROUP:
+            gid = item.get("group_id")
+            return bool(viewer) and bool(gid) and self._is_group_member(gid, viewer)
         return False
 
     @staticmethod
@@ -202,6 +229,7 @@ class LockerService:
             "id": item["id"],
             "owner": item["owner"],
             "scope": item["scope"],
+            "group_id": item.get("group_id"),
             "filename": item["filename"],
             "content_type": item["content_type"],
             "size": item["size"],

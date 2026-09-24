@@ -8,6 +8,28 @@
   var statusEl = document.getElementById("status-line");
   var hintEl = document.getElementById("limit-hint");
   var form = document.getElementById("upload-form");
+  var groupFieldEl = document.getElementById("group-field");
+  var groupIdEl = document.getElementById("group-id");
+  var viewGroupFieldEl = document.getElementById("view-group-field");
+  var viewGroupIdEl = document.getElementById("view-group-id");
+  var myGroups = [];
+
+  function loadGroups() {
+    return fetch("/api/groups", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.ok ? r.json() : { groups: [] };
+      })
+      .then(function (data) {
+        myGroups = data.groups || [];
+        var opts = myGroups
+          .map(function (g) {
+            return '<option value="' + esc(g.id) + '">' + esc(g.name) + "</option>";
+          })
+          .join("");
+        groupIdEl.innerHTML = opts;
+        viewGroupIdEl.innerHTML = opts;
+      });
+  }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -46,6 +68,15 @@
         viewer
       );
     }
+    if (mode === "group") {
+      var gid = viewGroupIdEl.value;
+      return (
+        "/api/locker/files?scope=group&group_id=" +
+        encodeURIComponent(gid) +
+        "&viewer=" +
+        viewer
+      );
+    }
     return "/api/locker/files?viewer=" + viewer;
   }
 
@@ -59,7 +90,9 @@
       .map(function (f) {
         var dl =
           f.download_path +
-          (f.scope === "personal" ? "?viewer=" + encodeURIComponent(me()) : "");
+          (f.scope === "personal" || f.scope === "group"
+            ? "?viewer=" + encodeURIComponent(me())
+            : "");
         return (
           '<li class="locker-item">' +
           '<div class="locker-item__main">' +
@@ -146,6 +179,7 @@
     fd.append("owner", me());
     fd.append("scope", scopeEl.value);
     fd.append("note", noteEl.value.trim());
+    if (scopeEl.value === "group") fd.append("group_id", groupIdEl.value);
     fetch("/api/locker/files", { method: "POST", body: fd })
       .then(function (r) {
         if (!r.ok) {
@@ -162,7 +196,14 @@
       });
   });
 
+  scopeEl.addEventListener("change", function () {
+    groupFieldEl.hidden = scopeEl.value !== "group";
+  });
+  filterEl.addEventListener("change", function () {
+    viewGroupFieldEl.hidden = filterEl.value !== "group";
+    refresh();
+  });
+
   document.getElementById("refresh").addEventListener("click", refresh);
-  filterEl.addEventListener("change", refresh);
-  refresh();
+  loadGroups().then(refresh);
 })();

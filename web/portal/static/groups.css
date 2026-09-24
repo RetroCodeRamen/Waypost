@@ -1,0 +1,65 @@
+.groups-page { max-width: 44rem; }
+
+.groups-create {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.groups-create .grow { flex: 1; min-width: 12rem; }
+
+.groups-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 40rem) {
+  .groups-layout { grid-template-columns: 1fr; }
+}
+
+.groups-list,
+.groups-members {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.groups-list li,
+.groups-members li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.groups-list button[data-id] {
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  width: 100%;
+}
+.groups-list li.is-selected button[data-id] {
+  font-weight: 650;
+}
+
+.groups-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.groups-add .grow { flex: 1; min-width: 10rem; }
+
+.groups-members button.remove-member {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}

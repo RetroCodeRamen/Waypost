@@ -19,6 +19,7 @@
   var NAV_SYSTEM = [
     { id: "signal", label: "Signal", href: "/signal.html", icon: "signal" },
     { id: "devices", label: "Devices", href: "/devices.html", icon: "devices" },
+    { id: "groups", label: "Groups", href: "/groups.html", icon: "groups" },
     { id: "control", label: "Control", href: "/control.html", icon: "control" },
   ];
 
@@ -39,6 +40,7 @@
       finder: '<circle cx="11" cy="11" r="5.5"/><path d="M15.5 15.5 L19 19"/>',
       signal: '<path d="M5 16 V19"/><path d="M9 13 V19"/><path d="M13 9 V19"/><path d="M17 5 V19"/>',
       devices: '<circle cx="8" cy="12" r="3.5"/><path d="M11.2 12 H20 M15.5 12 V15.5 M18.5 12 V14.5"/>',
+      groups: '<circle cx="9" cy="9" r="2.5"/><circle cx="16" cy="10" r="2"/><path d="M4.5 19 C4.5 15.5 7 14 9 14 C11 14 13.5 15.5 13.5 19"/><path d="M14.5 15 C16.5 15 19.5 16.2 19.5 19"/>',
       control: '<circle cx="12" cy="12" r="3"/><path d="M12 4 V7 M12 17 V20 M4 12 H7 M17 12 H20 M6.5 6.5 L8.5 8.5 M15.5 15.5 L17.5 17.5 M17.5 6.5 L15.5 8.5 M8.5 15.5 L6.5 17.5"/>',
     };
     var d = paths[name] || paths.home;
