@@ -111,7 +111,12 @@
 
     var net = data.network || {};
     var sync = data.sync || {};
-    var pending = sync.pending_dispatch || 0;
+    var pendingDispatch = sync.pending_dispatch || 0;
+    var pendingMail = sync.pending_mail_outbox || 0;
+    var pending = sync.pending_total || pendingDispatch + pendingMail;
+    var syncParts = [];
+    if (pendingDispatch) syncParts.push(pendingDispatch + " Dispatch");
+    if (pendingMail) syncParts.push(pendingMail + " Postbox");
     var netEl = document.getElementById("network-status");
     netEl.innerHTML =
       '<li><span class="dot ok"></span><div><strong>Waypost Station</strong><small>' +
@@ -123,7 +128,7 @@
       (pending ? "bad" : "ok") +
       '"></span><div><strong>Sync</strong><small>' +
       (pending
-        ? pending + " Dispatch message(s) waiting"
+        ? syncParts.join(", ") + " message(s) waiting"
         : "Nothing waiting") +
       "</small></div></li>" +
       '<li><span class="dot ok"></span><div><strong>Outposts</strong><small>' +

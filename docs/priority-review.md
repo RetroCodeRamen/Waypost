@@ -1,6 +1,6 @@
 # Waypost Priority Review
 
-**Date:** 2026-09-23 (refresh of the same-day earlier review, after the M6 session)
+**Date:** 2026-09-24 (refresh of the 2026-09-23 review, after the M6 session)
 **Method:** Full repo inspection + architecture/roadmap/protocol/ADR review, reconciled against `AGENT_HANDOFF.md`'s message board.
 **Intent:** Build order by dependency and network truth — not by app catalog completeness.
 
@@ -11,6 +11,8 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 **Later the same day:** `ADMIN_APPROVAL` + admin-role — the recommendation from §8 below — got built. `users` gained `is_admin`/`approved_at`; the first account ever registered on a Station bootstraps as admin and auto-approves, so the mode can never deadlock a Station with nobody able to approve anyone; portal `/control.html` (formerly a nav placeholder) lists pending registrations with one-click approve; verified live in a browser end-to-end (register → pending → admin approves → login succeeds), plus 9 new tests. **M4 is now fully built; only the Stalwart-vs-SQLite decision remains, and it's a human call, not a build task** — the rest of this document's references to `ADMIN_APPROVAL` as unbuilt are now historical (kept for the build-order narrative in §6, §8) rather than current status; treat §1's tables as the live source of truth.
 
 **Then, same day again:** picked Noticeboard ack + Beacon auth from §8's Tier 2 list and built it — `NOTICE_ACK`, and a real fix for a genuine spoofing gap (`NOTICE_CREATE`/`EXPIRE` and `BEACON_PUSH`/`CLEAR` over Waylink trusted a self-reported author; now resolved from the device's actual binding, same mechanism Dispatch's `MSG_SYNC` already used). While scoping it, found this document's "Postbox progressive LoRa path — not started" claim was simply wrong — that's already fully built. Corrected throughout; see §7, §8.
+
+**Next day (2026-09-24):** picked the Today/sync dashboard next. Same pattern a third time: checked the code before building, found `/api/dashboard` was already substantially built (5-service activity feed, Beacon banner, network status) — this document's "not started" label undersold it. Two real gaps fixed instead of a rebuild: the Noticeboard card showed the global active-notice count, not the caller's own unread count; the home page's "Sync" line only ever reflected Dispatch, not Postbox's outbox too. 4 new tests, full suite 133 passed. **Three stale "not started" claims caught in two days (Postbox, `ADMIN_APPROVAL`'s actual scope, now this) — treat every status label in this document as a hypothesis, not a fact, per §8's note.**
 
 ---
 
@@ -35,7 +37,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 131 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 133 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -44,10 +46,10 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | Dispatch | Sim proves Pocket↔Pocket, courier, and `MSG_SYNC`; **none of it runs on real Pocket hardware yet** (no T-Deck firmware) |
 | Outpost | Real firmware + real encryption + claiming all proven on Heltec V3; multi-hop relay *logic* is deliberately not hand-built (Reticulum's own Transport mode handles it) and the physical claim-over-real-LoRa step hasn't been run by a human yet; MakerHawk (the intended production SKU) has unverified GPIO and isn't confirmed ordered |
 | Delivery / offline | Durable per-device pending now (Wi‑Fi↔LoRa failover slice); still Dispatch-only — other apps (Postbox, Fieldbook) haven't adopted the shared queue states from `offline-sync.md` |
-| Signal | Lists radios / airtest / RNode security state; still no unified "Today" sync surface across apps |
+| Signal | Lists radios / airtest / RNode security state; still no unified "Today" sync surface across apps (though `/api/dashboard`'s `sync` field, extended 2026-09-24, now covers cross-app pending — see Home dashboard row) |
 | Identity | Real username/password accounts (N2); pairing UX + revocation + `ADMIN_APPROVAL`/admin-role all real now (M4 fully built); still no crypto device identity beyond that, and the Stalwart-vs-SQLite decision is still open |
 | Pi / Waygate | Installer + HTTPS proven in containers; AP + openNDS (Waygate) staged but unrun on real hardware |
-| Home dashboard | Aggregates some counts; not a real "Today / sync" surface |
+| Home dashboard | **More built than this table said (corrected 2026-09-24):** already aggregated 5 services' activity, an active-Beacon banner, and network/user status before today — this row previously undersold it. Two real gaps fixed: Noticeboard card now shows *this user's* unread count (was global active count); "Sync" status now a genuine cross-app total (Dispatch + Postbox), not Dispatch-only. Still open: no explicit date-scoped "Today" framing, and this isn't the shared offline-sync subsystem (item #2 below) — it surfaces what each app already tracks, doesn't unify the tracking itself |
 
 ### Not started (architectural / planned)
 
@@ -130,7 +132,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 131 passed as of this review
+- ~~Keep **radio regression** green~~ — 133 passed as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -146,7 +148,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - Fieldbook progressive path — not started, software-only
 - ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts explicitly still not started (real scope of its own, not part of the auth fix)
 - Groups/permissions core — not started, software-only
-- Unified Today / sync dashboard — not started, software-only
+- ~~Unified Today / sync dashboard~~ — **turned out to already be substantially built**; two real gaps fixed 2026-09-24 (see header) — this line was stale, third instance this session
 - **M1b Pi AP + TLS** — software done and tested in containers; blocked purely on physical Pi
 
 ### TIER 3 — After network is useful
@@ -174,7 +176,7 @@ With M4 build-complete, nothing left in the priority spine's hardware-free lane 
 
 - **Fieldbook progressive path** — the same pattern Dispatch and (it turns out) Postbox already prove; likely the most mechanical of what's left.
 - **Groups/permissions core** — bigger and more foundational (rooms ≠ Groups is flagged as real debt in §5), but no other Tier 2 item depends on it yet, so it's not blocking to defer. No existing file/scaffolding at all — genuinely starts from zero.
-- **Unified Today/sync dashboard** — the most user-visible of what's left, pulls together state that already exists (Signal, Rollcall, per-app queues) rather than building new backend.
+- ~~**Unified Today/sync dashboard**~~ — **done 2026-09-24**, see header. Was already ~80% there; the "not started" label was wrong.
 - **Beacon propagation through Outposts** — deliberately cut from the auth-fix slice; store-and-forward relay for Beacon the way Dispatch's courier queue already works, real scope of its own.
 
 **Before picking the next one, verify the item against the actual code first** — this same review nearly recommended re-building already-finished Postbox work. Two stale-claim near-misses in one project (this one, and the `ADMIN_APPROVAL` staleness the previous refresh caught) is enough to treat every "not started" line in this document as a hypothesis to check, not a fact.
@@ -190,7 +192,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 | Item | Why earlier |
 |------|-------------|
 | ~~Opportunistic Dispatch / queues~~ | **Done** |
-| ~~Sync visibility (Signal/Today)~~ | Partially done — Signal shows it; a real Today view is still open |
+| ~~Sync visibility (Signal/Today)~~ | **Done (2026-09-24)** — dashboard `sync` is now a real cross-app aggregate, not Dispatch-only |
 | ~~Device bind / reachability in Rollcall~~ | **Done** |
 | ~~Standalone Outpost firmware~~ | **Done on Heltec V3 (M6)** — real encryption, real hardware, not sim |
 | ~~`ADMIN_APPROVAL` + admin-role~~ | **Done** — M4 is now fully built except the Stalwart decision |

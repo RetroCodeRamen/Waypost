@@ -10,6 +10,19 @@ from fastapi import APIRouter, Depends, Request
 from server.api.deps import actor_username, get_current_user
 
 
+def _sync_status(dispatch: Any, mail_status: dict[str, Any]) -> dict[str, Any]:
+    """Cross-app "what's still waiting" — was Dispatch-only. Not a shared
+    offline-sync subsystem (that's real scope of its own, see
+    docs/priority-review.md #2/#4) — just an honest aggregate of the
+    per-app pending counts each service already tracks."""
+    base = dispatch.sync_status() if hasattr(dispatch, "sync_status") else {}
+    outbox = int(mail_status.get("outbox") or 0)
+    base = dict(base)
+    base["pending_mail_outbox"] = outbox
+    base["pending_total"] = int(base.get("pending_dispatch") or 0) + outbox
+    return base
+
+
 def build_dashboard_router() -> APIRouter:
     router = APIRouter(tags=["dashboard"])
 
@@ -36,7 +49,7 @@ def build_dashboard_router() -> APIRouter:
         convs = dispatch.list_conversations(username)
         people = rollcall.list_people()
         commons_new = commons.recent_count(hours=24.0, exclude_author=username)
-        notices_active = noticeboard.count_active()
+        notices_unread = noticeboard.count_unacked(username)
         active_beacon = beacon.get_active()
         locker_shared = locker.count_shared()
 
@@ -165,8 +178,8 @@ def build_dashboard_router() -> APIRouter:
                     "service": "Commons",
                 },
                 "noticeboard": {
-                    "value": notices_active,
-                    "label": "Active Notices",
+                    "value": notices_unread,
+                    "label": "Unread Notices",
                     "service": "Noticeboard",
                 },
             },
@@ -182,7 +195,7 @@ def build_dashboard_router() -> APIRouter:
                 "ssid": health["ssid"],
                 "note": "Outpost counts appear when Waylink hardware is connected.",
             },
-            "sync": dispatch.sync_status() if hasattr(dispatch, "sync_status") else {},
+            "sync": _sync_status(dispatch, mail),
             "quick_links": [
                 {"label": "Locker", "href": "/locker.html", "icon": "locker"},
                 {"label": "Beacon", "href": "/beacon.html", "icon": "beacon"},
