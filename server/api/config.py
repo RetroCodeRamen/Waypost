@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     waypost_registration_mode: Literal["OPEN", "INVITE_ONLY", "ADMIN_APPROVAL"] = "OPEN"
     # When True, HTTP APIs require a session (test env defaults False via property)
     waypost_auth_required: bool = True
+    # Auto-claim nearby unclaimed Outposts heard over a genuine Reticulum
+    # announce (no pairing code) — on by default; the Outpost's own physical
+    # button is what actually gates whether it advertises itself this way.
+    waypost_auto_claim_outposts: bool = True
 
     def ensure_data_dirs(self) -> None:
         self.waypost_data_dir.mkdir(parents=True, exist_ok=True)

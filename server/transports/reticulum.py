@@ -17,7 +17,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 from server.transports.base import (
     LinkQuality,
@@ -30,6 +30,29 @@ logger = logging.getLogger("waypost.transport.reticulum")
 
 APP_NAME = "waypost"
 ASPECT = "waylink"
+
+# Carried in an Outpost's own Reticulum announce app_data — present only
+# while that Outpost is unclaimed *and* its physical-button-toggled
+# auto-claim flag is on (see firmware/outpost/src/main.cpp). The hash a
+# matching announce carries is already authentic (Reticulum signs it); this
+# marker substitutes for the pairing-code flow's "a human typed this, so
+# there's real intent behind it" — see docs/security.md.
+AUTO_CLAIM_MARKER = b"WPOST-CLAIM:"
+
+
+class _OutpostAnnounceHandler:
+    """Bridges RNS.Transport.register_announce_handler's expected shape
+    (an object with `aspect_filter` + `received_announce(...)`) to
+    ReticulumTransport's own callback — kept as a separate small object so
+    RNS's attribute expectations never collide with Transport's own API."""
+
+    aspect_filter = f"{APP_NAME}.{ASPECT}"
+
+    def __init__(self, owner: "ReticulumTransport") -> None:
+        self._owner = owner
+
+    def received_announce(self, destination_hash, announced_identity, app_data) -> None:
+        self._owner._on_announce(destination_hash, app_data)
 
 _RNODE_BANDWIDTHS = (
     7_800, 10_400, 15_600, 20_800, 31_250, 41_700, 62_500, 125_000, 250_000, 500_000,
@@ -199,6 +222,14 @@ class ReticulumTransport(Transport):
         self._dest_cache: dict[str, object] = {}
         self._peer_routes: dict[str, str] = {}  # logical node_id → dest hash
         self._lock = threading.Lock()
+        # Set from outside (server/api/main.py), same pattern as
+        # WaylinkGateway._resolve_dest — invoked when a genuine Reticulum
+        # announce carries the auto-claim marker (node_id, transport_dest,
+        # display_name).
+        self.on_unclaimed_outpost_announce: Optional[
+            Callable[[str, str, Optional[str]], None]
+        ] = None
+        self._announce_handler: Optional[_OutpostAnnounceHandler] = None
 
     def learn_route(self, node_id: str, transport_dest: str) -> None:
         """Map a logical Waylink node_id to a Reticulum destination hash."""
@@ -258,6 +289,9 @@ class ReticulumTransport(Transport):
         self._destination.set_packet_callback(self._on_packet)
         self._destination.announce()
 
+        self._announce_handler = _OutpostAnnounceHandler(self)
+        RNS.Transport.register_announce_handler(self._announce_handler)
+
         self._loop = asyncio.get_running_loop()
         self._running = True
         logger.info(
@@ -266,6 +300,45 @@ class ReticulumTransport(Transport):
             self.destination_hash_hex,
             self.config_dir,
         )
+
+    def _on_announce(self, destination_hash: bytes, app_data: Optional[bytes]) -> None:
+        """RNS calls this off the asyncio thread (same as _on_packet) — marshal
+        onto the event loop before touching the callback, which ends up doing
+        synchronous DB writes via PairingService.auto_claim_outpost."""
+        if not app_data or not app_data.startswith(AUTO_CLAIM_MARKER):
+            return
+        if self._destination is not None and destination_hash == self._destination.hash:
+            return  # never auto-claim our own announce
+        callback = self.on_unclaimed_outpost_announce
+        if callback is None or self._loop is None:
+            return
+        try:
+            import RNS
+
+            rest = app_data[len(AUTO_CLAIM_MARKER) :].decode("utf-8", errors="replace")
+            node_id, _, display_name = rest.partition("|")
+            node_id = node_id.strip()
+            if not node_id:
+                return
+            dest_hex = RNS.hexrep(destination_hash, delimit=False)
+        except Exception:
+            logger.exception("failed to parse outpost auto-claim announce app_data")
+            return
+        self._loop.call_soon_threadsafe(
+            self._invoke_auto_claim, callback, node_id, dest_hex, display_name.strip() or None
+        )
+
+    @staticmethod
+    def _invoke_auto_claim(
+        callback: Callable[[str, str, Optional[str]], None],
+        node_id: str,
+        transport_dest: str,
+        display_name: Optional[str],
+    ) -> None:
+        try:
+            callback(node_id, transport_dest, display_name)
+        except Exception:
+            logger.exception("on_unclaimed_outpost_announce callback failed node=%s", node_id)
 
     def _on_packet(self, data: bytes, packet) -> None:
         if not self._running or self._loop is None:

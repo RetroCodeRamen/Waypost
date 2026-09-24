@@ -224,6 +224,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # module docstring), so it's wired up here instead of at construction.
         app.state.pairing.transport = transport
 
+        # Auto-claim nearby unclaimed Outposts heard over a genuine
+        # Reticulum announce (on by default) — see
+        # ReticulumTransport.on_unclaimed_outpost_announce and
+        # PairingService.auto_claim_outpost for the trust model.
+        if settings.waypost_auto_claim_outposts and hasattr(
+            transport, "on_unclaimed_outpost_announce"
+        ):
+            transport.on_unclaimed_outpost_announce = (
+                lambda node_id, dest, name: app.state.pairing.auto_claim_outpost(
+                    node_id=node_id, transport_dest=dest, display_name=name
+                )
+            )
+
         def _resolve_dest(dst: str) -> str:
             if hasattr(transport, "resolve_destination"):
                 mapped = transport.resolve_destination(dst)

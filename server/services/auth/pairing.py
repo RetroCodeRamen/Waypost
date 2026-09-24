@@ -154,6 +154,38 @@ class PairingService:
         )
         return {"node_id": node_id, "outpost": outpost}
 
+    def auto_claim_outpost(
+        self,
+        *,
+        node_id: str,
+        transport_dest: str,
+        display_name: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Claim an Outpost heard over a genuine Reticulum announce, no
+        pairing code involved — see server/transports/reticulum.py's
+        announce handler and docs/security.md's "auto-claim" section for
+        why this is a different (not weaker) proof than the code-based
+        path: the destination hash here comes from Reticulum's own signed
+        announce, not a self-reported payload field, and the Outpost only
+        advertises itself this way when its own physical-button-toggled
+        auto_claim_enabled flag is on. Idempotent — a no-op once claimed,
+        since announces repeat periodically and this fires on each one.
+        """
+        node_id = (node_id or "").strip()
+        if not node_id or self.corkboard_store is None:
+            return None
+        try:
+            transport_dest = _normalize_transport_dest(transport_dest)
+        except ValueError:
+            return None
+        if self.corkboard_store.is_claimed(node_id):
+            return None
+        self._learn_route(node_id, transport_dest)
+        outpost = self.corkboard_store.touch_outpost(
+            node_id, display_name=display_name, transport_dest=transport_dest
+        )
+        return {"node_id": node_id, "outpost": outpost}
+
     async def handle_outpost_claim(self, env: Envelope) -> Envelope:
         """An Outpost redeeming a Station-generated pairing code to
         register itself and teach Station how to reach it — same codes

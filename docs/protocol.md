@@ -211,7 +211,7 @@ to exactly one known outpost.
 
 | Operation | Purpose |
 |-----------|---------|
-| `BOARD_SYNC` | Outpost → Station: upload notes (dedup by `mid`); Station registers/touches the outpost (keyed by `env.src`) and piggybacks that outpost's Station-composed outbox back in the same response |
+| `BOARD_SYNC` | Outpost → Station: upload notes (dedup by `mid`); Station registers/touches the outpost (keyed by `env.src`) and piggybacks that outpost's Station-composed outbox **and a `claimed: bool`** back in the same response |
 | `OUTPOST_CLAIM` | Outpost → Station: `{code, transport_dest, display_name}` — redeems a pairing code (same codes/UI as Pocket pairing, `server/services/auth/pairing.py`), registers the outpost, and calls `learn_route(node_id, transport_dest)` **before** the reply is sent, which is what makes the reply routable at all |
 
 **Why claiming exists:** Station's transport only knows how to reach a
@@ -222,6 +222,22 @@ the handler, before `WaylinkGateway` resolves and sends the reply — so
 even a never-before-seen Outpost's very first request gets a routable
 response. Until an Outpost is claimed, `BOARD_SYNC` requests still
 *arrive* at Station, but Station has no way to send anything back.
+
+**Auto-claim (no `OUTPOST_CLAIM` packet at all):** Station can also claim
+an Outpost purely from a genuine Reticulum announce — no pairing code,
+no `/claim` walk-up. This isn't a new Waylink op; it happens below the
+Waylink layer entirely. `ReticulumTransport` registers an
+`RNS.Transport` announce handler for the shared `waypost.waylink`
+aspect; an unclaimed Outpost whose physical button hasn't disabled it
+includes a marker (`AUTO_CLAIM_MARKER = b"WPOST-CLAIM:"` + its
+`node_id`) in its own periodic announce's `app_data`. On a match,
+Station resolves the destination hash **from the announce itself**
+(Reticulum-signed, not a self-reported payload field) and runs the same
+`learn_route` + `touch_outpost` `OUTPOST_CLAIM` already does, just
+without the code lookup — see `docs/security.md` for why that's a
+different, not weaker, proof of legitimacy. On by default
+(`WAYPOST_AUTO_CLAIM_OUTPOSTS`); the Outpost learns it worked via the
+`claimed` field on its next `BOARD_SYNC` reply, same as a walk-up claim.
 
 HTTP (Station portal, any signed-in user): `GET /api/corkboard/outposts`,
 `GET /api/corkboard/outposts/{id}/notes`, `POST

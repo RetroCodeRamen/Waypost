@@ -67,6 +67,17 @@ def test_board_sync_registers_outpost_and_ingests_notes(client: TestClient):
     assert any(n["body"] == "Bear spotted near creek" and n["signature"] == "-Jamie" for n in notes)
 
 
+def test_sync_reports_claimed_state(client: TestClient):
+    unclaimed = _sync(client, outpost_id="outpost-1", notes=[])
+    assert unclaimed["payload"]["claimed"] is False
+
+    client.app.state.db.corkboard.touch_outpost(
+        "outpost-1", transport_dest="a" * 32
+    )
+    claimed = _sync(client, outpost_id="outpost-1", notes=[])
+    assert claimed["payload"]["claimed"] is True
+
+
 def test_resync_same_notes_dedups(client: TestClient):
     note_id = new_id()
     _sync(client, outpost_id="outpost-1", notes=[{"id": note_id, "body": "River flooded"}])

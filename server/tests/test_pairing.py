@@ -211,6 +211,62 @@ def test_claim_outpost_rejects_reused_code(pairing_with_corkboard: PairingServic
         )
 
 
+def test_auto_claim_registers_and_learns_route_without_a_code(
+    pairing_with_corkboard: PairingService,
+):
+    result = pairing_with_corkboard.auto_claim_outpost(
+        node_id="outpost-1",
+        transport_dest="aa" * 16,
+        display_name="Ridge Trailhead",
+    )
+    assert result["node_id"] == "outpost-1"
+    assert result["outpost"]["display_name"] == "Ridge Trailhead"
+    assert pairing_with_corkboard.transport.routes["outpost-1"] == "aa" * 16
+    assert pairing_with_corkboard.corkboard_store.is_claimed("outpost-1")
+
+
+def test_auto_claim_is_idempotent_once_claimed(pairing_with_corkboard: PairingService):
+    pairing_with_corkboard.auto_claim_outpost(
+        node_id="outpost-1", transport_dest="aa" * 16, display_name="First"
+    )
+    # A repeat announce (they repeat periodically) must not re-touch the
+    # row or re-learn the route with different data.
+    second = pairing_with_corkboard.auto_claim_outpost(
+        node_id="outpost-1", transport_dest="bb" * 16, display_name="Second"
+    )
+    assert second is None
+    assert pairing_with_corkboard.transport.routes["outpost-1"] == "aa" * 16
+    assert pairing_with_corkboard.corkboard_store.get_outpost("outpost-1")["display_name"] == "First"
+
+
+def test_auto_claim_rejects_bad_transport_dest(pairing_with_corkboard: PairingService):
+    result = pairing_with_corkboard.auto_claim_outpost(
+        node_id="outpost-1", transport_dest="not-a-hash", display_name="Bad"
+    )
+    assert result is None
+    assert not pairing_with_corkboard.corkboard_store.is_claimed("outpost-1")
+
+
+def test_auto_claim_does_not_override_a_walk_up_claim(
+    pairing_with_corkboard: PairingService,
+):
+    """A human-claimed outpost stays claimed by whatever it was claimed
+    with — a later announce (e.g. stale firmware, a repeat before the
+    Outpost has learned it's claimed) must not silently overwrite it."""
+    created = pairing_with_corkboard.create_code("aj")
+    pairing_with_corkboard.redeem_outpost_code(
+        code=created["code"],
+        node_id="outpost-1",
+        transport_dest="aa" * 16,
+        display_name="Walked up",
+    )
+    result = pairing_with_corkboard.auto_claim_outpost(
+        node_id="outpost-1", transport_dest="bb" * 16, display_name="Auto"
+    )
+    assert result is None
+    assert pairing_with_corkboard.corkboard_store.get_outpost("outpost-1")["transport_dest"] == "aa" * 16
+
+
 async def test_handle_outpost_claim_rpc_round_trip(pairing_with_corkboard: PairingService):
     created = pairing_with_corkboard.create_code("aj")
     env = Envelope(

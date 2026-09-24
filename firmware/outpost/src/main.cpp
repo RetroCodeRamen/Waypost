@@ -66,6 +66,24 @@ static const size_t MAX_BODY = 500;       // server/services/corkboard/constants
 static const size_t MAX_SIGNATURE = 80;   // ...MAX_SIGNATURE
 static const size_t MAX_NOTES = 40;       // in-RAM ring buffer cap, this slice only
 
+// -- Auto-claim: Station can claim this Outpost from a genuine Reticulum
+// announce alone, no walk-up pairing code — see server/transports/
+// reticulum.py's AUTO_CLAIM_MARKER (must match exactly) and
+// docs/security.md for the trust model. The PRG/BOOT button (GPIO0 on
+// every Heltec V3, unused by this firmware until now) is what actually
+// authorizes it: a short press toggles whether this Outpost advertises
+// itself as claimable at all. On by default.
+static const char* AUTO_CLAIM_MARKER = "WPOST-CLAIM:";     // must match reticulum.py exactly
+static const char* AUTO_CLAIM_FLAG_PATH = "/waypost_autoclaim";
+static const char* CLAIMED_FLAG_PATH = "/waypost_claimed";
+static const int PIN_BUTTON = 0;  // Heltec V3 PRG/BOOT button, active LOW
+static const uint32_t BUTTON_DEBOUNCE_MS = 40;
+static const uint32_t REANNOUNCE_INTERVAL_MS = 10UL * 60UL * 1000UL;   // 10 min
+static const uint32_t AUTO_SYNC_INTERVAL_MS = 5UL * 60UL * 1000UL;     // 5 min
+
+static bool g_auto_claim_enabled = true;  // persisted; toggled by the button
+static bool g_claimed = false;            // persisted; set once Station confirms via BOARD_SYNC
+
 struct Note {
   std::string id;
   std::string body;
@@ -117,6 +135,36 @@ static void oled_splash() {
   g_oled.sendBuffer();
 }
 
+static void oled_auto_claim_status() {
+  g_oled.clearBuffer();
+  g_oled.setFont(u8g2_font_helvB12_tr);
+  oled_center_text("AUTO-CLAIM", 28);
+  oled_center_text(g_auto_claim_enabled ? "ON" : "OFF", 52);
+  g_oled.sendBuffer();
+  // Rare, human-paced event (a physical button press) — a short blocking
+  // delay here is simpler and safer than adding a second display-mode
+  // state machine to loop(). It does briefly pause g_reticulum.loop()
+  // pumping, same tradeoff the button-hold gesture in
+  // firmware/RNode_Firmware/Display.h already accepts for its own splash.
+  delay(1500);
+  oled_splash();
+}
+
+// -- Persisted flags (LittleFS, same read_file/write_file mechanism the
+// canary diagnostic below already proves works) --
+
+static bool load_flag(const char* path, bool default_value) {
+  RNS::Bytes buf;
+  size_t read = RNS::Utilities::OS::read_file(path, buf);
+  if (read == 0 || buf.size() == 0) return default_value;
+  return buf.data()[0] == '1';
+}
+
+static void save_flag(const char* path, bool value) {
+  RNS::Bytes buf(value ? "1" : "0");
+  RNS::Utilities::OS::write_file(path, buf);
+}
+
 // Set by the packet callback, read back by refresh_board() after it pumps
 // reticulum.loop() waiting for a reply. Single in-flight request at a time
 // only (this firmware never has two /refresh calls overlapping — WebServer
@@ -155,6 +203,22 @@ static String html_escape(const std::string& s) {
     }
   }
   return out;
+}
+
+// Re-announce with (or without) the auto-claim marker depending on current
+// state — called once at boot and then periodically from loop() so a
+// Station that starts up later, or wasn't in range yet, still discovers
+// this Outpost. Once g_claimed is true the marker is never included again,
+// regardless of g_auto_claim_enabled — claimed-ness doesn't get undone by
+// this firmware (see docs/architecture.md's auto-claim section for why
+// re-claiming/unclaiming is explicitly a separate, unbuilt feature).
+static void announce_now() {
+  if (!g_claimed && g_auto_claim_enabled) {
+    std::string marker = std::string(AUTO_CLAIM_MARKER) + WAYPOST_OUTPOST_ID;
+    g_destination.announce(RNS::Bytes(marker));
+  } else {
+    g_destination.announce();
+  }
 }
 
 // -- Reticulum setup --
@@ -215,6 +279,9 @@ static void reticulum_setup() {
                   (unsigned)read, canary_in == canary_out);
   }
 
+  g_auto_claim_enabled = load_flag(AUTO_CLAIM_FLAG_PATH, /*default_value=*/true);
+  g_claimed = load_flag(CLAIMED_FLAG_PATH, /*default_value=*/false);
+
   g_identity = RNS::Identity::from_file(IDENTITY_PATH);
   if (!g_identity) {
     Serial.println("No saved identity — generating a new one");
@@ -232,7 +299,7 @@ static void reticulum_setup() {
       WAYPOST_APP_NAME,
       WAYPOST_ASPECT);
   g_destination.set_packet_callback(on_destination_packet);
-  g_destination.announce();
+  announce_now();
 
   Serial.print("Outpost Reticulum destination: ");
   Serial.println(g_destination.hash().toHex().c_str());
@@ -392,6 +459,17 @@ static void refresh_board() {
 
   g_status = "Synced with Station — " + String((unsigned)outgoing.size()) +
              " note(s) sent, " + String((unsigned)received) + " received.";
+
+  // Self-healing claimed-state ack: every BOARD_SYNC reply says whether
+  // Station has this Outpost claimed (walk-up code or auto-claim), so this
+  // catches up even if an earlier ack was missed — no separate push
+  // message needed. Stops the auto-claim marker in future announces once
+  // true (see announce_now()).
+  if (result.claimed && !g_claimed) {
+    g_claimed = true;
+    save_flag(CLAIMED_FLAG_PATH, true);
+    Serial.println("Station confirms this Outpost is now claimed.");
+  }
 }
 
 // -- Claiming: teach Station this Outpost's destination hash --
@@ -419,6 +497,8 @@ static void claim_with_station(const std::string& code) {
     return;
   }
 
+  g_claimed = true;
+  save_flag(CLAIMED_FLAG_PATH, true);
   g_claim_status = "Claimed! Station now knows this Outpost as \"" +
                     String(WAYPOST_OUTPOST_ID) + "\".";
 }
@@ -623,6 +703,25 @@ static void handle_captive_probe() {
   g_server.send(200, "text/html", gate_page_html());
 }
 
+// -- Physical button: toggles auto-claim discoverability --
+
+static void handle_button() {
+  static int last_state = HIGH;
+  static uint32_t last_change = 0;
+  int state = digitalRead(PIN_BUTTON);
+  uint32_t now = millis();
+  if (state != last_state && now - last_change > BUTTON_DEBOUNCE_MS) {
+    last_change = now;
+    last_state = state;
+    if (state == LOW) {  // press (active low, INPUT_PULLUP)
+      g_auto_claim_enabled = !g_auto_claim_enabled;
+      save_flag(AUTO_CLAIM_FLAG_PATH, g_auto_claim_enabled);
+      oled_auto_claim_status();
+      if (!g_claimed) announce_now();  // reflect the new state immediately
+    }
+  }
+}
+
 static void web_setup() {
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(WIFI_PS_NONE);
@@ -673,6 +772,7 @@ void setup() {
 
   pinMode(PIN_VEXT, OUTPUT);
   digitalWrite(PIN_VEXT, LOW);
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
   delay(80);
   oled_init();
   oled_splash();
@@ -689,5 +789,23 @@ void loop() {
     g_dns.processNextRequest();
     g_server.handleClient();
   }
+  handle_button();
+
+  uint32_t now = millis();
+  static uint32_t last_announce = 0;
+  if (now - last_announce > REANNOUNCE_INTERVAL_MS) {
+    last_announce = now;
+    announce_now();
+  }
+  // Periodic auto-sync — without this, BOARD_SYNC (and the claimed-state
+  // ack it carries) only ever ran when a human visited /refresh. A freshly
+  // auto-claimed Outpost with nobody standing at its Wi-Fi should still
+  // learn it's claimed and stop advertising within a few minutes.
+  static uint32_t last_auto_sync = 0;
+  if (now - last_auto_sync > AUTO_SYNC_INTERVAL_MS) {
+    last_auto_sync = now;
+    refresh_board();
+  }
+
   g_reticulum.loop();
 }

@@ -355,6 +355,8 @@ bool decode_sync_reply(const uint8_t* data, size_t len, SyncReplyResult& result)
 
         if (pkey == "ok") {
           if (!r.read_bool(result.ok)) return false;
+        } else if (pkey == "claimed") {
+          if (!r.read_bool(result.claimed)) return false;
         } else if (pkey == "error") {
           if (r.is_null()) continue;
           if (!r.read_text(result.error_msg)) return false;

@@ -72,6 +72,10 @@ struct SyncReplyResult {
   bool error = false;
   std::string error_msg;
   std::vector<PendingNote> pending;
+  // BOARD_SYNC only — whether Station has this Outpost claimed (walk-up
+  // code or auto-claim). Absent (stays false) on other reply shapes, e.g.
+  // OUTPOST_CLAIM's own reply, which doesn't carry this key.
+  bool claimed = false;
 };
 
 // data/len is the raw CBOR-encoded Envelope received back from Station.

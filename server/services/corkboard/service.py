@@ -94,7 +94,11 @@ class CorkboardService:
         for row in pending:
             self.store.clear_outbox(row["id"])
 
-        return {"ingested": ingested, "pending": pending}
+        # Lets the Outpost's own periodic sync learn it's been claimed
+        # (walk-up code or auto-claim) without a separate push message —
+        # self-healing if an earlier claim ack was ever missed.
+        claimed = self.store.is_claimed(outpost_id)
+        return {"ingested": ingested, "pending": pending, "claimed": claimed}
 
     async def handle_rpc(self, envelope: Envelope) -> Envelope:
         # Async (unlike Beacon/Noticeboard's sync handle_rpc) so it works
