@@ -518,6 +518,10 @@ dialog.wp-dialog .actions {
   font-weight: 650;
 }
 
+.notice-list button.unacked .subj {
+  font-weight: 650;
+}
+
 .notice-badge {
   display: inline-block;
   margin: 0 0 0.5rem;

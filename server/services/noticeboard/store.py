@@ -26,6 +26,13 @@ CREATE INDEX IF NOT EXISTS idx_notices_active
 
 CREATE INDEX IF NOT EXISTS idx_notices_expires
     ON notices(expires_at);
+
+CREATE TABLE IF NOT EXISTS notice_acks (
+    notice_id TEXT NOT NULL,
+    username TEXT NOT NULL COLLATE NOCASE,
+    acked_at REAL NOT NULL,
+    PRIMARY KEY (notice_id, username)
+);
 """
 
 
@@ -59,19 +66,23 @@ class NoticeStore:
         self._conn.commit()
         return self.get(nid)  # type: ignore[return-value]
 
-    def get(self, notice_id: str) -> Optional[dict[str, Any]]:
+    def get(self, notice_id: str, *, username: Optional[str] = None) -> Optional[dict[str, Any]]:
         self._expire_due()
         row = self._conn.execute(
             "SELECT * FROM notices WHERE id = ?",
             (notice_id,),
         ).fetchone()
-        return self._row(row) if row else None
+        if not row:
+            return None
+        acked = username is not None and notice_id in self.acked_ids_for(username)
+        return self._row(row, acked=acked)
 
     def list_notices(
         self,
         *,
         active_only: bool = True,
         limit: int = 50,
+        username: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         self._expire_due()
         limit = max(1, min(int(limit), 200))
@@ -96,7 +107,40 @@ class NoticeStore:
                 """,
                 (limit,),
             ).fetchall()
-        return [self._row(r) for r in rows]
+        acked_ids = self.acked_ids_for(username) if username is not None else set()
+        return [self._row(r, acked=r["id"] in acked_ids) for r in rows]
+
+    def ack(self, notice_id: str, username: str) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO notice_acks (notice_id, username, acked_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(notice_id, username) DO NOTHING
+            """,
+            (notice_id, username, time.time()),
+        )
+        self._conn.commit()
+
+    def acked_ids_for(self, username: str) -> set[str]:
+        rows = self._conn.execute(
+            "SELECT notice_id FROM notice_acks WHERE username = ? COLLATE NOCASE",
+            (username,),
+        ).fetchall()
+        return {r["notice_id"] for r in rows}
+
+    def count_unacked_active(self, username: str) -> int:
+        self._expire_due()
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS n FROM notices
+            WHERE active = 1
+              AND id NOT IN (
+                  SELECT notice_id FROM notice_acks WHERE username = ? COLLATE NOCASE
+              )
+            """,
+            (username,),
+        ).fetchone()
+        return int(row["n"])
 
     def expire(self, notice_id: str) -> Optional[dict[str, Any]]:
         self._conn.execute(
@@ -125,8 +169,8 @@ class NoticeStore:
         self._conn.commit()
 
     @staticmethod
-    def _row(row: sqlite3.Row) -> dict[str, Any]:
-        return {
+    def _row(row: sqlite3.Row, *, acked: Optional[bool] = None) -> dict[str, Any]:
+        out = {
             "id": row["id"],
             "author": row["author"],
             "title": row["title"],
@@ -136,3 +180,9 @@ class NoticeStore:
             "expires_at": row["expires_at"],
             "active": bool(row["active"]),
         }
+        # Only present when a username was given to annotate against — a
+        # global/anonymous read (no username) shouldn't imply "unacked by
+        # nobody in particular".
+        if acked is not None:
+            out["acked"] = acked
+        return out

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from server.services.beacon.constants import (
     MAX_BODY,
@@ -21,8 +21,23 @@ ALLOWED_SEVERITY = {"emergency", "urgent", "advisory"}
 
 
 class BeaconService:
-    def __init__(self, store: BeaconStore) -> None:
+    def __init__(
+        self,
+        store: BeaconStore,
+        *,
+        get_binding: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+    ) -> None:
         self.store = store
+        # Same injected cross-service lookup as PostboxService/NoticeboardService
+        # (avoids importing DispatchStore directly). Without it, BEACON_PUSH/
+        # CLEAR over Waylink trusted whatever the packet's own payload
+        # claimed — for an emergency-alert system, that meant anyone with a
+        # working radio could push (or silence) an alert as anyone.
+        self._get_binding = get_binding or (lambda _node_id: None)
+
+    def _bound_username(self, node_id: str) -> Optional[str]:
+        binding = self._get_binding(node_id)
+        return str(binding["username"]) if binding else None
 
     def push(
         self,
@@ -92,8 +107,13 @@ class BeaconService:
                 )
                 return envelope.make_response(op=op, payload={"beacons": beacons})
             if op == OP_BEACON_PUSH:
+                author = self._bound_username(envelope.src)
+                if not author:
+                    return envelope.make_response(
+                        op=op, payload={"error": "unauthorized_device"}, error=True
+                    )
                 beacon = self.push(
-                    author=str(payload.get("author") or envelope.src or ""),
+                    author=author,
                     title=str(payload.get("title") or ""),
                     body=str(payload.get("body") or ""),
                     severity=str(payload.get("severity") or "emergency"),
@@ -102,6 +122,10 @@ class BeaconService:
                 )
                 return envelope.make_response(op=op, payload={"beacon": beacon})
             if op == OP_BEACON_CLEAR:
+                if not self._bound_username(envelope.src):
+                    return envelope.make_response(
+                        op=op, payload={"error": "unauthorized_device"}, error=True
+                    )
                 cleared = self.clear(payload.get("id"))
                 return envelope.make_response(op=op, payload={"beacon": cleared})
             return envelope.make_response(

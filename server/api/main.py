@@ -65,6 +65,7 @@ from server.services.mail.constants import (
 )
 from server.services.mail.service import PostboxService
 from server.services.noticeboard.constants import (
+    OP_NOTICE_ACK,
     OP_NOTICE_CREATE,
     OP_NOTICE_EXPIRE,
     OP_NOTICE_GET,
@@ -121,8 +122,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             nodes_for_user=lambda u: db.dispatch.nodes_for_user(u),
         )
         commons = CommonsService(db.commons)
-        noticeboard = NoticeboardService(db.noticeboard)
-        beacon = BeaconService(db.beacon)
+        noticeboard = NoticeboardService(
+            db.noticeboard, get_binding=lambda n: db.dispatch.get_binding(n)
+        )
+        beacon = BeaconService(db.beacon, get_binding=lambda n: db.dispatch.get_binding(n))
         corkboard = CorkboardService(db.corkboard)
         locker = LockerService(db.locker)
         rollcall = RollcallService(db)
@@ -163,7 +166,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             gateway.register(SVC_MAIL, op, postbox.handle_rpc)
         for op in (OP_POST_LIST, OP_POST_CREATE, OP_POST_GET):
             gateway.register(SVC_COMMONS, op, commons.handle_rpc)
-        for op in (OP_NOTICE_LIST, OP_NOTICE_GET, OP_NOTICE_CREATE, OP_NOTICE_EXPIRE):
+        for op in (
+            OP_NOTICE_LIST,
+            OP_NOTICE_GET,
+            OP_NOTICE_CREATE,
+            OP_NOTICE_EXPIRE,
+            OP_NOTICE_ACK,
+        ):
             gateway.register(SVC_NOTICEBOARD, op, noticeboard.handle_rpc)
         for op in (OP_BEACON_GET, OP_BEACON_PUSH, OP_BEACON_CLEAR, OP_BEACON_LIST):
             gateway.register(SVC_BEACON, op, beacon.handle_rpc)

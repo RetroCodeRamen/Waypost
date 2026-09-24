@@ -20,6 +20,10 @@ class NoticeCreate(BaseModel):
     id: Optional[str] = None
 
 
+class NoticeAck(BaseModel):
+    username: Optional[str] = None
+
+
 def build_noticeboard_router() -> APIRouter:
     router = APIRouter(tags=["noticeboard"])
 
@@ -30,23 +34,37 @@ def build_noticeboard_router() -> APIRouter:
         active_only: bool = True,
         limit: int = 50,
     ):
-        _ = user
+        username = actor_username(request, user)
         return {
             "notices": request.app.state.noticeboard.list_notices(
-                active_only=active_only, limit=limit
+                active_only=active_only, limit=limit, username=username
             ),
             "active_count": request.app.state.noticeboard.count_active(),
+            "unacked_count": request.app.state.noticeboard.count_unacked(username),
         }
 
     @router.get("/api/noticeboard/notices/{notice_id}")
     def get_notice(
         notice_id: str, request: Request, user=Depends(get_current_user)
     ):
-        _ = user
-        notice = request.app.state.noticeboard.get(notice_id)
+        username = actor_username(request, user)
+        notice = request.app.state.noticeboard.get(notice_id, username=username)
         if not notice:
             raise HTTPException(status_code=404, detail="Notice not found")
         return notice
+
+    @router.post("/api/noticeboard/notices/{notice_id}/ack")
+    def ack_notice(
+        notice_id: str,
+        body: NoticeAck,
+        request: Request,
+        user=Depends(get_current_user),
+    ):
+        username = actor_username(request, user, body.username)
+        try:
+            return request.app.state.noticeboard.ack(notice_id, username)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.post("/api/noticeboard/notices", status_code=201)
     def create_notice(

@@ -29,7 +29,8 @@ Receiving a valid radio packet does **not** authorize:
 - Fieldbook edits without permission  
 - Station admin  
 - editing another profile  
-- private Locker files  
+- private Locker files
+- **posting, expiring, or acknowledging a Noticeboard notice, or pushing/clearing a Beacon, as anyone other than the packet's own bound device** — `NOTICE_CREATE`/`EXPIRE`/`ACK` and `BEACON_PUSH`/`CLEAR` all resolve the acting username from `device_bindings`, same mechanism `MSG_SYNC` authz already used for Dispatch (found and fixed 2026-09-23 — both previously trusted a self-reported `author` field in the payload, which for Beacon specifically meant anyone with a working radio could push or silence an emergency alert as anyone)
 
 ---
 

@@ -153,10 +153,13 @@ Structured bulletins (distinct from Commons posts). Priorities: `high`, `normal`
 
 | Operation | Purpose |
 |-----------|---------|
-| `NOTICE_LIST` | Active (or all) notices |
-| `NOTICE_GET` | Fetch one notice by `id` |
-| `NOTICE_CREATE` | Post a bulletin |
-| `NOTICE_EXPIRE` | Mark a notice inactive |
+| `NOTICE_LIST` | Active (or all) notices; annotated with `acked` per-notice when the caller resolves to a known user |
+| `NOTICE_GET` | Fetch one notice by `id`, same `acked` annotation |
+| `NOTICE_CREATE` | Post a bulletin — author is the **radio device's bound account**, not a payload field (see Security note below) |
+| `NOTICE_EXPIRE` | Mark a notice inactive — requires a bound device |
+| `NOTICE_ACK` | Mark a notice read/acknowledged for the calling (bound) user — idempotent |
+
+**Security (M6-era fix, 2026-09-23):** `NOTICE_CREATE`, `NOTICE_EXPIRE`, and `NOTICE_ACK` over Waylink resolve the acting username from the sender's **bound device** (`device_bindings`, the same mechanism `MSG_SYNC` authz already used — see `docs/protocol.md`'s Dispatch section) rather than trusting a self-reported `author`/`username` field in the payload. An unbound `envelope.src` gets `unauthorized_device`. `NOTICE_LIST`/`NOTICE_GET` stay open to read (matching the HTTP routes' openness) but annotate `acked` using the bound identity when one exists.
 
 ### Beacon (`BEACON`)
 
@@ -165,11 +168,13 @@ Emergency / high-priority alerts (distinct from Noticeboard). One active Beacon 
 | Operation | Purpose |
 |-----------|---------|
 | `BEACON_GET` | Current active Beacon (or null) |
-| `BEACON_PUSH` | Activate a Beacon (`title`, `body`, `severity`) |
-| `BEACON_CLEAR` | Clear active Beacon |
+| `BEACON_PUSH` | Activate a Beacon (`title`, `body`, `severity`) — author is the **radio device's bound account**, not a payload field |
+| `BEACON_CLEAR` | Clear active Beacon — requires a bound device |
 | `BEACON_LIST` | Recent history |
 
 Severities: `emergency`, `urgent`, `advisory`.
+
+**Security (M6-era fix, 2026-09-23):** before this, `BEACON_PUSH`/`BEACON_CLEAR` over Waylink trusted whatever the packet's own payload claimed (`author`, or just `envelope.src` raw) — for an emergency-alert system, that meant anyone with a working radio could push, or silence, an alert as anyone. Both ops now resolve the acting username from `device_bindings` (same fix, same mechanism, as Noticeboard above) and reject with `unauthorized_device` if the sender isn't a bound device. **Out of scope, not silently dropped:** propagating an active Beacon through Outposts (store-and-forward relay, the way Dispatch's courier queue does) — Beacon today is Station-only; extending it to Outpost relay is real scope of its own, not a quick add to this fix.
 
 ### Signal (`SIGNAL`)
 

@@ -9,6 +9,7 @@
   var dMeta = document.getElementById("d-meta");
   var dBody = document.getElementById("d-body");
   var expireBtn = document.getElementById("expire-btn");
+  var ackBtn = document.getElementById("ack-btn");
   var statusLine = document.getElementById("status-line");
   var dialog = document.getElementById("compose");
   var composeBtn = document.getElementById("compose-btn");
@@ -49,6 +50,7 @@
       .map(function (n) {
         var cls = selectedId === n.id ? "active" : "";
         if (n.priority === "high") cls += (cls ? " " : "") + "priority-high";
+        if (n.acked === false) cls += (cls ? " " : "") + "unacked";
         return (
           '<li><button type="button" class="' +
           cls +
@@ -59,6 +61,7 @@
           esc(n.priority.toUpperCase()) +
           " · " +
           esc(n.author) +
+          (n.acked === false ? " · <b>unread</b>" : "") +
           "</span>" +
           '<span class="subj">' +
           esc(n.title) +
@@ -92,6 +95,7 @@
       "By " + n.author + " · " + relativeTime(n.created_at) + (n.active ? "" : " · expired");
     dBody.textContent = n.body;
     expireBtn.hidden = !n.active;
+    ackBtn.hidden = n.acked !== false;
     renderList();
   }
 
@@ -104,7 +108,9 @@
         notices = data.notices || [];
         statusLine.textContent =
           (data.active_count || 0) +
-          " active · structured bulletins (not Commons posts)";
+          " active, " +
+          (data.unacked_count || 0) +
+          " unread · structured bulletins (not Commons posts)";
         renderList();
         if (selectedId) openNotice(selectedId);
         else if (notices.length) openNotice(notices[0].id);
@@ -157,6 +163,22 @@
       })
       .catch(function () {
         alert("Could not post notice.");
+      });
+  });
+
+  ackBtn.addEventListener("click", function () {
+    if (!selectedId) return;
+    fetch("/api/noticeboard/notices/" + encodeURIComponent(selectedId) + "/ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("failed");
+        return refresh();
+      })
+      .catch(function () {
+        alert("Could not mark notice as read.");
       });
   });
 

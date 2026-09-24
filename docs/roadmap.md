@@ -115,7 +115,7 @@ Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticu
 
 **Remaining on this thread:** the physical claim test over real LoRa (join the Outpost's Wi-Fi, use `/claim`) — needs a human, not more code; MakerHawk GPIO verification whenever that board exists.
 
-**Next in the priority spine (no hardware needed):** M4 is now build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around) — Tier 2 software-only items (Postbox/Fieldbook progressive sync, Groups, Noticeboard ack + Beacon auth, Today dashboard) are next. See `priority-review.md` §7, §8, §12.
+**Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). Noticeboard ack + Beacon auth (M8 slice) are also now done (2026-09-23) — see below. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Remaining Tier 2 software-only items: Fieldbook progressive path, Groups (biggest, nothing else depends on it yet), Today dashboard. See `priority-review.md` §7, §8, §12.
 
 **Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
 
@@ -267,11 +267,13 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 
 ---
 
-### M8 — Groups, Today view, Notice/Beacon polish
+### M8 — Groups, Today view, Notice/Beacon polish 🟡
 
 **Goal:** Shared authz + homepage that answers what happened / what’s waiting; trustworthy notices and Beacon.
 
 **Exit criteria:** Groups used by ≥2 services ([groups-and-permissions.md](groups-and-permissions.md)); Today aggregates unread + sync; Notice ack; Beacon auth + replay protection.
+
+**Progress (2026-09-23):** Notice ack ✅ — `NOTICE_ACK` (Waylink) + `POST /api/noticeboard/notices/{id}/ack`, idempotent, per-user, portal shows an unread count and a "Mark as read" action. Beacon auth ✅ — `BEACON_PUSH`/`CLEAR` (and Noticeboard's `NOTICE_CREATE`/`EXPIRE`) now resolve the acting username from the radio device's binding rather than trusting the payload's own `author` field, closing a real spoofing gap (see `docs/security.md`, `docs/protocol.md`). Replay protection for Beacon was already covered generically — `WaylinkGateway` dedups every op by `mid`, and `PUSH_COOLDOWN_SEC` rate-limits repeat pushes from one author — so nothing new was needed there specifically. **Still open:** Groups (not started — no file exists yet, biggest remaining piece of this milestone), Today view, Beacon propagation through Outposts (explicitly out of scope for the auth fix — see `docs/protocol.md`'s Beacon section).
 
 ---
 

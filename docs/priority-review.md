@@ -10,6 +10,8 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 **Later the same day:** `ADMIN_APPROVAL` + admin-role — the recommendation from §8 below — got built. `users` gained `is_admin`/`approved_at`; the first account ever registered on a Station bootstraps as admin and auto-approves, so the mode can never deadlock a Station with nobody able to approve anyone; portal `/control.html` (formerly a nav placeholder) lists pending registrations with one-click approve; verified live in a browser end-to-end (register → pending → admin approves → login succeeds), plus 9 new tests. **M4 is now fully built; only the Stalwart-vs-SQLite decision remains, and it's a human call, not a build task** — the rest of this document's references to `ADMIN_APPROVAL` as unbuilt are now historical (kept for the build-order narrative in §6, §8) rather than current status; treat §1's tables as the live source of truth.
 
+**Then, same day again:** picked Noticeboard ack + Beacon auth from §8's Tier 2 list and built it — `NOTICE_ACK`, and a real fix for a genuine spoofing gap (`NOTICE_CREATE`/`EXPIRE` and `BEACON_PUSH`/`CLEAR` over Waylink trusted a self-reported author; now resolved from the device's actual binding, same mechanism Dispatch's `MSG_SYNC` already used). While scoping it, found this document's "Postbox progressive LoRa path — not started" claim was simply wrong — that's already fully built. Corrected throughout; see §7, §8.
+
 ---
 
 ## 1. Current state
@@ -33,7 +35,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 122 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 131 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -128,7 +130,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 122 passed as of this review
+- ~~Keep **radio regression** green~~ — 131 passed as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -140,9 +142,9 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - ~~Outpost store-and-forward firmware~~ — **done on Heltec V3 (M6 ✅)**; MakerHawk-specific build still pending that hardware
 - Pocket↔Outpost↔Pocket / courier smoke — Outpost's half is ready; still blocked on real Pocket hardware
 - ~~`ADMIN_APPROVAL` + admin-role~~ — **done** (M4 fully built now — see header)
-- Postbox progressive LoRa path — not started, no hardware dependency, software-only
+- ~~Postbox progressive LoRa path~~ — **turned out to already be built**, this line was stale (see header)
 - Fieldbook progressive path — not started, software-only
-- Noticeboard ack + Beacon auth/propagation — not started, software-only
+- ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts explicitly still not started (real scope of its own, not part of the auth fix)
 - Groups/permissions core — not started, software-only
 - Unified Today / sync dashboard — not started, software-only
 - **M1b Pi AP + TLS** — software done and tested in containers; blocked purely on physical Pi
@@ -168,12 +170,14 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 ### **Next up: Tier 2 software-only work (pick one)**
 
-With M4 build-complete, nothing left in the priority spine's hardware-free lane is a single obvious next step the way M4 was — it's genuinely a choice among independent Tier 2 items (§7), none blocking each other:
+With M4 build-complete, nothing left in the priority spine's hardware-free lane is a single obvious next step the way M4 was. **Noticeboard ack + Beacon auth got picked and built the same day** (see header) — while implementing it, checked Postbox against this same list and found its "progressive LoRa path" line was simply wrong: `MAIL_STATUS`/`MAIL_LIST`/`MAIL_GET` already implement exactly that pattern (compact headers, full body on demand, attachments kept Wi-Fi-only) — nothing to build there. What's left, still independent, none blocking each other:
 
-- **Postbox progressive LoRa path** — extends the same progressive-retrieval pattern Dispatch already proved, no new design needed.
-- **Noticeboard ack + Beacon auth/propagation** — both apps exist as prototypes; this is depth, not new surface area.
-- **Groups/permissions core** — bigger and more foundational (rooms ≠ Groups is flagged as real debt in §5), but no other Tier 2 item depends on it yet, so it's not blocking to defer.
-- **Unified Today/sync dashboard** — the most user-visible of the four, pulls together state that already exists (Signal, Rollcall, per-app queues) rather than building new backend.
+- **Fieldbook progressive path** — the same pattern Dispatch and (it turns out) Postbox already prove; likely the most mechanical of what's left.
+- **Groups/permissions core** — bigger and more foundational (rooms ≠ Groups is flagged as real debt in §5), but no other Tier 2 item depends on it yet, so it's not blocking to defer. No existing file/scaffolding at all — genuinely starts from zero.
+- **Unified Today/sync dashboard** — the most user-visible of what's left, pulls together state that already exists (Signal, Rollcall, per-app queues) rather than building new backend.
+- **Beacon propagation through Outposts** — deliberately cut from the auth-fix slice; store-and-forward relay for Beacon the way Dispatch's courier queue already works, real scope of its own.
+
+**Before picking the next one, verify the item against the actual code first** — this same review nearly recommended re-building already-finished Postbox work. Two stale-claim near-misses in one project (this one, and the `ADMIN_APPROVAL` staleness the previous refresh caught) is enough to treat every "not started" line in this document as a hypothesis to check, not a fact.
 
 This review doesn't pick one — they're independent enough that the choice is preference/priority, not dependency order. Also worth revisiting now, separately: **the app-catalog freeze** (§3, §11, §12.3) — it's been flagged as stale-adjacent twice now without a decision.
 
