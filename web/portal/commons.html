@@ -11,7 +11,6 @@
 <body>
   <div id="wp-page">
     <section class="app-toolbar commons-compose">
-      <label>You <input id="me" value="aj" autocomplete="username"/></label>
       <label class="grow">Title <input id="title" placeholder="Optional title" maxlength="120"/></label>
       <button type="button" id="refresh">Refresh</button>
     </section>
@@ -28,6 +27,7 @@
       <ul id="feed" class="commons-feed" aria-live="polite"></ul>
     </div>
   </div>
+  <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
   <script>
     WaypostShell.mount({

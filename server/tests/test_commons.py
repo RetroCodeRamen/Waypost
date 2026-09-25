@@ -63,6 +63,9 @@ def test_commons_page(client: TestClient):
     assert r.status_code == 200
     assert "Commons" in r.text
     assert "commons.js" in r.text
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text
 
 
 def test_group_scoped_post_visible_only_to_members(client: TestClient):

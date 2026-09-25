@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var statusEl = document.getElementById("status");
   var listEl = document.getElementById("people");
 
@@ -23,12 +23,11 @@
   }
 
   async function refresh() {
-    var me = meEl.value.trim();
-    if (me) {
+    if (myUsername) {
       await fetch("/api/rollcall/touch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: me, via: "wifi" }),
+        body: JSON.stringify({ username: myUsername, via: "wifi" }),
       });
     }
     var data = await fetch("/api/rollcall").then(function (r) { return r.json(); });
@@ -56,16 +55,19 @@
   }
 
   document.getElementById("set-status").addEventListener("click", async function () {
-    var me = meEl.value.trim();
-    if (!me) return;
+    if (!myUsername) return;
     await fetch("/api/rollcall/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: me, status: statusEl.value }),
+      body: JSON.stringify({ username: myUsername, status: statusEl.value }),
     });
     refresh();
   });
 
-  refresh();
-  setInterval(refresh, 5000);
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    refresh();
+    setInterval(refresh, 5000);
+  });
 })();

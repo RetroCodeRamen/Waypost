@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var titleEl = document.getElementById("title");
   var bodyEl = document.getElementById("body");
   var feedEl = document.getElementById("feed");
@@ -88,7 +88,7 @@
 
   form.addEventListener("submit", function (ev) {
     ev.preventDefault();
-    var author = meEl.value.trim();
+    var author = myUsername;
     var body = bodyEl.value.trim();
     if (!author || !body) return;
     fetch("/api/commons/posts", {
@@ -115,5 +115,9 @@
     refresh();
   });
 
-  refresh();
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    refresh();
+  });
 })();

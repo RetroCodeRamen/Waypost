@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var severityEl = document.getElementById("severity");
   var panel = document.getElementById("active-panel");
   var aTitle = document.getElementById("a-title");
@@ -113,7 +113,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        author: meEl.value.trim(),
+        author: myUsername,
         title: cTitle.value.trim(),
         body: cBody.value.trim(),
         severity: severityEl.value,
@@ -147,5 +147,9 @@
   });
 
   document.getElementById("refresh").addEventListener("click", refresh);
-  refresh();
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    refresh();
+  });
 })();

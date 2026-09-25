@@ -131,6 +131,9 @@ def test_dispatch_page_served(client: TestClient):
     r = client.get("/dispatch.html")
     assert r.status_code == 200
     assert "Dispatch" in r.text
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text
 
 
 def test_offline_queue_flushes_on_bind(client: TestClient):

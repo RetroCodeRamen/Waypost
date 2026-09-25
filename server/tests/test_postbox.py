@@ -255,4 +255,8 @@ def test_mail_notify_persists_until_bind(client: TestClient):
 
 
 def test_postbox_page(client: TestClient):
-    assert client.get("/postbox.html").status_code == 200
+    r = client.get("/postbox.html")
+    assert r.status_code == 200
+    # Identity comes from a real session, not a free-text mailbox box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="mailbox"' not in r.text

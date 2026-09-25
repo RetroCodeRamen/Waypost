@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var priorityEl = document.getElementById("priority");
   var listEl = document.getElementById("notice-list");
   var emptyEl = document.getElementById("empty");
@@ -138,7 +138,7 @@
       dialog.close();
       return;
     }
-    var author = meEl.value.trim();
+    var author = myUsername;
     var title = cTitle.value.trim();
     var body = cBody.value.trim();
     if (!author || !title || !body) return;
@@ -198,5 +198,9 @@
   });
 
   refreshBtn.addEventListener("click", refresh);
-  refresh();
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    refresh();
+  });
 })();

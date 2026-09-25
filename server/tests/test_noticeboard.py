@@ -182,6 +182,9 @@ def test_noticeboard_page(client: TestClient):
     r = client.get("/noticeboard.html")
     assert r.status_code == 200
     assert "Noticeboard" in r.text
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text
 
 
 def test_group_scoped_notice_visible_only_to_members(client: TestClient):

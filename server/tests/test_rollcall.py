@@ -41,4 +41,8 @@ def test_rollcall_lists_people_with_reachability(client: TestClient):
 
 
 def test_rollcall_page(client: TestClient):
-    assert client.get("/rollcall.html").status_code == 200
+    r = client.get("/rollcall.html")
+    assert r.status_code == 200
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text

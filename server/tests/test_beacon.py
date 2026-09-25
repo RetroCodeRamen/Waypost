@@ -81,6 +81,9 @@ def test_beacon_page(client: TestClient):
     r = client.get("/beacon.html")
     assert r.status_code == 200
     assert "Beacon" in r.text
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text
 
 
 # -- Radio-path authorization: BEACON_PUSH/CLEAR over Waylink must not

@@ -1,5 +1,5 @@
 (function () {
-  var mailboxEl = document.getElementById("mailbox");
+  var myUsername = "";
   var statusLine = document.getElementById("status-line");
   var listEl = document.getElementById("mail-list");
   var emptyEl = document.getElementById("empty");
@@ -23,10 +23,6 @@
       .replace(/>/g, "&gt;");
   }
 
-  function mailbox() {
-    return mailboxEl.value.trim();
-  }
-
   function setFolder(next) {
     folder = next;
     document.querySelectorAll("#folders button").forEach(function (btn) {
@@ -46,7 +42,7 @@
   }
 
   async function refresh() {
-    var mb = mailbox();
+    var mb = myUsername;
     if (!mb) return;
     var st = await fetch(
       "/api/postbox/status?mailbox=" + encodeURIComponent(mb)
@@ -94,7 +90,7 @@
 
   async function openMessage(localId) {
     selectedLocalId = localId;
-    var mb = mailbox();
+    var mb = myUsername;
     var msg = await fetch(
       "/api/postbox/messages/" +
         encodeURIComponent(localId) +
@@ -132,15 +128,12 @@
   });
 
   document.getElementById("refresh").addEventListener("click", refresh);
-  mailboxEl.addEventListener("change", function () {
-    setFolder(folder);
-  });
 
   flushBtn.addEventListener("click", async function () {
     var res = await fetch("/api/postbox/outbox/flush", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mailbox: mailbox() }),
+      body: JSON.stringify({ mailbox: myUsername }),
     });
     if (!res.ok) {
       var err = await res.json().catch(function () { return {}; });
@@ -171,7 +164,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        from_user: mailbox(),
+        from_user: myUsername,
         to: to,
         subject: subject,
         body: body,
@@ -199,7 +192,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        from_user: mailbox(),
+        from_user: myUsername,
         local_id: selectedLocalId,
         body: body,
       }),
@@ -214,5 +207,9 @@
   });
 
   // Compose dialog includes Send / Queue / Cancel
-  setFolder("INBOX");
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    setFolder("INBOX");
+  });
 })();

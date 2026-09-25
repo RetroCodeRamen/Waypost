@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var refreshBtn = document.getElementById("refresh-list");
   var newDmBtn = document.getElementById("new-dm");
   var newRoomBtn = document.getElementById("new-room");
@@ -30,10 +30,6 @@
     return t;
   }
 
-  function me() {
-    return meEl.value.trim();
-  }
-
   function setActive(active) {
     bodyEl.disabled = !active;
     sendBtn.disabled = !active;
@@ -41,7 +37,7 @@
 
   function renderMessages(messages, replace) {
     if (replace) listEl.innerHTML = "";
-    var mine = me().toLowerCase();
+    var mine = myUsername.toLowerCase();
     messages.forEach(function (m) {
       if (m.created_at && m.created_at > lastTs) lastTs = m.created_at;
       var li = document.createElement("li");
@@ -83,7 +79,7 @@
   }
 
   async function refreshList() {
-    var username = me();
+    var username = myUsername;
     if (!username) return;
     var res = await fetch(
       "/api/dispatch/conversations?username=" + encodeURIComponent(username)
@@ -108,7 +104,7 @@
     var c = data.conversation;
     if (c.kind === "direct") {
       var others = (c.members || []).filter(function (u) {
-        return u.toLowerCase() !== me().toLowerCase();
+        return u.toLowerCase() !== myUsername.toLowerCase();
       });
       peerHint = others[0] || null;
     }
@@ -150,17 +146,13 @@
     refreshList();
   });
 
-  meEl.addEventListener("change", function () {
-    refreshList();
-  });
-
   newDmBtn.addEventListener("click", async function () {
     var peer = window.prompt("Peer username?");
     if (!peer) return;
     var res = await fetch("/api/dispatch/conversations/direct", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_a: me(), user_b: peer.trim() }),
+      body: JSON.stringify({ user_a: myUsername, user_b: peer.trim() }),
     });
     if (!res.ok) {
       metaEl.textContent = "Could not open DM";
@@ -175,11 +167,11 @@
     if (!title) return;
     var membersRaw = window.prompt(
       "Members (comma-separated, include yourself)",
-      me() + ", bob"
+      myUsername + ", bob"
     );
     if (!membersRaw) return;
     var members = membersRaw.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
-    if (members.indexOf(me()) === -1) members.unshift(me());
+    if (members.indexOf(myUsername) === -1) members.unshift(myUsername);
     var res = await fetch("/api/dispatch/conversations/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -201,7 +193,7 @@
     bodyEl.value = "";
     sendBtn.disabled = true;
     var payload = {
-      sender: me(),
+      sender: myUsername,
       body: body,
       transport: "wifi",
       conversation_id: conversationId,
@@ -229,5 +221,9 @@
     }
   });
 
-  refreshList();
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    refreshList();
+  });
 })();
