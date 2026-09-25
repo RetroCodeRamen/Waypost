@@ -16,6 +16,7 @@ from server.services.groups.store import GroupsStore
 from server.services.locker.store import LockerStore
 from server.services.mail.store import MailStore
 from server.services.noticeboard.store import NoticeStore
+from server.services.profiles.store import RollcallStore
 
 
 SCHEMA = """
@@ -74,6 +75,7 @@ class Database:
         self.corkboard = CorkboardStore(self._conn)
         self.groups = GroupsStore(self._conn)
         self.fieldbook = FieldbookStore(self._conn)
+        self.rollcall = RollcallStore(self._conn)
         root = locker_root or (path.parent / "locker")
         self.locker = LockerStore(self._conn, root)
 
@@ -170,6 +172,13 @@ class Database:
             "SELECT id, username, display_name, status, bio, created_at FROM users ORDER BY username"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def set_user_status(self, username: str, status: str) -> None:
+        self._conn.execute(
+            "UPDATE users SET status = ? WHERE username = ? COLLATE NOCASE",
+            (status, username),
+        )
+        self._conn.commit()
 
     def ensure_user(self, username: str, display_name: Optional[str] = None) -> dict[str, Any]:
         existing = self.get_user_by_username(username)

@@ -161,7 +161,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             locker=locker,
             get_binding=lambda n: db.dispatch.get_binding(n),
         )
-        rollcall = RollcallService(db)
+        rollcall = RollcallService(
+            db.rollcall,
+            get_user=db.get_user_by_username,
+            ensure_user=db.ensure_user,
+            set_user_status=db.set_user_status,
+            list_users=db.list_users,
+            nodes_for_user=db.dispatch.nodes_for_user,
+        )
         app.state.db = db
         app.state.settings = settings
         app.state.dispatch = dispatch
