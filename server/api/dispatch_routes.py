@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+import asyncio
+from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -17,6 +18,23 @@ from shared.protocol.envelope import (
     decode_cbor,
     encode_cbor,
 )
+
+
+async def _call_handler(
+    handler: Callable[[Envelope], Any], env: Envelope
+) -> Optional[Envelope]:
+    """Call a gateway-registered handler, sync or async.
+
+    Most registered handlers (Commons, Noticeboard, Beacon, Locker,
+    Fieldbook, Signal) are plain sync handle_rpc methods — the real
+    WaylinkGateway._handle_packet dispatch path already handles both via
+    this same iscoroutine check; these HTTP dev/test endpoints previously
+    always `await`ed, which raised for every sync handler.
+    """
+    result = handler(env)
+    if asyncio.iscoroutine(result):
+        return await result
+    return result
 
 
 class DirectSend(BaseModel):
@@ -296,7 +314,7 @@ def build_dispatch_router() -> APIRouter:
         if gateway is not None:
             handler = gateway._handlers.get((env.svc, env.op))
             if handler:
-                reply = await handler(env)
+                reply = await _call_handler(handler, env)
                 return reply.to_dict() if reply else {"ok": True}
         raise HTTPException(status_code=400, detail=f"unsupported service {env.svc}")
 
@@ -322,7 +340,13 @@ def build_dispatch_router() -> APIRouter:
                     env.payload = payload
             reply = await request.app.state.postbox.handle_rpc(env)
         else:
-            raise HTTPException(status_code=400, detail=f"unsupported service {env.svc}")
+            gateway = getattr(request.app.state, "gateway", None)
+            handler = gateway._handlers.get((env.svc, env.op)) if gateway else None
+            if handler is None:
+                raise HTTPException(
+                    status_code=400, detail=f"unsupported service {env.svc}"
+                )
+            reply = await _call_handler(handler, env)
         if reply is None:
             return Response(status_code=204)
         return Response(content=encode_cbor(reply), media_type="application/cbor")

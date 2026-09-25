@@ -9,7 +9,14 @@ from fastapi.testclient import TestClient
 
 from server.api.config import Settings
 from server.api.main import create_app
-from shared.protocol.envelope import SVC_COMMONS, Envelope, Flags
+from shared.protocol.envelope import (
+    SVC_COMMONS,
+    Envelope,
+    Flags,
+    decode_cbor,
+    encode_cbor,
+    new_id,
+)
 from server.services.commons.constants import OP_POST_CREATE, OP_POST_LIST
 
 
@@ -182,3 +189,49 @@ def test_commons_rpc_via_gateway(client: TestClient):
         p["body"].startswith("LoRa-side") for p in listed.payload["posts"]
     )
     assert gateway is not None
+
+
+def test_waylink_rpc_json_supports_sync_service_handlers(client: TestClient):
+    """Regression: waylink_rpc_json's generic gateway fallback always did
+    `await handler(env)` -- 500ing for every sync handle_rpc (Commons,
+    Noticeboard, Beacon, Locker, Fieldbook, Signal). Only SVC_DISPATCH/
+    SVC_MAIL are genuinely async; the real WaylinkGateway._handle_packet
+    dispatch path already iscoroutine-guards this correctly."""
+    env = Envelope(
+        src="pocket-carol",
+        dst="station",
+        svc=SVC_COMMONS,
+        op=OP_POST_CREATE,
+        flags=int(Flags.REQUEST),
+        mid=new_id(),
+        payload={"author": "carol", "body": "Over the generic JSON-RPC shim."},
+    )
+    r = client.post("/api/waylink/rpc", json=env.to_dict())
+    assert r.status_code == 200
+    reply = Envelope.from_dict(r.json())
+    assert not (reply.flags & int(Flags.ERROR))
+    assert reply.payload["post"]["body"].startswith("Over the generic")
+
+
+def test_waylink_rpc_cbor_supports_sync_service_handlers(client: TestClient):
+    """Same regression as the JSON variant, plus: the CBOR endpoint
+    previously hardcoded only SVC_DISPATCH/SVC_MAIL and 400'd everything
+    else -- it now falls through to the same generic gateway dispatch."""
+    env = Envelope(
+        src="pocket-dana",
+        dst="station",
+        svc=SVC_COMMONS,
+        op=OP_POST_CREATE,
+        flags=int(Flags.REQUEST),
+        mid=new_id(),
+        payload={"author": "dana", "body": "Over the generic CBOR-RPC shim."},
+    )
+    r = client.post(
+        "/api/waylink/rpc/cbor",
+        content=encode_cbor(env),
+        headers={"Content-Type": "application/cbor"},
+    )
+    assert r.status_code == 200
+    reply = decode_cbor(r.content)
+    assert not (reply.flags & int(Flags.ERROR))
+    assert reply.payload["post"]["body"].startswith("Over the generic")
