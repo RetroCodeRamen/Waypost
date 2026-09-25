@@ -225,8 +225,15 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-    def mark_pairing_code_used(self, code: str, *, used_at: float) -> None:
-        self._conn.execute(
-            "UPDATE pairing_codes SET used_at = ? WHERE code = ?", (used_at, code)
+    def mark_pairing_code_used(self, code: str, *, used_at: float) -> bool:
+        """Atomically claims the code — the `used_at IS NULL` guard makes
+        this the actual single-use enforcement, not just the caller's
+        earlier `used_at` read (two concurrent redemptions of the same
+        code could otherwise both pass that check before either commits).
+        Returns False if someone else already claimed it first."""
+        cur = self._conn.execute(
+            "UPDATE pairing_codes SET used_at = ? WHERE code = ? AND used_at IS NULL",
+            (used_at, code),
         )
         self._conn.commit()
+        return cur.rowcount > 0

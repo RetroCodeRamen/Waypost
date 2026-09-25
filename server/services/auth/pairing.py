@@ -19,6 +19,7 @@ exist yet when PairingService is built.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from typing import TYPE_CHECKING, Any, Optional
@@ -31,6 +32,8 @@ from shared.protocol.envelope import Envelope, Flags
 if TYPE_CHECKING:
     from server.services.corkboard.store import CorkboardStore
     from server.services.dispatch.service import DispatchService
+
+logger = logging.getLogger("waypost.pairing")
 
 CODE_TTL_SECONDS = 10 * 60
 CODE_LENGTH = 6
@@ -86,7 +89,10 @@ class PairingService:
             raise ValueError("pairing code already used")
         if float(row["expires_at"]) < time.time():
             raise ValueError("pairing code expired")
-        self.db.mark_pairing_code_used(row["code"], used_at=time.time())
+        if not self.db.mark_pairing_code_used(row["code"], used_at=time.time()):
+            # Lost a race with another redemption of the same code between
+            # the read above and now — the atomic claim is the real guard.
+            raise ValueError("pairing code already used")
         binding = self.dispatch.bind_device(
             node_id, row["username"], transport_dest=transport_dest
         )
@@ -146,13 +152,39 @@ class PairingService:
         transport_dest = _normalize_transport_dest(transport_dest)
         if self.corkboard_store is None:
             raise ValueError("outpost claiming is not available")
-        self.db.mark_pairing_code_used(row["code"], used_at=time.time())
+        if not self.db.mark_pairing_code_used(row["code"], used_at=time.time()):
+            # Lost a race with another redemption of the same code between
+            # the read above and now — the atomic claim is the real guard.
+            raise ValueError("pairing code already used")
+        # Two un-relabeled boards (both defaulting to the same firmware
+        # WAYPOST_OUTPOST_ID) would otherwise silently merge here — same
+        # node_id, different physical device, different transport_dest.
+        # Station can't safely tell that apart from a legitimate re-claim
+        # of the same board after a real identity reset (both look like
+        # "same id, new hash"), so this doesn't block it — but it must not
+        # stay invisible either.
+        existing = self.corkboard_store.get_outpost(node_id)
+        replaced_existing_claim = bool(
+            existing
+            and existing.get("transport_dest")
+            and existing["transport_dest"].lower() != transport_dest.lower()
+        )
+        if replaced_existing_claim:
+            logger.warning(
+                "outpost_claim node_id=%s replaced a different existing "
+                "transport_dest — check for a WAYPOST_OUTPOST_ID collision "
+                "unless this is a known re-claim after a board reset",
+                node_id,
+            )
         # Must happen before handle_outpost_claim returns — see module docstring.
         self._learn_route(node_id, transport_dest)
         outpost = self.corkboard_store.touch_outpost(
             node_id, display_name=display_name, transport_dest=transport_dest
         )
-        return {"node_id": node_id, "outpost": outpost}
+        result: dict[str, Any] = {"node_id": node_id, "outpost": outpost}
+        if replaced_existing_claim:
+            result["replaced_existing_claim"] = True
+        return result
 
     def auto_claim_outpost(
         self,

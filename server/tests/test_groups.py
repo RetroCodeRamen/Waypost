@@ -86,6 +86,32 @@ def test_cannot_remove_last_admin(client: TestClient):
         svc.remove_member(gid, actor="aj", username="aj")
 
 
+def test_store_level_admin_guard_is_atomic_not_just_precheck(client: TestClient):
+    """Regression: the service layer's count-then-write guard was two
+    separate statements — a real race window. This bypasses the service's
+    pre-check entirely and calls the store directly, proving the SQL
+    statement itself refuses to leave a group with zero admins, no matter
+    what already ran before it."""
+    group = client.post("/api/groups", json={"name": "Race Test"}).json()
+    gid = group["id"]
+    store = client.app.state.db.groups
+
+    # Store-level remove, no service pre-check in front of it at all.
+    assert store.remove_member(gid, "aj") is False
+    assert store.is_member(gid, "aj") is True
+
+    # Store-level demote-via-add, same bypass.
+    assert store.add_member(gid, "aj", role="member") is False
+    assert store.get_role(gid, "aj") == "admin"
+
+    # Promote a second admin, then both operations succeed correctly.
+    store.add_member(gid, "bob", role="admin")
+    assert store.remove_member(gid, "bob") is True
+    store.add_member(gid, "bob", role="admin")
+    assert store.add_member(gid, "aj", role="member") is True
+    assert store.get_role(gid, "aj") == "member"
+
+
 def test_get_unknown_group_404s(client: TestClient):
     r = client.get("/api/groups/does-not-exist")
     assert r.status_code == 404

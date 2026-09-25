@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,30 @@ def test_redeem_used_code_rejected(pairing: PairingService):
     pairing.redeem_code(code=created["code"], node_id="pocket-carol")
     with pytest.raises(ValueError, match="already used"):
         pairing.redeem_code(code=created["code"], node_id="pocket-carol-2")
+
+
+def test_mark_pairing_code_used_is_atomic(tmp_path: Path):
+    """Regression: the old mark_pairing_code_used had no guard of its own
+    — two concurrent redeemers could both pass the earlier `used_at` read
+    before either committed. The claim itself must be the single-use
+    gate, not just the caller's prior check."""
+    db = Database(tmp_path / "test.db")
+    db.create_pairing_code(code="999999", username="aj", created_at=0.0, expires_at=1e12)
+    assert db.mark_pairing_code_used("999999", used_at=1.0) is True
+    # A second "concurrent" claim of the same code must be refused by the
+    # atomic UPDATE itself, not by a prior read either caller happened to see.
+    assert db.mark_pairing_code_used("999999", used_at=2.0) is False
+
+
+def test_redeem_code_race_is_closed_not_just_checked_sequentially(pairing: PairingService):
+    """Simulates the race directly: claim the code out from under
+    redeem_code between its read and its mark-used call by marking it
+    used first, then confirm redeem_code still refuses correctly (it must
+    rely on the atomic claim, not silently succeed)."""
+    created = pairing.create_code("carol")
+    assert pairing.db.mark_pairing_code_used(created["code"], used_at=time.time()) is True
+    with pytest.raises(ValueError, match="already used"):
+        pairing.redeem_code(code=created["code"], node_id="pocket-carol")
 
 
 # -- HTTP-level: end-to-end through the API, ownership checks --
@@ -209,6 +234,29 @@ def test_claim_outpost_rejects_reused_code(pairing_with_corkboard: PairingServic
         pairing_with_corkboard.redeem_outpost_code(
             code=created["code"], node_id="outpost-2", transport_dest="bb" * 16
         )
+
+
+def test_claim_outpost_surfaces_a_node_id_collision(pairing_with_corkboard: PairingService):
+    """Two un-relabeled boards (both defaulting to the same firmware
+    WAYPOST_OUTPOST_ID) would otherwise silently merge here — same
+    node_id, different transport_dest. Station can't safely tell that
+    apart from a legitimate re-claim of the same board after an identity
+    reset, so this isn't blocked — but it must not stay invisible either."""
+    first_code = pairing_with_corkboard.create_code("aj")
+    pairing_with_corkboard.redeem_outpost_code(
+        code=first_code["code"], node_id="outpost-1", transport_dest="aa" * 16
+    )
+    second_code = pairing_with_corkboard.create_code("aj")
+    result = pairing_with_corkboard.redeem_outpost_code(
+        code=second_code["code"], node_id="outpost-1", transport_dest="bb" * 16
+    )
+    assert result.get("replaced_existing_claim") is True
+    # And a same-hash re-claim (the legitimate case) must NOT be flagged.
+    third_code = pairing_with_corkboard.create_code("aj")
+    result2 = pairing_with_corkboard.redeem_outpost_code(
+        code=third_code["code"], node_id="outpost-2", transport_dest="cc" * 16
+    )
+    assert "replaced_existing_claim" not in result2
 
 
 def test_auto_claim_registers_and_learns_route_without_a_code(

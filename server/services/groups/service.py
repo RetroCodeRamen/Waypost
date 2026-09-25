@@ -76,13 +76,20 @@ class GroupsService:
         self.require_admin(group_id, actor)
         # add_member upserts the role, so re-adding an existing admin as
         # "member" is a demotion — refuse when it would leave no admin.
+        # This pre-check gives a precise error in the normal sequential
+        # case; store.add_member's own WHERE-guarded UPDATE is what
+        # actually guarantees it under a concurrent race (two admins
+        # demoting each other at once could both pass this check before
+        # either commits — the SQL-level guard can't be raced the same
+        # way, since it's one atomic statement).
         if (
             role != ROLE_ADMIN
             and self.store.get_role(group_id, username) == ROLE_ADMIN
             and self.store.count_admins(group_id) <= 1
         ):
             raise ValueError("cannot demote the last admin")
-        self.store.add_member(group_id, username, role=role)
+        if not self.store.add_member(group_id, username, role=role):
+            raise ValueError("cannot demote the last admin")
         return self.store.get_group(group_id)  # type: ignore[return-value]
 
     def remove_member(self, group_id: str, *, actor: str, username: str) -> dict[str, Any]:
@@ -90,10 +97,19 @@ class GroupsService:
         if not username:
             raise ValueError("username required")
         self.require_admin(group_id, actor)
+        # Same pre-check-plus-atomic-guard shape as add_member above — the
+        # pre-check gives a precise error in the sequential case, the
+        # store's own WHERE-guarded DELETE is the real guarantee under a
+        # concurrent race.
         if (
             self.store.get_role(group_id, username) == ROLE_ADMIN
             and self.store.count_admins(group_id) <= 1
         ):
             raise ValueError("cannot remove the last admin")
-        self.store.remove_member(group_id, username)
+        if not self.store.remove_member(group_id, username):
+            # Either lost a race with another remove/demote (still the
+            # last admin) or someone else already removed them — only the
+            # first is worth surfacing as an error.
+            if self.store.get_role(group_id, username) == ROLE_ADMIN:
+                raise ValueError("cannot remove the last admin")
         return self.store.get_group(group_id)  # type: ignore[return-value]

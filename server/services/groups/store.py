@@ -101,23 +101,50 @@ class GroupsStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def add_member(self, group_id: str, username: str, *, role: str = ROLE_MEMBER) -> None:
-        self._conn.execute(
+    def add_member(self, group_id: str, username: str, *, role: str = ROLE_MEMBER) -> bool:
+        """Upsert, but the WHERE guard on the UPDATE arm makes "demote the
+        last admin" fail atomically — a single statement, so it can't lose
+        a race with a concurrent remove_member/add_member the way a
+        separate count-then-write pair could. Returns False when the
+        guard blocked a real demotion attempt (the row already existed as
+        the sole admin and the new role isn't 'admin'); True otherwise,
+        including plain inserts and no-op re-adds."""
+        cur = self._conn.execute(
             """
             INSERT INTO group_members (group_id, username, role, added_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(group_id, username) DO UPDATE SET role = excluded.role
+            WHERE NOT (
+                group_members.role = 'admin'
+                AND excluded.role != 'admin'
+                AND (SELECT COUNT(*) FROM group_members gm2
+                     WHERE gm2.group_id = group_members.group_id AND gm2.role = 'admin') <= 1
+            )
             """,
             (group_id, username, role, time.time()),
         )
         self._conn.commit()
+        return cur.rowcount > 0
 
-    def remove_member(self, group_id: str, username: str) -> None:
-        self._conn.execute(
-            "DELETE FROM group_members WHERE group_id = ? AND username = ? COLLATE NOCASE",
+    def remove_member(self, group_id: str, username: str) -> bool:
+        """Same atomic-guard shape as add_member — the last-admin check is
+        part of the DELETE's own WHERE clause, not a separate statement,
+        so a concurrent removal can't race past it. Returns False when the
+        guard blocked it or the member wasn't there at all."""
+        cur = self._conn.execute(
+            """
+            DELETE FROM group_members
+            WHERE group_id = ? AND username = ? COLLATE NOCASE
+              AND NOT (
+                role = 'admin'
+                AND (SELECT COUNT(*) FROM group_members gm2
+                     WHERE gm2.group_id = group_members.group_id AND gm2.role = 'admin') <= 1
+              )
+            """,
             (group_id, username),
         )
         self._conn.commit()
+        return cur.rowcount > 0
 
     def get_role(self, group_id: str, username: str) -> Optional[str]:
         row = self._conn.execute(

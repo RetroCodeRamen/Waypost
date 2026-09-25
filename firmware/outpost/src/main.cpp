@@ -93,6 +93,17 @@ static const uint32_t AUTO_SYNC_INTERVAL_MS = 5UL * 60UL * 1000UL;     // 5 min
 static bool g_auto_claim_enabled = true;  // persisted; toggled by the button
 static bool g_claimed = false;            // persisted; set once Station confirms via BOARD_SYNC
 
+// The *effective* outpost id this board presents everywhere — set once in
+// reticulum_setup() as WAYPOST_OUTPOST_ID plus a short suffix derived from
+// this board's own Reticulum identity hash. WAYPOST_OUTPOST_ID alone
+// defaults identically on every board (platformio.ini's "outpost-1")
+// unless an operator remembers to override it per-device; nothing
+// enforced that uniqueness, so two un-relabeled boards would silently
+// merge routing and their public noteboards under the same id. Deriving
+// the suffix from the identity hash Station already routes on makes two
+// boards structurally unable to collide, with zero operator effort.
+static std::string g_outpost_id = WAYPOST_OUTPOST_ID;
+
 struct Note {
   std::string id;
   std::string body;
@@ -226,7 +237,7 @@ static String html_escape(const std::string& s) {
 // re-claiming/unclaiming is explicitly a separate, unbuilt feature).
 static void announce_now() {
   if (!g_claimed && g_auto_claim_enabled) {
-    std::string marker = std::string(AUTO_CLAIM_MARKER) + WAYPOST_OUTPOST_ID;
+    std::string marker = std::string(AUTO_CLAIM_MARKER) + g_outpost_id;
     g_destination.announce(RNS::Bytes(marker));
   } else {
     g_destination.announce();
@@ -311,6 +322,11 @@ static void reticulum_setup() {
       WAYPOST_APP_NAME,
       WAYPOST_ASPECT);
   g_destination.set_packet_callback(on_destination_packet);
+
+  // Collision-proof id — see the g_outpost_id declaration comment above.
+  g_outpost_id = std::string(WAYPOST_OUTPOST_ID) + "-" +
+                 g_destination.hash().toHex().substr(0, 4);
+
   announce_now();
 
   Serial.print("Outpost Reticulum destination: ");
@@ -443,7 +459,7 @@ static void refresh_board() {
   std::string mid = waylink::new_hex_id();
   std::string rid = waylink::new_hex_id();
   RNS::Bytes payload = waylink::encode_board_sync_request(
-      WAYPOST_OUTPOST_ID, STATION_NODE_ID, mid, rid, /*ttl=*/8,
+      g_outpost_id.c_str(), STATION_NODE_ID, mid, rid, /*ttl=*/8,
       /*display_name=*/nullptr, outgoing);
 
   waylink::SyncReplyResult result;
@@ -497,7 +513,7 @@ static void sync_beacon() {
   std::string mid = waylink::new_hex_id();
   std::string rid = waylink::new_hex_id();
   RNS::Bytes payload = waylink::encode_beacon_sync_request(
-      WAYPOST_OUTPOST_ID, STATION_NODE_ID, mid, rid, /*ttl=*/8, g_beacon_pending);
+      g_outpost_id.c_str(), STATION_NODE_ID, mid, rid, /*ttl=*/8, g_beacon_pending);
 
   waylink::SyncReplyResult result;
   if (!send_and_await_reply(station_destination, payload, rid, result, "Will retry.")) {
@@ -525,7 +541,7 @@ static void claim_with_station(const std::string& code) {
   std::string rid = waylink::new_hex_id();
   std::string own_hash = g_destination.hash().toHex();
   RNS::Bytes payload = waylink::encode_outpost_claim_request(
-      WAYPOST_OUTPOST_ID, STATION_NODE_ID, mid, rid, /*ttl=*/8, code, own_hash,
+      g_outpost_id.c_str(), STATION_NODE_ID, mid, rid, /*ttl=*/8, code, own_hash,
       /*display_name=*/nullptr);
 
   waylink::SyncReplyResult result;
@@ -538,7 +554,7 @@ static void claim_with_station(const std::string& code) {
   g_claimed = true;
   save_flag(CLAIMED_FLAG_PATH, true);
   g_claim_status = "Claimed! Station now knows this Outpost as \"" +
-                    String(WAYPOST_OUTPOST_ID) + "\".";
+                    String(g_outpost_id.c_str()) + "\".";
 }
 
 // -- Web UI --
