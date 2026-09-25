@@ -98,6 +98,9 @@ def test_locker_page(client: TestClient):
     assert r.status_code == 200
     assert "Locker" in r.text
     assert "locker.js" in r.text
+    # Identity comes from a real session, not a free-text box (M9 fix).
+    assert "auth.js" in r.text
+    assert 'id="me"' not in r.text
 
 
 def test_group_scoped_file_visible_only_to_members(client: TestClient):

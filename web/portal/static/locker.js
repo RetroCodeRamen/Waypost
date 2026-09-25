@@ -1,5 +1,5 @@
 (function () {
-  var meEl = document.getElementById("me");
+  var myUsername = "";
   var filterEl = document.getElementById("filter");
   var scopeEl = document.getElementById("scope");
   var noteEl = document.getElementById("note");
@@ -51,7 +51,7 @@
   }
 
   function me() {
-    return meEl.value.trim() || "aj";
+    return myUsername;
   }
 
   function listUrl() {
@@ -205,5 +205,9 @@
   });
 
   document.getElementById("refresh").addEventListener("click", refresh);
-  loadGroups().then(refresh);
+  WaypostAuth.requireAuth().then(function (user) {
+    if (!user) return;
+    myUsername = user.username;
+    loadGroups().then(refresh);
+  });
 })();
