@@ -214,15 +214,19 @@ void LoRaInterface::loop() {
 
 				uint8_t hdr = rxBuf[0];
 				uint8_t seq = packetSequence(hdr);
+				Serial.printf("[dbg] rx frame: len=%d split=%d seq=%d _rx_seq=%d\n",
+				              len, isSplitPacket(hdr) ? 1 : 0, (int)seq, (int)_rx_seq);
 
 				if (isSplitPacket(hdr)) {
 					if (_rx_seq == SEQ_UNSET || _rx_seq != seq) {
 						// First part of a split (or restart after a lost first part)
+						Serial.println("[dbg] rx frame: split part 1 buffered");
 						_rx_seq = seq;
 						buffer.clear();
 						buffer.append(rxBuf + 1, len - 1);
 					} else {
 						// Second part — sequence matches; assemble and deliver
+						Serial.println("[dbg] rx frame: split part 2, delivering assembled buffer");
 						buffer.append(rxBuf + 1, len - 1);
 						_rx_seq = SEQ_UNSET;
 						on_incoming(buffer);
