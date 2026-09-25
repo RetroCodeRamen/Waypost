@@ -122,7 +122,7 @@ class WaylinkGateway:
         destination = env.dst
         # Map logical node_id → Reticulum hash when binding recorded transport_dest
         resolver = getattr(self, "_resolve_dest", None)
-        if resolver is None and hasattr(self.transport, "resolve_destination"):
+        if resolver is None:
             resolver = self.transport.resolve_destination
         if callable(resolver):
             try:

@@ -135,3 +135,25 @@ async def test_cbor_roundtrip():
     assert back.op == "MAIL_STATUS"
     assert back.payload == {"x": True}
     assert back.mid == env.mid
+
+
+def test_mock_transport_exposes_full_transport_interface():
+    """Regression: learn_route/resolve_destination/destination_hash_hex/
+    on_unclaimed_outpost_announce used to exist only on ReticulumTransport,
+    guarded everywhere with hasattr() -- meaning a broken wire-up silently
+    no-op'd under the entire test suite (MockTransport) instead of failing.
+    Now every Transport (base.py) declares them with sane no-op defaults."""
+    mesh = MockMesh()
+    t = mesh.attach("pocket-iface-check")
+
+    assert t.on_unclaimed_outpost_announce is None
+    t.on_unclaimed_outpost_announce = lambda node_id, dest, name: None
+    assert callable(t.on_unclaimed_outpost_announce)
+
+    # No-op: doesn't raise, doesn't need a real transport_dest format.
+    t.learn_route("pocket-b", "not-a-real-hash")
+
+    # Identity: no routing layer of its own to resolve through.
+    assert t.resolve_destination("pocket-b") == "pocket-b"
+
+    assert t.destination_hash_hex is None

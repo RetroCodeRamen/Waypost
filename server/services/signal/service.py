@@ -73,9 +73,7 @@ class SignalService:
         elif transport_name != "mock":
             note = "Radio path configured."
 
-        rns_hash = None
-        if transport is not None and hasattr(transport, "destination_hash_hex"):
-            rns_hash = getattr(transport, "destination_hash_hex", None)
+        rns_hash = transport.destination_hash_hex if transport is not None else None
 
         encrypted = transport_name in ("reticulum", "rns", "lora")
         rns_interface = getattr(transport, "interface", None) if encrypted else None

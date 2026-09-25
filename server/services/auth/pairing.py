@@ -63,8 +63,7 @@ class PairingService:
     def _learn_route(self, node_id: str, transport_dest: Optional[str]) -> None:
         if not transport_dest or self.transport is None:
             return
-        if hasattr(self.transport, "learn_route"):
-            self.transport.learn_route(node_id, transport_dest)
+        self.transport.learn_route(node_id, transport_dest)
 
     def create_code(self, username: str) -> dict[str, Any]:
         now = time.time()

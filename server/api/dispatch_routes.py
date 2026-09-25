@@ -100,11 +100,7 @@ def build_dispatch_router() -> APIRouter:
         )
         # Teach live Reticulum transport how to address this logical node
         transport = getattr(request.app.state, "transport", None)
-        if (
-            body.transport_dest
-            and transport is not None
-            and hasattr(transport, "learn_route")
-        ):
+        if body.transport_dest and transport is not None:
             transport.learn_route(body.node_id, body.transport_dest)
         if hasattr(request.app.state, "rollcall"):
             request.app.state.rollcall.touch(username, via="lora")

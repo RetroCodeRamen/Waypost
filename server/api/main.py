@@ -248,9 +248,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # Reticulum announce (on by default) — see
         # ReticulumTransport.on_unclaimed_outpost_announce and
         # PairingService.auto_claim_outpost for the trust model.
-        if settings.waypost_auto_claim_outposts and hasattr(
-            transport, "on_unclaimed_outpost_announce"
-        ):
+        if settings.waypost_auto_claim_outposts:
             transport.on_unclaimed_outpost_announce = (
                 lambda node_id, dest, name: app.state.pairing.auto_claim_outpost(
                     node_id=node_id, transport_dest=dest, display_name=name
@@ -258,31 +256,29 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             )
 
         def _resolve_dest(dst: str) -> str:
-            if hasattr(transport, "resolve_destination"):
-                mapped = transport.resolve_destination(dst)
-                if mapped and mapped != dst:
-                    return mapped
+            mapped = transport.resolve_destination(dst)
+            if mapped and mapped != dst:
+                return mapped
             stored = dispatch.store.transport_dest_for(dst)
             return stored or dst
 
         gateway._resolve_dest = _resolve_dest  # type: ignore[attr-defined]
 
         # Reload RNS routes from bindings after restart
-        if hasattr(transport, "learn_route"):
-            try:
-                rows = db._conn.execute(
-                    "SELECT node_id, transport_dest FROM device_bindings "
-                    "WHERE transport_dest IS NOT NULL AND transport_dest != ''"
-                ).fetchall()
-                for row in rows:
-                    transport.learn_route(row["node_id"], row["transport_dest"])
-            except Exception:
-                logger.exception("failed to reload transport routes")
-            try:
-                for row in db.corkboard.list_claimed_outposts():
-                    transport.learn_route(row["node_id"], row["transport_dest"])
-            except Exception:
-                logger.exception("failed to reload outpost transport routes")
+        try:
+            rows = db._conn.execute(
+                "SELECT node_id, transport_dest FROM device_bindings "
+                "WHERE transport_dest IS NOT NULL AND transport_dest != ''"
+            ).fetchall()
+            for row in rows:
+                transport.learn_route(row["node_id"], row["transport_dest"])
+        except Exception:
+            logger.exception("failed to reload transport routes")
+        try:
+            for row in db.corkboard.list_claimed_outposts():
+                transport.learn_route(row["node_id"], row["transport_dest"])
+        except Exception:
+            logger.exception("failed to reload outpost transport routes")
 
         # When using a live radio transport, also TX Dispatch pushes over the air
         if settings.waypost_transport in (
