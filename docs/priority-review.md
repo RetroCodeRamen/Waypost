@@ -41,7 +41,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 | **`OUTPOST_CLAIM`** (Station learns to address a claimed Outpost) | **Real (M6)** — verified over a live HTTP round trip against the running Station |
 | **Device pairing codes + per-device revocation** | **Real (M4 slice 1)** — same codes now also drive `OUTPOST_CLAIM` |
 | Role-label OLED splash (Outpost + Station boards) | **Real (2026-09-23)** — Outpost hardware-verified; Station via a patched-but-genuine RNode build |
-| pytest + Playwright screenshots | Automation — 165 passed, 1 skip as of this review |
+| pytest + Playwright screenshots | Automation — 196 passed, 1 skip as of this review |
 
 ### Partially working
 
@@ -136,7 +136,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 
 - ~~Harden **Dispatch** on existing Heltec Station↔peer path~~ — done; extended further (multi-device failover, durable pending)
 - ~~Shared **sync/queue** model~~ — done for Dispatch; not yet adopted by other apps
-- ~~Keep **radio regression** green~~ — 165 passed, 1 skipped as of this review
+- ~~Keep **radio regression** green~~ — 196 passed, 1 skipped as of this review
 - ~~**Rollcall/identity groundwork:** device bind, last-seen, Wi‑Fi vs LoRa reachability labels~~ — done (`RollcallService.get` already computes `wifi`/`lora`/`recent`/`unavailable`)
 - ~~**Standalone Outpost firmware**~~ — done on Heltec V3 (M6 ✅); MakerHawk GPIO verification still open, hardware not confirmed ordered
 - ~~Document + keep Heltec as **dev transport**~~ — done; Heltec V3 boards now also serve as RNode hardware
@@ -150,7 +150,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 - ~~`ADMIN_APPROVAL` + admin-role~~ — **done** (M4 fully built now — see header)
 - ~~Postbox progressive LoRa path~~ — **turned out to already be built**, this line was stale (see header)
 - ~~Fieldbook progressive path~~ — **done (2026-09-24)**: search → outline → section → `since`-diff over Waylink, section-level edits with base-revision conflict, portal page; see `docs/fieldbook.md`
-- ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts explicitly still not started (real scope of its own, not part of the auth fix)
+- ~~Noticeboard ack + Beacon auth~~ — **done (2026-09-23)**; Beacon *propagation* through Outposts — **done (2026-09-24)**, see §8
 - ~~Groups/permissions core~~ — **done (2026-09-24)**, see header — core + Locker/Dispatch integration
 - ~~Unified Today / sync dashboard~~ — **turned out to already be substantially built**; two real gaps fixed 2026-09-24 (see header) — this line was stale, third instance this session
 - **M1b Pi AP + TLS** — software done and tested in containers; blocked purely on physical Pi
@@ -182,7 +182,7 @@ With M4 build-complete, nothing left in the priority spine's hardware-free lane 
 - ~~**Groups/permissions core**~~ — **done 2026-09-24**, see header. Was genuinely unstarted (unlike the three false alarms above) — now the one authz model, integrated with Locker + Dispatch.
 - ~~**Unified Today/sync dashboard**~~ — **done 2026-09-24**, see header. Was already ~80% there; the "not started" label was wrong.
 - ~~**Beacon propagation through Outposts**~~ — **done (2026-09-24)**: `BEACON_SYNC` (Station, security-fixed to require a claimed Outpost and outpost-attributed authorship) + the Outpost firmware's own walk-up `/beacon` push form, push-only by design. Flashed and boots clean; the real-LoRa round trip itself still needs a human with both radio boards.
-- **Extend Groups scoping to Noticeboard/Commons** — same injected-lookup pattern as Locker, not built because M8's exit criteria only asked for ≥2 services.
+- ~~**Extend Groups scoping to Noticeboard/Commons**~~ — **done (2026-09-24)**: same injected-lookup pattern as Locker, plus portal scope/view controls mirroring Locker's picker on both pages.
 
 **Before picking the next one, verify the item against the actual code first** — this same review nearly recommended re-building already-finished Postbox work. Two stale-claim near-misses in one project (this one, and the `ADMIN_APPROVAL` staleness the previous refresh caught) is enough to treat every "not started" line in this document as a hypothesis to check, not a fact.
 

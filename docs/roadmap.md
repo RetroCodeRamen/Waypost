@@ -339,6 +339,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Dispatch | ✅ | Partial | ✅ M2c | — |
 | Postbox | ✅ | Partial | ⬜ | Stalwart later |
 | Rollcall | ✅ | — | ⬜ | — |
+| Groups | ✅ | — (HTTP-only, same precedent as Rollcall) | N/A | — |
 | Commons | ✅ | Partial | ⬜ | Memos later |
 | Noticeboard | ✅ | Partial | ⬜ | — |
 | Beacon | ✅ | Partial | ⬜ | — |
