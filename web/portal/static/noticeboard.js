@@ -17,9 +17,31 @@
   var cTitle = document.getElementById("c-title");
   var cBody = document.getElementById("c-body");
   var refreshBtn = document.getElementById("refresh");
+  var filterEl = document.getElementById("filter");
+  var viewGroupFieldEl = document.getElementById("view-group-field");
+  var viewGroupIdEl = document.getElementById("view-group-id");
+  var scopeEl = document.getElementById("scope");
+  var groupFieldEl = document.getElementById("group-field");
+  var groupIdEl = document.getElementById("group-id");
 
   var selectedId = null;
   var notices = [];
+
+  function loadGroups() {
+    return fetch("/api/groups", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.ok ? r.json() : { groups: [] };
+      })
+      .then(function (data) {
+        var opts = (data.groups || [])
+          .map(function (g) {
+            return '<option value="' + esc(g.id) + '">' + esc(g.name) + "</option>";
+          })
+          .join("");
+        groupIdEl.innerHTML = opts;
+        viewGroupIdEl.innerHTML = opts;
+      });
+  }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -100,7 +122,11 @@
   }
 
   function refresh() {
-    return fetch("/api/noticeboard/notices?active_only=true&limit=50")
+    var url = "/api/noticeboard/notices?active_only=true&limit=50";
+    if (filterEl.value === "group" && viewGroupIdEl.value) {
+      url += "&group_id=" + encodeURIComponent(viewGroupIdEl.value);
+    }
+    return fetch(url)
       .then(function (r) {
         return r.json();
       })
@@ -142,15 +168,19 @@
     var title = cTitle.value.trim();
     var body = cBody.value.trim();
     if (!author || !title || !body) return;
+    var payload = {
+      author: author,
+      title: title,
+      body: body,
+      priority: priorityEl.value,
+    };
+    if (scopeEl.value === "group" && groupIdEl.value) {
+      payload.group_id = groupIdEl.value;
+    }
     fetch("/api/noticeboard/notices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        author: author,
-        title: title,
-        body: body,
-        priority: priorityEl.value,
-      }),
+      body: JSON.stringify(payload),
     })
       .then(function (r) {
         if (!r.ok) throw new Error("failed");
@@ -197,10 +227,18 @@
       });
   });
 
+  scopeEl.addEventListener("change", function () {
+    groupFieldEl.hidden = scopeEl.value !== "group";
+  });
+  filterEl.addEventListener("change", function () {
+    viewGroupFieldEl.hidden = filterEl.value !== "group";
+    refresh();
+  });
+
   refreshBtn.addEventListener("click", refresh);
   WaypostAuth.requireAuth().then(function (user) {
     if (!user) return;
     myUsername = user.username;
-    refresh();
+    loadGroups().then(refresh);
   });
 })();

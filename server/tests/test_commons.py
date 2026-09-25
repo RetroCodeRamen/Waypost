@@ -66,6 +66,11 @@ def test_commons_page(client: TestClient):
     # Identity comes from a real session, not a free-text box (M9 fix).
     assert "auth.js" in r.text
     assert 'id="me"' not in r.text
+    # Group-scoped posting/viewing controls, mirroring Locker's picker.
+    assert 'id="scope"' in r.text
+    assert 'id="group-id"' in r.text
+    assert 'id="filter"' in r.text
+    assert 'id="view-group-id"' in r.text
 
 
 def test_group_scoped_post_visible_only_to_members(client: TestClient):

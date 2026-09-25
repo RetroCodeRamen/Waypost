@@ -18,6 +18,15 @@
           <option value="low">Low</option>
         </select>
       </label>
+      <label>View
+        <select id="filter">
+          <option value="shared">Everyone</option>
+          <option value="group">A group</option>
+        </select>
+      </label>
+      <label id="view-group-field" hidden>Group
+        <select id="view-group-id"></select>
+      </label>
       <button type="button" id="refresh">Refresh</button>
       <button type="button" id="compose-btn">Post notice</button>
     </section>
@@ -45,6 +54,15 @@
         <h3>New notice</h3>
         <label>Title <input id="c-title" required maxlength="160"/></label>
         <label>Body <textarea id="c-body" rows="5" required maxlength="8000"></textarea></label>
+        <label>Post to
+          <select id="scope">
+            <option value="shared">Everyone</option>
+            <option value="group">A group</option>
+          </select>
+        </label>
+        <label id="group-field" hidden>Group
+          <select id="group-id"></select>
+        </label>
         <div class="actions">
           <button type="submit" value="post">Post</button>
           <button type="submit" value="cancel" formnovalidate>Cancel</button>

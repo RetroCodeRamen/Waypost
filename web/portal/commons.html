@@ -12,6 +12,15 @@
   <div id="wp-page">
     <section class="app-toolbar commons-compose">
       <label class="grow">Title <input id="title" placeholder="Optional title" maxlength="120"/></label>
+      <label>View
+        <select id="filter">
+          <option value="shared">Everyone</option>
+          <option value="group">A group</option>
+        </select>
+      </label>
+      <label id="view-group-field" hidden>Group
+        <select id="view-group-id"></select>
+      </label>
       <button type="button" id="refresh">Refresh</button>
     </section>
     <form id="composer" class="wp-card app-panel commons-composer">
@@ -19,6 +28,15 @@
       <textarea id="body" rows="3" maxlength="4000" placeholder="Share something with the community…" required></textarea>
       <div class="commons-composer__actions">
         <span class="muted" id="hint">Local feed on the Station · progressive over Waylink later</span>
+        <label>Post to
+          <select id="scope">
+            <option value="shared">Everyone</option>
+            <option value="group">A group</option>
+          </select>
+        </label>
+        <label id="group-field" hidden>Group
+          <select id="group-id"></select>
+        </label>
         <button type="submit">Post</button>
       </div>
     </form>

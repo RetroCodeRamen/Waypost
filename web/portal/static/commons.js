@@ -5,6 +5,28 @@
   var feedEl = document.getElementById("feed");
   var form = document.getElementById("composer");
   var refreshBtn = document.getElementById("refresh");
+  var filterEl = document.getElementById("filter");
+  var viewGroupFieldEl = document.getElementById("view-group-field");
+  var viewGroupIdEl = document.getElementById("view-group-id");
+  var scopeEl = document.getElementById("scope");
+  var groupFieldEl = document.getElementById("group-field");
+  var groupIdEl = document.getElementById("group-id");
+
+  function loadGroups() {
+    return fetch("/api/groups", { credentials: "same-origin" })
+      .then(function (r) {
+        return r.ok ? r.json() : { groups: [] };
+      })
+      .then(function (data) {
+        var opts = (data.groups || [])
+          .map(function (g) {
+            return '<option value="' + esc(g.id) + '">' + esc(g.name) + "</option>";
+          })
+          .join("");
+        groupIdEl.innerHTML = opts;
+        viewGroupIdEl.innerHTML = opts;
+      });
+  }
 
   function esc(s) {
     return String(s == null ? "" : s)
@@ -73,7 +95,11 @@
   }
 
   function refresh() {
-    return fetch("/api/commons/posts?limit=50")
+    var url = "/api/commons/posts?limit=50";
+    if (filterEl.value === "group" && viewGroupIdEl.value) {
+      url += "&group_id=" + encodeURIComponent(viewGroupIdEl.value);
+    }
+    return fetch(url)
       .then(function (r) {
         return r.json();
       })
@@ -91,14 +117,18 @@
     var author = myUsername;
     var body = bodyEl.value.trim();
     if (!author || !body) return;
+    var payload = {
+      author: author,
+      title: titleEl.value.trim(),
+      body: body,
+    };
+    if (scopeEl.value === "group" && groupIdEl.value) {
+      payload.group_id = groupIdEl.value;
+    }
     fetch("/api/commons/posts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        author: author,
-        title: titleEl.value.trim(),
-        body: body,
-      }),
+      body: JSON.stringify(payload),
     })
       .then(function (r) {
         if (!r.ok) throw new Error("post failed");
@@ -111,6 +141,14 @@
       });
   });
 
+  scopeEl.addEventListener("change", function () {
+    groupFieldEl.hidden = scopeEl.value !== "group";
+  });
+  filterEl.addEventListener("change", function () {
+    viewGroupFieldEl.hidden = filterEl.value !== "group";
+    refresh();
+  });
+
   refreshBtn.addEventListener("click", function () {
     refresh();
   });
@@ -118,6 +156,6 @@
   WaypostAuth.requireAuth().then(function (user) {
     if (!user) return;
     myUsername = user.username;
-    refresh();
+    loadGroups().then(refresh);
   });
 })();
