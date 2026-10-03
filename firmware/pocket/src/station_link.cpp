@@ -46,6 +46,16 @@ waylink::Reply g_reply;
 
 std::deque<waylink::IncomingChatMessage> g_incoming;
 
+void (*g_busy_tick)() = nullptr;
+void (*g_busy_done)() = nullptr;
+
+void busy_tick() {
+  if (g_busy_tick) g_busy_tick();
+}
+void busy_done() {
+  if (g_busy_done) g_busy_done();
+}
+
 // Runs inside g_reticulum.loop() on the same thread as Arduino loop(), so
 // no locking. Never sends from here (no reentrant sends into Reticulum).
 void on_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
@@ -86,6 +96,7 @@ bool connect(RNS::Destination& out) {
     uint32_t start = millis();
     while (!RNS::Transport::has_path(hash) && millis() - start < kPathWaitMs) {
       g_reticulum.loop();
+      busy_tick();
       delay(20);
     }
     if (!RNS::Transport::has_path(hash)) return false;
@@ -99,7 +110,17 @@ bool connect(RNS::Destination& out) {
 
 }  // namespace
 
-bool setup() {
+void set_busy_hooks(void (*tick)(), void (*done)()) {
+  g_busy_tick = tick;
+  g_busy_done = done;
+}
+
+bool setup(Progress progress) {
+  auto step = [&](const char* label, int pct) {
+    Serial.printf("boot: %s\n", label);
+    if (progress) progress(label, pct);
+  };
+  step("Mounting storage", 10);
   static microStore::FileSystem filesystem{microStore::Adapters::LittleFSFileSystem()};
   filesystem.init(false);
   RNS::Utilities::OS::register_filesystem(filesystem);
@@ -111,6 +132,7 @@ bool setup() {
   filesystem.mkdir("/known_store");
   filesystem.mkdir("/hashlist_store");
 
+  step("Starting LoRa radio", 30);
   g_lora_interface = new LoRaInterface();
   g_lora_interface.mode(RNS::Type::Interface::MODE_GATEWAY);
   RNS::Transport::register_interface(g_lora_interface);
@@ -119,6 +141,7 @@ bool setup() {
     return false;
   }
 
+  step("Starting Reticulum", 50);
   g_reticulum = RNS::Reticulum();
   RNS::Reticulum::storagepath("/rns");
   g_reticulum.transport_enabled(true);
@@ -130,6 +153,7 @@ bool setup() {
   RNS::Reticulum::neighbor_probing_enabled(false);
   g_reticulum.start();
 
+  step("Loading identity", 80);
   g_identity = RNS::Identity::from_file(kIdentityPath);
   if (!g_identity) {
     Serial.println("No saved identity — generating a new one");
@@ -145,6 +169,7 @@ bool setup() {
 
   g_dest_hex = g_destination.hash().toHex();
   g_node_id = std::string(WAYPOST_POCKET_ID) + "-" + g_dest_hex.substr(0, 4);
+  step("Announcing", 95);
   g_destination.announce();
 
   Serial.printf("Scout Reticulum destination: %s\n", g_dest_hex.c_str());
@@ -180,7 +205,9 @@ const char* describe(Result r) {
   return "?";
 }
 
-Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t timeout_ms) {
+namespace {
+Result request_impl(const Builder& build, waylink::Reply& out, int attempts,
+                    uint32_t timeout_ms) {
   RNS::Destination dest({RNS::Type::NONE});
   if (!connect(dest)) return Result::NoPath;
 
@@ -196,6 +223,7 @@ Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t
     uint32_t start = millis();
     while (!g_reply_ready && millis() - start < timeout_ms) {
       g_reticulum.loop();
+      busy_tick();
       delay(10);
     }
     if (g_reply_ready) {
@@ -211,6 +239,14 @@ Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t
   }
   g_waiting_rid.clear();
   return Result::Timeout;
+}
+}  // namespace
+
+Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t timeout_ms) {
+  busy_tick();
+  Result r = request_impl(build, out, attempts, timeout_ms);
+  busy_done();
+  return r;
 }
 
 Result request(const char* svc, const char* op, const std::vector<waylink::Field>& payload,

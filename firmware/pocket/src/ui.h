@@ -27,6 +27,11 @@ void title_bar(const char* title);
 void set_station_ok(bool ok);
 void set_unread(int n);
 
+// Busy spinner in the title bar, so a slow radio wait never looks frozen.
+// busy_tick() is safe to call in tight loops (redraws at most ~10x/s).
+void busy_tick();
+void busy_clear();
+
 void clear_body();
 // One line of body text at visual row `row` (0..kBodyLines-1).
 void body_line(int row, const std::string& text, uint16_t color = TFT_LIGHTGREY,

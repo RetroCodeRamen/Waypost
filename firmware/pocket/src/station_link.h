@@ -16,7 +16,13 @@ extern const char* const kStationNodeId;  // "station"
 
 // Brings up LittleFS, the LoRa interface, Reticulum, and Scout's persistent
 // identity/destination, then announces. Returns false if the radio failed.
-bool setup();
+// `progress` (optional) is called before each stage with a label and 0-100.
+using Progress = void (*)(const char* step, int percent);
+bool setup(Progress progress = nullptr);
+
+// Called repeatedly while waiting on Station (tick) and once when the wait
+// ends (done) — main wires these to the title-bar spinner.
+void set_busy_hooks(void (*tick)(), void (*done)());
 // Call every loop(): runs Reticulum and the periodic re-announce.
 void loop();
 

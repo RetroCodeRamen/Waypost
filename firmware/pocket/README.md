@@ -62,7 +62,10 @@ curl -X POST http://localhost:8000/api/dispatch/devices/bind -H 'Content-Type: a
 
 ## USB-serial remote control
 
-For development and field debugging, bytes sent over USB serial act as input:
+For development and field debugging, the Scout accepts input over USB serial.
+Every remote keystroke is **two bytes: `Ctrl-]` (0x1D), then the key**. Bytes without the
+prefix are ignored: when a host opens the port, Linux briefly echoes the Scout's own log
+output back to it, and bare bytes turned that echo into keypresses. After the prefix,
 printable characters, Enter (`\r`) and Backspace (`0x08`) act like the keyboard;
 **Ctrl-P / Ctrl-N / Ctrl-B / Ctrl-F** are trackball up / down / left / right, **Ctrl-G**
 is a trackball press, and **Ctrl-D** prints the current screen as text:
@@ -79,7 +82,7 @@ is a trackball press, and **Ctrl-D** prints the current screen as text:
 
 ## Known limitations
 
-- Trackball pin mapping comes from Meshtastic's T-Deck variant; not yet confirmed by hand on this board.
+- Requests show a spinner in the title bar while waiting; boot shows a progress bar.
 - Requests block the UI while waiting (≤ 8 s per attempt; reads retry up to 3 times).
 - Chat is Station-relayed with one peer; no contact list, no offline catch-up (`MSG_SYNC`) yet.
 

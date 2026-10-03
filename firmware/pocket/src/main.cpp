@@ -33,36 +33,57 @@ static void board_power_on() {
   digitalWrite(BOARD_POWERON, HIGH);
 }
 
-static void draw_splash(const char* status) {
+static void draw_splash() {
   auto& t = ui::tft();
   t.fillScreen(TFT_BLACK);
-  t.drawXBitmap((ui::kWidth - WAYPOST_MARK_WIDTH) / 2, 50, WAYPOST_MARK_BITS, WAYPOST_MARK_WIDTH,
+  t.drawXBitmap((ui::kWidth - WAYPOST_MARK_WIDTH) / 2, 40, WAYPOST_MARK_BITS, WAYPOST_MARK_WIDTH,
                 WAYPOST_MARK_HEIGHT, TFT_WHITE);
   t.setTextDatum(MC_DATUM);
   t.setTextColor(TFT_WHITE, TFT_BLACK);
-  t.drawString("WAYPOST SCOUT", ui::kWidth / 2, 120, 4);
-  t.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  t.drawString(status, ui::kWidth / 2, 160, 2);
+  t.drawString("WAYPOST SCOUT", ui::kWidth / 2, 110, 4);
   t.setTextDatum(TL_DATUM);
+}
+
+// Boot progress under the splash: what's happening now + a bar, so a slow
+// step never looks like a freeze.
+static void draw_boot_progress(const char* step, int percent) {
+  auto& t = ui::tft();
+  const int bar_x = 60, bar_y = 150, bar_w = ui::kWidth - 120, bar_h = 8;
+  t.fillRect(0, bar_y - 26, ui::kWidth, 24, TFT_BLACK);
+  t.setTextDatum(MC_DATUM);
+  t.setTextColor(percent < 0 ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK);
+  t.drawString(step, ui::kWidth / 2, bar_y - 14, 2);
+  t.setTextDatum(TL_DATUM);
+  t.drawRect(bar_x, bar_y, bar_w, bar_h, TFT_DARKGREY);
+  if (percent > 0) {
+    t.fillRect(bar_x + 1, bar_y + 1, (bar_w - 2) * percent / 100, bar_h - 2, TFT_DARKCYAN);
+  }
 }
 
 void setup() {
   Serial.begin(115200);
+  // Native USB serial: with the cable in but nobody reading the port, each
+  // write otherwise blocks until a timeout, and microReticulum logs dozens
+  // of lines at boot (seen: 26 s to reach LoRa init). Drop instead.
+  Serial.setTxTimeoutMs(0);
   uint32_t serial_start = millis();
-  while (!Serial && millis() - serial_start < 3000) delay(10);
+  while (!Serial && millis() - serial_start < 1000) delay(10);
 
   board_power_on();
   delay(50);
   ui::init();
-  draw_splash("Starting radio...");
+  draw_splash();
+  draw_boot_progress("Starting up", 5);
   input::init();
 
   Serial.println();
   Serial.println("Waypost Scout");
-  if (!station_link::setup()) {
-    draw_splash("Radio failed to start - check the board");
+  if (!station_link::setup(draw_boot_progress)) {
+    draw_boot_progress("Radio failed to start - check the board", -1);
     return;
   }
+  draw_boot_progress("Ready", 100);
+  station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
   apps::home();
 }
 

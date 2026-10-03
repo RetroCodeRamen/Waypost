@@ -52,9 +52,17 @@ void init() {
   attachInterrupt(digitalPinToInterrupt(BOARD_TBOX_RIGHT), on_right, FALLING);
 }
 
-// USB-serial remote control (development / field debugging): printable
-// bytes and CR/BS act like the keyboard; these control codes act like the
-// trackball (emacs-style), and Ctrl-D prints the current screen as text.
+// USB-serial remote control (development / field debugging). Every
+// remote keystroke is TWO bytes: kSerialPrefix (Ctrl-]) then the key.
+// Printable bytes and CR/BS after the prefix act like the keyboard; these
+// control codes act like the trackball (emacs-style), and Ctrl-D prints
+// the current screen as text.
+//
+// Why the prefix: when a host opens the port, the Linux tty briefly echoes
+// whatever the Scout just logged back to it before raw mode is applied. Bare
+// bytes turned that echoed log text into keypresses (a 'd' opened Dispatch,
+// a newline sent a message). Log text never contains 0x1D.
+constexpr uint8_t kSerialPrefix = 0x1D;  // Ctrl-]
 constexpr uint8_t kSerialUp = 0x10;      // Ctrl-P
 constexpr uint8_t kSerialDown = 0x0E;    // Ctrl-N
 constexpr uint8_t kSerialLeft = 0x02;    // Ctrl-B
@@ -65,8 +73,14 @@ constexpr uint8_t kSerialDump = 0x04;    // Ctrl-D
 Event poll() {
   Event e;
 
+  static bool armed = false;  // saw the prefix; next byte is a key
   if (Serial.available() > 0) {
     uint8_t b = static_cast<uint8_t>(Serial.read());
+    if (!armed) {
+      armed = (b == kSerialPrefix);
+      return e;  // anything without the prefix is ignored
+    }
+    armed = false;
     switch (b) {
       case kSerialUp: e.kind = Kind::Up; return e;
       case kSerialDown: e.kind = Kind::Down; return e;

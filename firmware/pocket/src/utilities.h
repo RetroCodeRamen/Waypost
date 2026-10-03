@@ -22,8 +22,8 @@
 #define BOARD_BOOT_PIN 0  // also the trackball press
 
 // Trackball directions (hall sensors). Mapping from Meshtastic's T-Deck
-// variant (TB_UP 3, TB_DOWN 15, TB_LEFT 1, TB_RIGHT 2). Not yet confirmed by
-// hand on this board: the UI has so far been driven over USB serial.
+// variant (TB_UP 3, TB_DOWN 15, TB_LEFT 1, TB_RIGHT 2). Scrolling confirmed
+// by hand on this board (2026-10-03).
 #define BOARD_TBOX_UP 3
 #define BOARD_TBOX_DOWN 15
 #define BOARD_TBOX_LEFT 1

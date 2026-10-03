@@ -25,6 +25,24 @@ void draw_status() {
   g_tft.fillCircle(kWidth - 12, kTitleH / 2, 5, g_station_ok ? TFT_GREEN : TFT_DARKGREY);
   g_tft.setTextDatum(TL_DATUM);
 }
+
+constexpr int kSpinX = kWidth - 104;
+constexpr int kSpinY = kTitleH / 2;
+constexpr int kSpinR = 6;
+constexpr int kSpinDots = 8;
+int g_spin_step = -1;  // -1 = not shown
+uint32_t g_spin_last_ms = 0;
+
+void draw_spinner() {
+  for (int i = 0; i < kSpinDots; i++) {
+    float a = i * 2.0f * PI / kSpinDots;
+    int x = kSpinX + static_cast<int>(kSpinR * cosf(a));
+    int y = kSpinY + static_cast<int>(kSpinR * sinf(a));
+    int age = (g_spin_step - i + kSpinDots) % kSpinDots;
+    uint16_t c = age == 0 ? TFT_WHITE : age < 3 ? TFT_LIGHTGREY : TFT_DARKGREY;
+    g_tft.fillCircle(x, y, 1, c);
+  }
+}
 }  // namespace
 
 TFT_eSPI& tft() { return g_tft; }
@@ -45,6 +63,7 @@ void title_bar(const char* title) {
   g_tft.setTextColor(TFT_WHITE, TFT_NAVY);
   g_tft.drawString(title, kMargin, 3, kFont);
   draw_status();
+  if (g_spin_step >= 0) draw_spinner();
 }
 
 void set_station_ok(bool ok) {
@@ -57,6 +76,22 @@ void set_unread(int n) {
   if (n == g_unread) return;
   g_unread = n;
   draw_status();
+}
+
+
+void busy_tick() {
+  uint32_t now = millis();
+  if (g_spin_step >= 0 && now - g_spin_last_ms < 100) return;
+  g_spin_last_ms = now;
+  g_spin_step = (g_spin_step + 1) % kSpinDots;
+  draw_spinner();
+}
+
+void busy_clear() {
+  if (g_spin_step < 0) return;
+  g_spin_step = -1;
+  g_tft.fillRect(kSpinX - kSpinR - 2, kSpinY - kSpinR - 2, 2 * kSpinR + 5, 2 * kSpinR + 5,
+                 TFT_NAVY);
 }
 
 void clear_body() {
