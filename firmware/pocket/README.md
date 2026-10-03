@@ -83,7 +83,7 @@ the off-screen canvas; framing in `src/ui.cpp`), and **Ctrl-D** prints the curre
 
 ## Known limitations
 
-- Requests show a spinner in the title bar while waiting; boot shows a progress bar.
+- Boot shows the Waypost Scout logo (`src/scout_logo.h`, from `image/waypost-scout-logo.png` via `tools/make_scout_logo.py`) with a progress bar, for at least 5 s. Requests show a spinner in the title bar while waiting.
 - Colors are the night-sky blue-greens of the README header art (`image/logo2.png`) and the logo, defined once as named roles in `src/ui.h`. The panel is **BGR** (`include/tdeck_tft_setup.h`); with RGB, blue-greens show as olive.
 - Changing `include/tdeck_tft_setup.h` needs `pio run -t clean`: it's force-included into TFT_eSPI, and PlatformIO doesn't rebuild the library when it changes.
 - Requests block the UI while waiting (≤ 8 s per attempt; reads retry up to 3 times).

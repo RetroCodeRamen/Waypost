@@ -26,7 +26,7 @@
 #include "station_link.h"
 #include "ui.h"
 #include "utilities.h"
-#include "waypost_mark.h"
+#include "scout_logo.h"
 
 static void board_power_on() {
   pinMode(BOARD_POWERON, OUTPUT);
@@ -40,34 +40,40 @@ static void board_power_on() {
   digitalWrite(RADIO_CS_PIN, HIGH);
 }
 
+// Boot screen: the Waypost Scout logo (src/scout_logo.h, 320x240) with a
+// slim progress bar under the tagline, so a slow step never looks frozen.
+static const uint32_t kSplashMinMs = 5000;  // logo stays up at least this long
+static const int kBarX = 60, kBarY = 229, kBarW = ui::kWidth - 120, kBarH = 5;
+static const uint16_t kBarTrack = ui::rgb(0xdf, 0xe5, 0xe0);
+static const uint16_t kBarFill = ui::rgb(0x0b, 0x3a, 0x2a);  // the logo's compass green
+
 static void draw_splash() {
   auto& t = ui::tft();
-  t.fillScreen(ui::kBg);
-  t.drawXBitmap((ui::kWidth - WAYPOST_MARK_WIDTH) / 2, 40, WAYPOST_MARK_BITS, WAYPOST_MARK_WIDTH,
-                WAYPOST_MARK_HEIGHT, ui::kText);
-  t.setTextDatum(MC_DATUM);
-  t.setTextColor(ui::kText, ui::kBg);
-  t.drawString("WAYPOST SCOUT", ui::kWidth / 2, 110, 4);
-  t.setTextDatum(TL_DATUM);
+  for (int y = 0; y < SCOUT_LOGO_HEIGHT; y++) {
+    for (int x = 0; x < SCOUT_LOGO_WIDTH; x++) {
+      t.drawPixel(x, y, pgm_read_word(&SCOUT_LOGO[y * SCOUT_LOGO_WIDTH + x]));
+    }
+  }
   ui::mark_dirty();
   ui::present();
 }
 
-// Boot progress under the splash: what's happening now + a bar, so a slow
-// step never looks like a freeze.
 static void draw_boot_progress(const char* step, int percent) {
   auto& t = ui::tft();
-  const int bar_x = 60, bar_y = 150, bar_w = ui::kWidth - 120, bar_h = 8;
-  t.fillRect(0, bar_y - 26, ui::kWidth, 24, ui::kBg);
-  t.setTextDatum(MC_DATUM);
-  t.setTextColor(percent < 0 ? ui::kWarn : ui::kTextDim, ui::kBg);
-  t.drawString(step, ui::kWidth / 2, bar_y - 14, 2);
-  t.setTextDatum(TL_DATUM);
-  t.drawRect(bar_x, bar_y, bar_w, bar_h, ui::kMuted);
-  if (percent > 0) {
-    t.fillRect(bar_x + 1, bar_y + 1, (bar_w - 2) * percent / 100, bar_h - 2, ui::kLive);
+  t.fillRect(0, kBarY - 3, ui::kWidth, ui::kHeight - (kBarY - 3), SCOUT_LOGO_BG);
+  if (percent < 0) {
+    // Failure: say so in place of the bar.
+    t.setTextDatum(MC_DATUM);
+    t.setTextColor(ui::kError, SCOUT_LOGO_BG);
+    t.drawString(step, ui::kWidth / 2, kBarY + 2, 2);
+    t.setTextDatum(TL_DATUM);
+  } else {
+    t.fillRoundRect(kBarX, kBarY, kBarW, kBarH, 2, kBarTrack);
+    if (percent > 0) {
+      t.fillRoundRect(kBarX, kBarY, kBarW * percent / 100, kBarH, 2, kBarFill);
+    }
   }
-  ui::mark_dirty(0, bar_y - 26, ui::kWidth, bar_h + 26);
+  ui::mark_dirty(0, kBarY - 3, ui::kWidth, ui::kHeight - (kBarY - 3));
   ui::present();
 }
 
@@ -84,6 +90,7 @@ void setup() {
   delay(50);
   ui::init();
   draw_splash();
+  uint32_t splash_start = millis();
   draw_boot_progress("Starting up", 5);
   input::init();
 
@@ -94,6 +101,12 @@ void setup() {
     return;
   }
   draw_boot_progress("Ready", 100);
+  // Let the logo be seen even when boot is quick (~3 s).
+  while (millis() - splash_start < kSplashMinMs) {
+    station_link::loop();
+    delay(10);
+  }
+  Serial.printf("boot: home after %lu ms\n", static_cast<unsigned long>(millis() - splash_start));
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
   apps::home();
 }

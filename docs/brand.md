@@ -11,6 +11,12 @@ Source masters live in `/image` at the repo root. Web-optimized copies used by t
 | `static/brand/waypost-logo-480.png` | Compact horizontal lockup |
 | `static/brand/waypost-logo-on-white.png` | From `logo-white_backgroung.png` — print / light cards |
 
+## Waypost Scout lockup
+
+| File | Use |
+|------|-----|
+| `image/waypost-scout-logo.png` | Scout product logo (compass + signpost, "WAYPOST SCOUT — Off-grid community terminal"). Shown as the T-Deck's boot screen: regenerate `firmware/pocket/src/scout_logo.h` with `python firmware/pocket/tools/make_scout_logo.py` after changing it. |
+
 ## Mark (icon only)
 
 Cropped from the transparent lockup for sidebar, favicon, and small UI chrome:
