@@ -32,6 +32,7 @@ class CborWriter {
     if (!s.empty()) _out.append(reinterpret_cast<const uint8_t*>(s.data()), s.size());
   }
   void write_uint(uint64_t v) { write_head(0x00, v); }
+  void write_bool(bool v) { _out.append(static_cast<uint8_t>(v ? 0xF5 : 0xF4)); }
   void write_null() { _out.append(static_cast<uint8_t>(0xF6)); }
 
   // Text field that may be absent — matches Python's Optional[str] -> None.
@@ -214,6 +215,62 @@ class CborReader {
   }
 
   size_t pos() const { return _pos; }
+
+  // Generic decode into a Value tree (see waylink_cbor.h). Depth-limited
+  // so a crafted deeply nested packet can't blow the stack.
+  bool read_value(Value& out, int depth = 0) {
+    if (depth > 8 || _pos >= _len) return false;
+    uint8_t ib = _buf[_pos];
+    if (ib == 0xF4 || ib == 0xF5) {
+      out.type = Value::Bool;
+      out.b = (ib == 0xF5);
+      _pos++;
+      return true;
+    }
+    if (ib == 0xF6 || ib == 0xF7) {
+      out.type = Value::Null;
+      _pos++;
+      return true;
+    }
+    uint8_t major;
+    uint64_t val;
+    size_t save = _pos;
+    if (!read_head(major, val)) return false;
+    switch (major) {
+      case 0:
+        out.type = Value::Uint;
+        out.u = val;
+        return true;
+      case 3:
+        _pos = save;
+        out.type = Value::Text;
+        return read_text(out.s);
+      case 4: {
+        if (val > _len) return false;
+        out.type = Value::Array;
+        out.items.resize(static_cast<size_t>(val));
+        for (auto& item : out.items)
+          if (!read_value(item, depth + 1)) return false;
+        return true;
+      }
+      case 5: {
+        if (val > _len) return false;
+        out.type = Value::Map;
+        out.entries.resize(static_cast<size_t>(val));
+        for (auto& entry : out.entries) {
+          if (!read_text(entry.first)) return false;
+          if (!read_value(entry.second, depth + 1)) return false;
+        }
+        return true;
+      }
+      default:
+        // Negative ints, floats, byte strings, tags: not used by any reply
+        // Scout reads; keep the tree well-formed and move on.
+        _pos = save;
+        out.type = Value::Null;
+        return skip_value();
+    }
+  }
 
  private:
   const uint8_t* _buf;
@@ -653,6 +710,107 @@ bool decode_msg_push(const uint8_t* data, size_t len, IncomingChatMessage& resul
   result.parsed = is_dispatch && is_msg_push && is_request &&
                   !result.message_id.empty() && !result.body.empty();
   return result.parsed;
+}
+
+// -- Generic request / reply -------------------------------------------------
+
+RNS::Bytes encode_request(
+    const char* src,
+    const char* dst,
+    const std::string& mid,
+    const std::string& rid,
+    const char* svc,
+    const char* op,
+    uint32_t ttl,
+    const std::vector<Field>& payload) {
+  RNS::Bytes out;
+  CborWriter w(out);
+
+  // Same field order as every hand-written encoder above.
+  w.write_map_header(11);
+  w.write_text("v");
+  w.write_uint(1);
+  w.write_text("mid");
+  w.write_text(mid);
+  w.write_text("rid");
+  w.write_text(rid);
+  w.write_text("src");
+  w.write_text(src);
+  w.write_text("dst");
+  w.write_text(dst);
+  w.write_text("svc");
+  w.write_text(svc);
+  w.write_text("op");
+  w.write_text(op);
+  w.write_text("flags");
+  w.write_uint(1);  // Flags.REQUEST
+  w.write_text("ts");
+  w.write_uint(0);
+  w.write_text("ttl");
+  w.write_uint(ttl);
+  w.write_text("payload");
+  w.write_map_header(payload.size());
+  for (const auto& f : payload) {
+    w.write_text(f.key);
+    switch (f.type) {
+      case Field::Text:
+        w.write_text(f.s);
+        break;
+      case Field::Uint:
+        w.write_uint(f.u);
+        break;
+      case Field::Bool:
+        w.write_bool(f.b);
+        break;
+    }
+  }
+  return out;
+}
+
+const Value* Value::get(const char* key) const {
+  if (type != Map) return nullptr;
+  for (const auto& e : entries)
+    if (e.first == key) return &e.second;
+  return nullptr;
+}
+
+std::string Value::text(const char* key, const std::string& fallback) const {
+  const Value* v = get(key);
+  return (v && v->type == Text) ? v->s : fallback;
+}
+
+uint64_t Value::uint(const char* key, uint64_t fallback) const {
+  const Value* v = get(key);
+  return (v && v->type == Uint) ? v->u : fallback;
+}
+
+bool Value::flag(const char* key, bool fallback) const {
+  const Value* v = get(key);
+  return (v && v->type == Bool) ? v->b : fallback;
+}
+
+bool parse(const uint8_t* data, size_t len, Value& out) {
+  CborReader r(data, len);
+  return r.read_value(out) && out.type == Value::Map;
+}
+
+const Value& Reply::payload() const {
+  static Value empty_map = [] {
+    Value v;
+    v.type = Value::Map;
+    return v;
+  }();
+  const Value* p = envelope.get("payload");
+  return (p && p->type == Value::Map) ? *p : empty_map;
+}
+
+bool parse_reply(const uint8_t* data, size_t len, Reply& out) {
+  if (!parse(data, len, out.envelope)) return false;
+  out.rid = out.envelope.text("rid");
+  out.flags = out.envelope.uint("flags");
+  out.error = out.payload().text("error");
+  if ((out.flags & 4) && out.error.empty()) out.error = "error";  // Flags.ERROR
+  return true;
 }
 
 }  // namespace waylink

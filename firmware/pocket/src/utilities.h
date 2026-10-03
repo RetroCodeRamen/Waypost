@@ -19,7 +19,15 @@
 #define RADIO_RST_PIN 17
 #define RADIO_DIO1_PIN 45
 
-#define BOARD_BOOT_PIN 0
+#define BOARD_BOOT_PIN 0  // also the trackball press
+
+// Trackball directions (hall sensors). Mapping from Meshtastic's T-Deck
+// variant (TB_UP 3, TB_DOWN 15, TB_LEFT 1, TB_RIGHT 2). Not yet confirmed by
+// hand on this board: the UI has so far been driven over USB serial.
+#define BOARD_TBOX_UP 3
+#define BOARD_TBOX_DOWN 15
+#define BOARD_TBOX_LEFT 1
+#define BOARD_TBOX_RIGHT 2
 
 #ifndef RADIO_FREQ
 #define RADIO_FREQ 915.0

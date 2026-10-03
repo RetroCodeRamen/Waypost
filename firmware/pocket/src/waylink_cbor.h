@@ -15,6 +15,80 @@
 
 namespace waylink {
 
+// -- Generic request / reply (Scout apps) --
+//
+// New ops use these instead of another hand-written encoder/decoder pair:
+// encode_request() writes the standard request envelope with a flat payload,
+// and parse_reply() decodes any reply into a small Value tree. Replies are
+// at most one Reticulum packet (383 bytes), so a tree costs nothing.
+
+struct Field {
+  enum Type { Text, Uint, Bool };
+  const char* key;
+  Type type;
+  std::string s;
+  uint64_t u = 0;
+  bool b = false;
+
+  Field(const char* k, Type t) : key(k), type(t) {}
+
+  static Field text(const char* k, const std::string& v) {
+    Field f(k, Text);
+    f.s = v;
+    return f;
+  }
+  static Field num(const char* k, uint64_t v) {
+    Field f(k, Uint);
+    f.u = v;
+    return f;
+  }
+  static Field boolean(const char* k, bool v) {
+    Field f(k, Bool);
+    f.b = v;
+    return f;
+  }
+};
+
+RNS::Bytes encode_request(
+    const char* src,
+    const char* dst,
+    const std::string& mid,
+    const std::string& rid,
+    const char* svc,
+    const char* op,
+    uint32_t ttl,
+    const std::vector<Field>& payload);
+
+struct Value {
+  enum Type { Null, Bool, Uint, Text, Array, Map };
+  Type type = Null;
+  bool b = false;
+  uint64_t u = 0;
+  std::string s;
+  std::vector<Value> items;                              // Array
+  std::vector<std::pair<std::string, Value>> entries;  // Map
+
+  const Value* get(const char* key) const;  // Map lookup, nullptr if absent
+  std::string text(const char* key, const std::string& fallback = "") const;
+  uint64_t uint(const char* key, uint64_t fallback = 0) const;
+  bool flag(const char* key, bool fallback = false) const;
+};
+
+// Top level must be a map. Unsupported CBOR types (negative ints, floats,
+// byte strings, tags) decode as Null rather than failing.
+bool parse(const uint8_t* data, size_t len, Value& out);
+
+struct Reply {
+  Value envelope;
+  std::string rid;
+  uint64_t flags = 0;
+  std::string error;  // payload "error", or "error" if Flags.ERROR
+
+  // The payload map, or an empty map when absent/not a map.
+  const Value& payload() const;
+};
+bool parse_reply(const uint8_t* data, size_t len, Reply& out);
+
 // -- Encoding: build a BOARD_SYNC request Envelope as CBOR bytes --
 
 struct OutgoingNote {
