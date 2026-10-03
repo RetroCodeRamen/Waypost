@@ -42,6 +42,24 @@ class WaylinkGateway:
     async def start(self) -> None:
         await self.transport.start()
         self._task = asyncio.create_task(self._loop())
+        # Belt-and-suspenders on top of _safe_handle_packet: if the loop
+        # task ever ends for any other reason (receive_one itself raising,
+        # a future refactor dropping the try/except), this guarantees it's
+        # logged loudly instead of dying in silence the way this gateway
+        # used to -- see _safe_handle_packet's docstring for the incident.
+        self._task.add_done_callback(self._on_loop_done)
+
+    def _on_loop_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                "gateway_receive_loop_died transport=%s -- "
+                "ALL further radio/Waylink receive processing has stopped",
+                self.transport.name,
+                exc_info=exc,
+            )
 
     async def stop(self) -> None:
         if self._task:
@@ -57,11 +75,34 @@ class WaylinkGateway:
         receive_one = getattr(self.transport, "receive_one", None)
         if receive_one is None:
             async for packet in self.transport.receive():
-                await self._handle_packet(packet)
+                await self._safe_handle_packet(packet)
             return
         while True:
             packet = await receive_one(timeout=None)
+            await self._safe_handle_packet(packet)
+
+    async def _safe_handle_packet(self, packet: TransportPacket) -> None:
+        # This loop is a long-lived fire-and-forget asyncio.Task (started in
+        # start(), never awaited elsewhere) that owns the only call to
+        # receive_one() -- an unhandled exception anywhere in
+        # _handle_packet (decode, a handler, or send_envelope/transport.send
+        # for the reply) used to kill the task outright, silently ending all
+        # further radio receive processing for the rest of the process's
+        # life. Worse: nothing ever surfaced it -- asyncio only logs a dead
+        # task's exception when the Task object is garbage-collected, and
+        # self._task is held forever in app.state, so it never was. One bad
+        # packet or reply must never be able to take down the whole gateway.
+        try:
             await self._handle_packet(packet)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "gateway_packet_handling_failed transport=%s dest=%s -- "
+                "receive loop continuing, this packet's reply (if any) was lost",
+                self.transport.name,
+                packet.destination,
+            )
 
     async def _handle_packet(self, packet: TransportPacket) -> None:
         try:
