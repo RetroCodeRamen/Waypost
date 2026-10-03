@@ -30,6 +30,7 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 | **Rollcall** | People / profiles / contacts / presence |
 | **Commons** | Community / social feed |
 | **Fieldbook** | Editable community wiki |
+| **Trailhead** | The Station's small web: short linked text pages, readable on a Scout over the radio |
 | **Noticeboard** | Structured bulletins and announcements |
 | **Beacon** | Emergency / high-priority alerts |
 | **Locker** | Shared and personal files |

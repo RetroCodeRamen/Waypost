@@ -47,6 +47,7 @@ Shared schema lives in `shared/protocol/` and is mirrored in Python under `serve
 | `DISPATCH` | Dispatch |
 | `MAIL` | Postbox |
 | `FIELDBOOK` | Fieldbook |
+| `TRAILHEAD` | Trailhead (Station's small web) |
 | `PROFILE` | Profile / Rollcall data |
 | `COMMONS` | Commons |
 | `NOTICEBOARD` | Noticeboard |
@@ -103,8 +104,17 @@ read one part of it or to catch up on an edit. Full design: [fieldbook.md](field
 | `WIKI_GET` | `{slug, outline:true}` | `{slug,title,revision,size,outline:[{index,heading,level,size}]}` |
 | `WIKI_GET` | `{slug, section: idx \| heading}` | `{slug,title,revision,section:{index,heading,level,text,size}}` |
 | `WIKI_GET` | `{slug, since: N}` | `{unchanged:true}` if N is current, else `{from_revision,to_revision,diff}` (unified diff) |
+| `WIKI_SEARCH` | `{q, compact:true, offset?}` | **Radio-sized:** `{results:[{slug,title}], offset, more}`, as many hits as fit in one packet; titles cut to 40 chars |
+| `WIKI_GET` | `{slug, outline:true, offset, limit}` | **Radio-sized:** `{slug, revision, outline:[{index,heading}], offset, more}` |
+| `WIKI_GET` | `{slug, section: idx, offset, limit}` | **Radio-sized:** `{slug, revision, index, offset, total, text}`, `text` a byte slice of the section (never splits a UTF-8 character); read on from `offset + len(text)` until `total` |
 | `WIKI_UPDATE` | `{slug, base_revision, body}` or `{slug, base_revision, section, section_text}` + optional `title`, `summary` | `{page}` without body (compact ack) |
 | `WIKI_CREATE` | `{title, body, slug?, summary?}` | `{page}` without body; `already_exists` error if the slug is taken |
+
+The radio-sized forms are selected by `compact` / `limit` being present, so Wi‑Fi callers keep
+the full shapes. They exist because a Pocket over LoRa receives at most one encrypted
+Reticulum packet per reply (383 bytes, ~170 of them left for text after the envelope);
+replies are sized by encoding and measuring them (`shared/protocol/radio.py`), and
+`server/tests/test_trailhead.py` guards that every shape a Scout requests fits.
 
 Sections are ATX headings (`# …`); section 0 is any preamble. Every save appends a
 `wiki_revisions` row; nothing is rewritten.
@@ -117,6 +127,29 @@ the same case is `409` with the full current page.
 **Radio authz:** `WIKI_CREATE`/`WIKI_UPDATE` resolve the author from the sending device's
 binding (`env.src`), same as Noticeboard/Beacon; unbound devices get `unauthorized_device`.
 Reads are open.
+
+---
+
+## Trailhead (`TRAILHEAD`) — 2026-10-03
+
+The Station's small web: short linked text pages, edited in the portal (`/trailhead.html`),
+read on the portal or on a Scout over LoRa. Gemini/gopher-style, not HTML (Waylink is
+compact RPC over radio). One construct per line:
+
+```
+# Heading            (## / ### also)
+=> path Link label   (link to another Trailhead page)
+anything else        (plain text, wrapped by the reader)
+```
+
+| Operation | Payload | Reply |
+|-----------|---------|-------|
+| `TRAIL_GET` | `{path?, offset, limit}` | `{path, offset, total, text}` plus `title` on the first chunk (`offset` 0); `path` defaults to `home`; `not_found` error if missing |
+
+Same chunking rules as the radio-sized Fieldbook reads. Reads are open; writes are portal
+only (`PUT /api/trailhead/pages/{path}`). Paths: `a-z 0-9 - _ /`, max 64; pages max 8 KB
+(a Scout reads ~160 bytes per ~1.5 s round trip). A fresh Station seeds `home`,
+`getting-started`, and `camp-info`.
 
 ---
 

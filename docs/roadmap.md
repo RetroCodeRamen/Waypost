@@ -81,7 +81,7 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | Raspberry Pi Station install | Idempotent installer + Caddy HTTPS done and tested in containers ([pi-setup.md](pi-setup.md)) — **not yet run on real Pi hardware** |
 | Waygate / hostapd / dnsmasq on real Pi | hostapd/dnsmasq staged behind `--enable-ap`, unrun on hardware; openNDS (Waygate) not started |
 | `ReticulumTransport` / production RNode path | **Done (M2e ✅)** — encrypted Dispatch over real LoRa, RNode-flashed Heltec V3 |
-| Scout (T-Deck) firmware / UI | 🟡 slice 1 — Reticulum + PING on hardware; reply leg open (M7) |
+| Scout (T-Deck) firmware / UI | 🟡 launcher + Dispatch, Fieldbook, Trailhead, Signal apps live over LoRa (M7) |
 | Pocket GPS → Station location reports | Not started (planned under M7/M8) |
 | **Atlas** (map, Station origin, range/distance) | Not started |
 | Outpost firmware **on MakerHawk specifically** | GPIO still unverified on that board — the Heltec V3 build above is proven, MakerHawk is the separate, not-yet-confirmed-ordered production SKU |
@@ -272,6 +272,8 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 **Exit criteria:** Shell; Dispatch over Waylink; `/waypost/courier/`; `LOC_REPORT` every 10–15 min; Station pairing.
 
 **Progress (2026-10-02):** Scout naming locked (product = Waypost Scout / Scout; protocol class = Pocket). `firmware/pocket/` PlatformIO project for LilyGO T-Deck — slice 0 boot splash; **slice 1** microReticulum over SX1262 + Waylink `CORE/PING` (optional `MSG_SEND` when `WAYPOST_DISPATCH_PEER` set). Builds clean, flashed to `/dev/ttyACM0`; serial confirms path + `Identity::recall` for Station — reply leg still times out (same Station RNode TX gap as Outpost). Next: live PING verify when Station radio path fixed, then `MSG_SEND` bind + keyboard UI.
+
+**Progress (2026-10-03):** The "reply leg" was two bugs, both fixed: the embedded radio driver's split-frame format didn't match real RNode (`3586bfb`), and Scout rejected PONG for lacking `ok` (`192a32a`). Scout is now a Cybiko-style shell (`ce23568`): home tile launcher; **Dispatch** chat with unread badge (send + live `MSG_PUSH` receive + ack); **Fieldbook** search → outline → section, read in ~160-byte chunks; **Trailhead** (new: the Station's small web of linked text pages, `TRAIL_GET`, portal editor — `6991c5c`); **Signal** (identity, Station path, PING). All verified live over LoRa (PING 20/20, ~1.8 s round trip). Every reply a Scout requests is sized to one encrypted Reticulum packet (383 B), guarded by tests. **Still open:** trackball pins not yet confirmed by hand; a few clustered packet losses not yet explained (steady state clean); Fieldbook editing from Scout, contact list / multiple conversations, `PAIR_REDEEM` on-device, GPS `LOC_REPORT`, courier queue.
 
 ---
 
