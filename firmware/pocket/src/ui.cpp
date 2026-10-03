@@ -104,7 +104,23 @@ void present() {
   if (!g_dirty) return;
   g_dirty = false;
   if (!g_have_canvas) return;  // already drawn straight to the LCD
-  g_canvas.pushSprite(g_dx0, g_dy0, g_dx0, g_dy0, g_dx1 - g_dx0, g_dy1 - g_dy0);
+  // Push row by row ourselves rather than via pushSprite(): its fast path
+  // (one block push for full-width regions) never reached this panel —
+  // only narrower, line-by-line pushes refreshed, leaving stale areas and
+  // a dark right quarter (reported 2026-10-03). Even x/width keeps each
+  // row's start 4-byte aligned for TFT_eSPI's 32-bit pixel copy.
+  int x0 = g_dx0 & ~1;
+  int w = ((g_dx1 - x0) + 1) & ~1;
+  if (x0 + w > kWidth) w = kWidth - x0;
+  uint16_t* buf = static_cast<uint16_t*>(g_canvas.getPointer());
+  bool swap = g_lcd.getSwapBytes();
+  g_lcd.setSwapBytes(false);  // the sprite already stores panel byte order
+  g_lcd.startWrite();
+  for (int y = g_dy0; y < g_dy1; y++) {
+    g_lcd.pushImage(x0, y, w, 1, buf + y * kWidth + x0);
+  }
+  g_lcd.endWrite();
+  g_lcd.setSwapBytes(swap);
 }
 
 void title_bar(const char* title) {
@@ -242,33 +258,29 @@ void list(const std::vector<std::string>& items, int selected, int& top) {
 }
 
 void pixels_to_serial() {
-  // One character per sample, by palette role:
-  //   '.' background  'b' title bar  's' selection  'o' outline/divider
-  //   '#' white text  ':' body text  '-' muted      'a' aqua (links/live)
-  //   'g' ok  'y' warn  'r' error  '?' anything else (e.g. anti-aliasing)
-  struct Key { uint16_t c; char ch; };
-  static const Key keys[] = {
-      {kBg, '.'}, {kBar, 'b'}, {kSelect, 's'}, {kBorder, 'o'}, {kRule, 'o'},
-      {kText, '#'}, {kTextDim, ':'}, {kMuted, '-'}, {kLive, 'a'},
-      {kOk, 'g'}, {kWarn, 'y'}, {kError, 'r'},
-  };
-  Serial.println(g_have_canvas ? "=== pixels 4x8 grid ===" : "=== pixels: no canvas ===");
-  for (int y = 4; g_have_canvas && y < kHeight; y += 8) {
-    std::string row;
-    for (int x = 2; x < kWidth; x += 4) {
-      uint16_t c = g_canvas.readPixel(x, y);
-      char ch = '?';
-      for (const auto& k : keys) {
-        if (k.c == c) {
-          ch = k.ch;
-          break;
-        }
-      }
-      row += ch;
-    }
-    Serial.println(row.c_str());
+  // Full-resolution screenshot from the canvas: a text header, then
+  // kWidth*kHeight RGB565 pixels as big-endian bytes, row by row.
+  if (!g_have_canvas) {
+    Serial.println("=== raw: no canvas ===");
+    return;
   }
+  // main.cpp sets a 0 ms TX timeout so an unread port never stalls the
+  // UI; a screenshot is only requested by a reader, so let it block.
+  Serial.setTxTimeoutMs(200);
+  Serial.printf("=== raw %dx%d rgb565 ===\n", kWidth, kHeight);
+  uint8_t row[kWidth * 2];
+  for (int y = 0; y < kHeight; y++) {
+    for (int x = 0; x < kWidth; x++) {
+      uint16_t c = g_canvas.readPixel(x, y);
+      row[2 * x] = c >> 8;
+      row[2 * x + 1] = c & 0xFF;
+    }
+    Serial.write(row, sizeof(row));
+  }
+  Serial.println();
   Serial.println("=== end ===");
+  Serial.flush();
+  Serial.setTxTimeoutMs(0);
 }
 
 void mirror_row(int row, const std::string& text, bool highlight) {

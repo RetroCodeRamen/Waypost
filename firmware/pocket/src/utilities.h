@@ -15,6 +15,7 @@
 #define BOARD_SPI_SCK 40
 
 #define RADIO_CS_PIN 9
+#define BOARD_SDCARD_CS 39
 #define RADIO_BUSY_PIN 13
 #define RADIO_RST_PIN 17
 #define RADIO_DIO1_PIN 45

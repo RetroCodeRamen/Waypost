@@ -69,7 +69,7 @@ constexpr uint8_t kSerialLeft = 0x02;    // Ctrl-B
 constexpr uint8_t kSerialRight = 0x06;   // Ctrl-F
 constexpr uint8_t kSerialSelect = 0x07;  // Ctrl-G
 constexpr uint8_t kSerialDump = 0x04;    // Ctrl-D
-constexpr uint8_t kSerialPixels = 0x18;  // Ctrl-X: coarse pixel readback
+constexpr uint8_t kSerialPixels = 0x18;  // Ctrl-X: full screenshot (raw RGB565)
 
 Event poll() {
   Event e;

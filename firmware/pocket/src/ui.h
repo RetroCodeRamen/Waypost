@@ -24,22 +24,23 @@ constexpr int kBodyBottom = kHeight - kFooterH;
 constexpr int kBodyLines = (kBodyBottom - kBodyTop) / kLineH;  // 11
 constexpr int kMargin = 4;
 
-// -- Palette: the portal's design tokens (web/portal/static/tokens.css) ------
+// -- Palette: the night-sky blue-greens of the README header art
+// (image/logo2.png) and the logo (web/portal/static/brand/), sampled.
 constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
 }
-constexpr uint16_t kBg = rgb(0x11, 0x24, 0x20);        // --wp-sidebar-end, deep forest
-constexpr uint16_t kBar = rgb(0x1f, 0x41, 0x47);       // --wp-teal-dark, title bar
-constexpr uint16_t kSelect = rgb(0x2b, 0x80, 0x78);    // --wp-aqua-deep, selection
-constexpr uint16_t kBorder = rgb(0x2d, 0x5a, 0x42);    // --wp-green, outlines
-constexpr uint16_t kRule = rgb(0x1e, 0x40, 0x38);      // --wp-sidebar-active, dividers
-constexpr uint16_t kText = rgb(0xf4, 0xf6, 0xf2);      // --wp-path, headings/selected
-constexpr uint16_t kTextDim = rgb(0xbc, 0xcd, 0xc5);   // --wp-moon, body text
-constexpr uint16_t kMuted = rgb(0x8a, 0x94, 0x8c);     // --wp-stone, hints
-constexpr uint16_t kLive = rgb(0x3f, 0xa7, 0x9d);      // --wp-aqua, links / connected
-constexpr uint16_t kOk = rgb(0x3f, 0xa6, 0x6b);        // --wp-positive
-constexpr uint16_t kWarn = rgb(0xc9, 0x92, 0x3a);      // --wp-amber
-constexpr uint16_t kError = rgb(0xb8, 0x45, 0x40);     // --wp-critical
+constexpr uint16_t kBg = rgb(0x0f, 0x2e, 0x3e);        // main sky, the blue-green
+constexpr uint16_t kBar = rgb(0x06, 0x1c, 0x29);       // top of the sky, title bar
+constexpr uint16_t kSelect = rgb(0x44, 0x7b, 0x88);    // glow behind the logo
+constexpr uint16_t kBorder = rgb(0x2a, 0x55, 0x66);    // tile outlines
+constexpr uint16_t kRule = rgb(0x19, 0x3c, 0x4d);      // dividers
+constexpr uint16_t kText = rgb(0xf0, 0xf0, 0xe8);      // the path / logo cream
+constexpr uint16_t kTextDim = rgb(0xc4, 0xd4, 0xcc);   // moon sage, lightened for body text
+constexpr uint16_t kMuted = rgb(0x86, 0xa4, 0xa6);     // hints
+constexpr uint16_t kLive = rgb(0x81, 0xbc, 0xaa);      // mint network nodes: links, connected
+constexpr uint16_t kOk = rgb(0x81, 0xbc, 0xaa);        // same mint
+constexpr uint16_t kWarn = rgb(0xd9, 0xa5, 0x4a);      // amber (portal), lifted for dark ground
+constexpr uint16_t kError = rgb(0xe0, 0x6a, 0x5f);     // critical (portal), lifted
 
 // The drawing surface (the canvas). Apps that draw directly must call
 // mark_dirty() for the area they touched.
@@ -80,8 +81,8 @@ void list(const std::vector<std::string>& items, int selected, int& top);
 // Prints the screen's text (title, body rows, footer) to Serial; the
 // highlighted row is marked with '>'. For remote driving over USB.
 void dump_to_serial();
-// Coarse screenshot from the canvas: one character per sample, palette
-// legend in ui.cpp. For remote debugging.
+// Full-resolution screenshot from the canvas, as raw RGB565 over Serial
+// (see ui.cpp for the framing). For remote debugging.
 void pixels_to_serial();
 // Records text for a row without drawing (for custom-drawn screens).
 void mirror_row(int row, const std::string& text, bool highlight);

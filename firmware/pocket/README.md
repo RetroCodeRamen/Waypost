@@ -68,8 +68,8 @@ prefix are ignored: when a host opens the port, Linux briefly echoes the Scout's
 output back to it, and bare bytes turned that echo into keypresses. After the prefix,
 printable characters, Enter (`\r`) and Backspace (`0x08`) act like the keyboard;
 **Ctrl-P / Ctrl-N / Ctrl-B / Ctrl-F** are trackball up / down / left / right, **Ctrl-G**
-is a trackball press, **Ctrl-X** prints a coarse pixel map of the screen (read back from
-the off-screen canvas; legend in `src/ui.cpp`), and **Ctrl-D** prints the current screen as text:
+is a trackball press, **Ctrl-X** dumps a full-resolution screenshot (raw RGB565 read back from
+the off-screen canvas; framing in `src/ui.cpp`), and **Ctrl-D** prints the current screen as text:
 
 ```
 === screen ===
@@ -84,7 +84,8 @@ the off-screen canvas; legend in `src/ui.cpp`), and **Ctrl-D** prints the curren
 ## Known limitations
 
 - Requests show a spinner in the title bar while waiting; boot shows a progress bar.
-- Colors follow the portal's design tokens (`web/portal/static/tokens.css`), defined once in `src/ui.h`.
+- Colors are the night-sky blue-greens of the README header art (`image/logo2.png`) and the logo, defined once as named roles in `src/ui.h`. The panel is **BGR** (`include/tdeck_tft_setup.h`); with RGB, blue-greens show as olive.
+- Changing `include/tdeck_tft_setup.h` needs `pio run -t clean`: it's force-included into TFT_eSPI, and PlatformIO doesn't rebuild the library when it changes.
 - Requests block the UI while waiting (≤ 8 s per attempt; reads retry up to 3 times).
 - Chat is Station-relayed with one peer; no contact list, no offline catch-up (`MSG_SYNC`) yet.
 

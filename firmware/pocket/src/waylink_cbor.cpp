@@ -184,8 +184,8 @@ class CborReader {
   // arrays/maps/tags. Used for envelope/payload fields this firmware
   // doesn't need (v, mid, src, dst, svc, op, flags, ts, ingested, ...).
   bool skip_value() {
-    uint8_t major;
-    uint64_t val;
+    uint8_t major = 0;
+    uint64_t val = 0;
     if (!read_head(major, val)) return false;
     switch (major) {
       case 0:
@@ -232,8 +232,8 @@ class CborReader {
       _pos++;
       return true;
     }
-    uint8_t major;
-    uint64_t val;
+    uint8_t major = 0;
+    uint64_t val = 0;
     size_t save = _pos;
     if (!read_head(major, val)) return false;
     switch (major) {

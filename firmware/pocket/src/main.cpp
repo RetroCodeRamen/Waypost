@@ -31,6 +31,13 @@
 static void board_power_on() {
   pinMode(BOARD_POWERON, OUTPUT);
   digitalWrite(BOARD_POWERON, HIGH);
+  // Display, LoRa radio, and SD slot share one SPI bus. Deselect the radio
+  // and SD card before the display is used (LilyGO's T-Deck examples do the
+  // same); an undriven chip-select floats.
+  pinMode(BOARD_SDCARD_CS, OUTPUT);
+  digitalWrite(BOARD_SDCARD_CS, HIGH);
+  pinMode(RADIO_CS_PIN, OUTPUT);
+  digitalWrite(RADIO_CS_PIN, HIGH);
 }
 
 static void draw_splash() {
