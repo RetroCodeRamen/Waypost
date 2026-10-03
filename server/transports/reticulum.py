@@ -52,7 +52,7 @@ class _OutpostAnnounceHandler:
         self._owner = owner
 
     def received_announce(self, destination_hash, announced_identity, app_data) -> None:
-        self._owner._on_announce(destination_hash, app_data)
+        self._owner._on_announce(destination_hash, announced_identity, app_data)
 
 _RNODE_BANDWIDTHS = (
     7_800, 10_400, 15_600, 20_800, 31_250, 41_700, 62_500, 125_000, 250_000, 500_000,
@@ -221,6 +221,7 @@ class ReticulumTransport(Transport):
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._dest_cache: dict[str, object] = {}
         self._peer_routes: dict[str, str] = {}  # logical node_id → dest hash
+        self._peer_identities: dict[str, object] = {}  # dest hash hex → RNS.Identity
         self._lock = threading.Lock()
         # Set from outside (server/api/main.py), same pattern as
         # WaylinkGateway._resolve_dest — invoked when a genuine Reticulum
@@ -301,10 +302,32 @@ class ReticulumTransport(Transport):
             self.config_dir,
         )
 
-    def _on_announce(self, destination_hash: bytes, app_data: Optional[bytes]) -> None:
+    def _remember_peer_identity(self, dest_hex: str, identity: object) -> None:
+        """Cache an identity learned from a live announce — lets the very
+        next outbound packet skip Identity.recall()'s path-wait loop."""
+        if identity is None:
+            return
+        with self._lock:
+            self._peer_identities[dest_hex] = identity
+            self._dest_cache.pop(dest_hex, None)
+
+    def _on_announce(
+        self,
+        destination_hash: bytes,
+        announced_identity: object,
+        app_data: Optional[bytes],
+    ) -> None:
         """RNS calls this off the asyncio thread (same as _on_packet) — marshal
         onto the event loop before touching the callback, which ends up doing
         synchronous DB writes via PairingService.auto_claim_outpost."""
+        try:
+            import RNS
+
+            dest_hex = RNS.hexrep(destination_hash, delimit=False)
+        except Exception:
+            logger.exception("failed to read outpost announce destination hash")
+            return
+        self._remember_peer_identity(dest_hex, announced_identity)
         if not app_data or not app_data.startswith(AUTO_CLAIM_MARKER):
             return
         if self._destination is not None and destination_hash == self._destination.hash:
@@ -313,14 +336,11 @@ class ReticulumTransport(Transport):
         if callback is None or self._loop is None:
             return
         try:
-            import RNS
-
             rest = app_data[len(AUTO_CLAIM_MARKER) :].decode("utf-8", errors="replace")
             node_id, _, display_name = rest.partition("|")
             node_id = node_id.strip()
             if not node_id:
                 return
-            dest_hex = RNS.hexrep(destination_hash, delimit=False)
         except Exception:
             logger.exception("failed to parse outpost auto-claim announce app_data")
             return
@@ -343,18 +363,13 @@ class ReticulumTransport(Transport):
     def _on_packet(self, data: bytes, packet) -> None:
         if not self._running or self._loop is None:
             return
-        src = None
-        try:
-            import RNS
-
-            if packet and getattr(packet, "destination_hash", None):
-                src = RNS.hexrep(packet.destination_hash, delimit=False)
-        except Exception:
-            src = None
+        # Logical sender lives in the Waylink envelope (env.src). RNS's
+        # packet.destination_hash on an inbound packet is *this* node's IN
+        # destination, not the peer's — never treat it as source.
         tp = TransportPacket(
             destination=self.node_id,
             payload=bytes(data),
-            source=src,
+            source=None,
             metadata={"encrypted": True, "transport": "reticulum"},
         )
         self._loop.call_soon_threadsafe(self._inbox.put_nowait, tp)
@@ -385,6 +400,7 @@ class ReticulumTransport(Transport):
             raw = destination.strip().lower().replace(":", "")
             if len(raw) == 32 and all(c in "0123456789abcdef" for c in raw):
                 dest_hash = bytes.fromhex(raw)
+                identity = self._peer_identities.get(raw)
             elif Path(destination).exists():
                 identity = RNS.Identity.from_file(destination)
             else:
@@ -440,9 +456,57 @@ class ReticulumTransport(Transport):
             import RNS
 
             rns_packet = RNS.Packet(out, packet.payload)
-            rns_packet.send()
+            result = rns_packet.send()
+            # RNS.Packet.send() returns False (no exception) when
+            # Transport.outbound() can't actually place the packet on any
+            # interface -- surfaced here so a silently dropped send doesn't
+            # look identical to a successful one (discovered 2026-10-03
+            # debugging what turned out to be a separate wire-format bug in
+            # the embedded radio driver, not this -- but this check itself
+            # is a real, worthwhile signal on its own).
+            if result is False:
+                logger.warning(
+                    "rns_packet.send() returned False (not transmitted) dest=%s",
+                    dest,
+                )
 
         await asyncio.to_thread(_send)
+
+    async def send_outpost_claim_ack(self, node_id: str, transport_dest: str) -> None:
+        """Push a lightweight BOARD_SYNC-shaped ack so a freshly auto-claimed
+        Outpost learns claimed=true without waiting for its own periodic
+        sync — sent directly to the announce hash while the path is hot."""
+        from server.services.corkboard.constants import OP_BOARD_SYNC
+        from shared.protocol.envelope import (
+            Envelope,
+            Flags,
+            SVC_CORKBOARD,
+            encode_cbor,
+            new_id,
+        )
+
+        dest = transport_dest.strip().lower().replace(":", "")
+        env = Envelope(
+            src=self.node_id,
+            dst=node_id,
+            svc=SVC_CORKBOARD,
+            op=OP_BOARD_SYNC,
+            flags=int(Flags.RESPONSE | Flags.ACK),
+            mid=new_id(),
+            rid=new_id(),
+            payload={"ok": True, "claimed": True, "ingested": 0, "pending": []},
+        )
+        packet = TransportPacket(
+            destination=dest,
+            payload=encode_cbor(env),
+            source=self.node_id,
+        )
+        logger.info(
+            "outpost_claim_ack node=%s dest=%s",
+            node_id,
+            dest,
+        )
+        await self.send(packet)
 
     async def receive_one(self, timeout: float | None = 2.0) -> TransportPacket:
         if timeout is None:

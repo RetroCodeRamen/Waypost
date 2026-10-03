@@ -249,18 +249,45 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         # ReticulumTransport.on_unclaimed_outpost_announce and
         # PairingService.auto_claim_outpost for the trust model.
         if settings.waypost_auto_claim_outposts:
-            transport.on_unclaimed_outpost_announce = (
-                lambda node_id, dest, name: app.state.pairing.auto_claim_outpost(
-                    node_id=node_id, transport_dest=dest, display_name=name
+
+            async def _send_outpost_claim_ack(node_id: str, transport_dest: str) -> None:
+                send_ack = getattr(transport, "send_outpost_claim_ack", None)
+                if not callable(send_ack):
+                    return
+                try:
+                    await send_ack(node_id, transport_dest)
+                except Exception:
+                    logger.exception("outpost_claim_ack_failed node=%s", node_id)
+
+            def _on_unclaimed_outpost_announce(
+                node_id: str, transport_dest: str, display_name: str | None
+            ) -> None:
+                result = app.state.pairing.auto_claim_outpost(
+                    node_id=node_id,
+                    transport_dest=transport_dest,
+                    display_name=display_name,
                 )
-            )
+                if result is None:
+                    return
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    return
+                loop.create_task(_send_outpost_claim_ack(node_id, transport_dest))
+
+            transport.on_unclaimed_outpost_announce = _on_unclaimed_outpost_announce
 
         def _resolve_dest(dst: str) -> str:
             mapped = transport.resolve_destination(dst)
             if mapped and mapped != dst:
                 return mapped
             stored = dispatch.store.transport_dest_for(dst)
-            return stored or dst
+            if stored:
+                return stored
+            outpost = db.corkboard.get_outpost(dst)
+            if outpost and outpost.get("transport_dest"):
+                return str(outpost["transport_dest"])
+            return dst
 
         gateway._resolve_dest = _resolve_dest  # type: ignore[attr-defined]
 

@@ -67,6 +67,14 @@ def test_board_sync_registers_outpost_and_ingests_notes(client: TestClient):
     assert any(n["body"] == "Bear spotted near creek" and n["signature"] == "-Jamie" for n in notes)
 
 
+def test_gateway_resolve_dest_uses_corkboard_transport_dest(client: TestClient):
+    client.app.state.db.corkboard.touch_outpost(
+        "outpost-1", transport_dest="bb" * 16
+    )
+    resolver = client.app.state.gateway._resolve_dest
+    assert resolver("outpost-1") == "bb" * 16
+
+
 def test_sync_reports_claimed_state(client: TestClient):
     unclaimed = _sync(client, outpost_id="outpost-1", notes=[])
     assert unclaimed["payload"]["claimed"] is False

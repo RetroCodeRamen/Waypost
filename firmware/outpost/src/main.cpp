@@ -89,6 +89,7 @@ static const int PIN_BUTTON = 0;  // Heltec V3 PRG/BOOT button, active LOW
 static const uint32_t BUTTON_DEBOUNCE_MS = 40;
 static const uint32_t REANNOUNCE_INTERVAL_MS = 10UL * 60UL * 1000UL;   // 10 min
 static const uint32_t AUTO_SYNC_INTERVAL_MS = 5UL * 60UL * 1000UL;     // 5 min
+static const uint32_t BOOT_SYNC_DELAY_MS = 45UL * 1000UL;            // first sync after path settles
 
 static bool g_auto_claim_enabled = true;  // persisted; toggled by the button
 static bool g_claimed = false;            // persisted; set once Station confirms via BOARD_SYNC
@@ -195,9 +196,22 @@ static void save_flag(const char* path, bool value) {
 static volatile bool g_reply_pending = false;
 static RNS::Bytes g_reply_bytes;
 
+static void note_claimed_from_reply(const RNS::Bytes& data) {
+  waylink::SyncReplyResult result;
+  if (!waylink::decode_sync_reply(data.data(), data.size(), result) || !result.parsed) {
+    return;
+  }
+  if (result.claimed && !g_claimed) {
+    g_claimed = true;
+    save_flag(CLAIMED_FLAG_PATH, true);
+    Serial.println("Station confirms this Outpost is now claimed.");
+  }
+}
+
 static void on_destination_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
-  Serial.print("[dbg] on_destination_packet: FIRED, bytes=");
-  Serial.println((unsigned)data.size());
+  // Handles both BOARD_SYNC round-trip replies and the proactive claim ack
+  // Station may push right after auto-claim (no matching rid required).
+  note_claimed_from_reply(data);
   g_reply_bytes = data;
   g_reply_pending = true;
 }
@@ -357,21 +371,17 @@ static bool resolve_station(RNS::Bytes& station_hash) {
 
 static bool wait_for_path(const RNS::Bytes& station_hash, uint32_t timeout_ms) {
   if (RNS::Transport::has_path(station_hash)) {
-    Serial.println("[dbg] wait_for_path: already had a path");
     return true;
   }
-  Serial.println("[dbg] wait_for_path: requesting path...");
   RNS::Transport::request_path(station_hash);
   uint32_t start = millis();
   while (millis() - start < timeout_ms) {
     g_reticulum.loop();
     if (RNS::Transport::has_path(station_hash)) {
-      Serial.println("[dbg] wait_for_path: got a path");
       return true;
     }
     delay(50);
   }
-  Serial.println("[dbg] wait_for_path: TIMED OUT, no path");
   return false;
 }
 
@@ -381,7 +391,6 @@ static bool wait_for_path(const RNS::Bytes& station_hash, uint32_t timeout_ms) {
 static bool connect_to_station(RNS::Destination& out_dest, const char* verb) {
   RNS::Bytes station_hash;
   if (!resolve_station(station_hash)) {
-    Serial.println("[dbg] connect_to_station: resolve_station FAILED (bad/missing configured hash)");
     return false;
   }
 
@@ -394,11 +403,9 @@ static bool connect_to_station(RNS::Destination& out_dest, const char* verb) {
 
   RNS::Identity station_identity = RNS::Identity::recall(station_hash);
   if (!station_identity) {
-    Serial.println("[dbg] connect_to_station: Identity::recall FAILED after a path was found");
     g_status = String("Station's identity isn't known yet (no announce received). ") + verb;
     return false;
   }
-  Serial.println("[dbg] connect_to_station: recalled Station identity OK");
 
   out_dest = RNS::Destination(
       station_identity,
@@ -422,7 +429,6 @@ static bool send_and_await_reply(
   g_reply_pending = false;
   RNS::Packet pkt(dest, payload);
   pkt.send();
-  Serial.println("[dbg] send_and_await_reply: packet sent, waiting up to 15s...");
 
   uint32_t start = millis();
   while (millis() - start < 15000) {
@@ -432,32 +438,25 @@ static bool send_and_await_reply(
   }
 
   if (!g_reply_pending) {
-    Serial.println("[dbg] send_and_await_reply: TIMED OUT, no reply");
     g_status = String("Request sent but Station didn't reply in time. ") + verb;
     return false;
   }
-  Serial.println("[dbg] send_and_await_reply: got a reply");
   g_reply_pending = false;
 
   if (!waylink::decode_sync_reply(g_reply_bytes.data(), g_reply_bytes.size(), result) ||
       !result.parsed) {
-    Serial.println("[dbg] send_and_await_reply: reply failed to decode/parse");
     g_status = String("Station's reply was malformed. ") + verb;
     return false;
   }
   if (result.rid != expected_rid) {
-    Serial.println("[dbg] send_and_await_reply: rid mismatch");
     g_status = String("Got a reply that doesn't match this request. ") + verb;
     return false;
   }
   if (result.error) {
-    Serial.print("[dbg] send_and_await_reply: Station returned an error: ");
-    Serial.println(result.error_msg.c_str());
     g_status = "Station reported an error: " + String(result.error_msg.c_str());
     return false;
   }
   if (!result.ok) {
-    Serial.println("[dbg] send_and_await_reply: result.ok is false");
     g_status = String("Station did not confirm the request. ") + verb;
     return false;
   }
@@ -465,10 +464,8 @@ static bool send_and_await_reply(
 }
 
 static void refresh_board() {
-  Serial.println("[dbg] refresh_board: starting");
   RNS::Destination station_destination({RNS::Type::NONE});
   if (!connect_to_station(station_destination, "Showing cached board.")) {
-    Serial.println("[dbg] refresh_board: connect_to_station FAILED, bailing");
     return;
   }
 
@@ -515,16 +512,9 @@ static void refresh_board() {
   g_status = "Synced with Station — " + String((unsigned)outgoing.size()) +
              " note(s) sent, " + String((unsigned)received) + " received.";
 
-  // Self-healing claimed-state ack: every BOARD_SYNC reply says whether
-  // Station has this Outpost claimed (walk-up code or auto-claim), so this
-  // catches up even if an earlier ack was missed — no separate push
-  // message needed. Stops the auto-claim marker in future announces once
-  // true (see announce_now()).
-  if (result.claimed && !g_claimed) {
-    g_claimed = true;
-    save_flag(CLAIMED_FLAG_PATH, true);
-    Serial.println("Station confirms this Outpost is now claimed.");
-  }
+  // Self-healing claimed-state ack — also handled in on_destination_packet()
+  // for proactive Station pushes that are not tied to this rid.
+  note_claimed_from_reply(g_reply_bytes);
 }
 
 // -- Beacon: upload queued walk-up emergency pushes --
@@ -968,7 +958,13 @@ void loop() {
   // auto-claimed Outpost with nobody standing at its Wi-Fi should still
   // learn it's claimed and stop advertising within a few minutes.
   static uint32_t last_auto_sync = 0;
-  if (now - last_auto_sync > AUTO_SYNC_INTERVAL_MS) {
+  static bool boot_sync_done = false;
+  if (!boot_sync_done && now > BOOT_SYNC_DELAY_MS) {
+    boot_sync_done = true;
+    last_auto_sync = now;
+    refresh_board();
+    sync_beacon();
+  } else if (now - last_auto_sync > AUTO_SYNC_INTERVAL_MS) {
     last_auto_sync = now;
     refresh_board();
     sync_beacon();  // retries any report that couldn't send immediately on submit
