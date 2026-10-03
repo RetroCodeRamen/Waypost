@@ -299,7 +299,8 @@ static bool send_and_await_reply(
     const RNS::Destination& dest,
     const RNS::Bytes& payload,
     const std::string& expected_rid,
-    waylink::SyncReplyResult& result) {
+    waylink::SyncReplyResult& result,
+    bool require_ok = true) {
   g_reply_pending = false;
   RNS::Packet pkt(dest, payload);
   pkt.send();
@@ -323,7 +324,10 @@ static bool send_and_await_reply(
   if (result.rid != expected_rid) {
     return false;
   }
-  if (result.error || !result.ok) {
+  // CORE/PONG's payload is just {"echo": ...} (server/gateway/waylink.py)
+  // with no "ok" key, so PING passes require_ok=false; every other reply
+  // Scout awaits (MSG_SEND) carries ok=true explicitly.
+  if (result.error || (require_ok && !result.ok)) {
     return false;
   }
   return true;
@@ -338,7 +342,8 @@ static void run_radio_test() {
     RNS::Bytes ping = waylink::encode_ping_request(
         g_pocket_id.c_str(), STATION_NODE_ID, mid, rid, 120);
     waylink::SyncReplyResult ping_result;
-    if (send_and_await_reply(station_destination, ping, rid, ping_result)) {
+    if (send_and_await_reply(station_destination, ping, rid, ping_result,
+                             /*require_ok=*/false)) {
       g_ping_ok = true;
       Serial.println("CORE/PING round trip OK.");
     } else {
