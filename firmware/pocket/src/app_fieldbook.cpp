@@ -81,18 +81,18 @@ class FieldbookApp : public App {
     _mode = Mode::Query;
     ui::title_bar("Fieldbook");
     ui::clear_body();
-    ui::body_line(0, "Search the camp wiki:", TFT_WHITE);
+    ui::body_line(0, "Search the camp wiki:", ui::kText);
     draw_query();
-    ui::body_line(3, "Type words, then Enter.", TFT_DARKGREY);
+    ui::body_line(3, "Type words, then Enter.", ui::kMuted);
     ui::footer("roll left: back");
   }
 
-  void draw_query() { ui::body_line(1, "> " + _query + "_", TFT_GREEN); }
+  void draw_query() { ui::body_line(1, "> " + _query + "_", ui::kOk); }
 
   // -- search results (paged; "more..." fetches the next page) -------------
 
   void load_results() {
-    ui::footer("Searching...", TFT_YELLOW);
+    ui::footer("Searching...", ui::kLive);
     waylink::Reply reply;
     size_t offset = _items.size();
     auto r = station_link::request(
@@ -114,7 +114,7 @@ class FieldbookApp : public App {
     _mode = Mode::Results;
     ui::title_bar(("Fieldbook: " + _query).c_str());
     if (_items.empty()) {
-      ui::message("No pages match \"" + _query + "\".", TFT_ORANGE);
+      ui::message("No pages match \"" + _query + "\".", ui::kWarn);
       ui::footer("roll left: new search");
       return;
     }
@@ -139,7 +139,7 @@ class FieldbookApp : public App {
       _items.clear();
       _sel = _top = 0;
     }
-    ui::footer("Loading outline...", TFT_YELLOW);
+    ui::footer("Loading outline...", ui::kLive);
     waylink::Reply reply;
     size_t offset = _items.size();
     auto r = station_link::request(
@@ -227,7 +227,7 @@ class FieldbookApp : public App {
 
   void fail(const waylink::Reply& reply, station_link::Result r) {
     std::string why = r == station_link::Result::Error ? reply.error : station_link::describe(r);
-    ui::footer("Failed: " + why + " - press to retry", TFT_ORANGE);
+    ui::footer("Failed: " + why + " - press to retry", ui::kWarn);
   }
 
   Mode _mode = Mode::Query;

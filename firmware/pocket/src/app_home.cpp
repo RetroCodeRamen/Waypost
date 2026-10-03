@@ -84,15 +84,16 @@ class HomeApp : public App {
     int y = ui::kBodyTop + pad + (i / kCols) * (h + pad);
     bool sel = i == _sel;
     auto& t = ui::tft();
-    uint16_t bg = sel ? TFT_DARKCYAN : TFT_BLACK;
+    uint16_t bg = sel ? ui::kSelect : ui::kBg;
     t.fillRoundRect(x, y, w, h, 8, bg);
-    t.drawRoundRect(x, y, w, h, 8, sel ? TFT_WHITE : TFT_DARKGREY);
+    t.drawRoundRect(x, y, w, h, 8, sel ? ui::kLive : ui::kBorder);
     t.setTextDatum(MC_DATUM);
-    t.setTextColor(TFT_WHITE, bg);
+    t.setTextColor(ui::kText, bg);
     t.drawString(kTiles[i].name, x + w / 2, y + h / 2 - 10, 4);
-    t.setTextColor(sel ? TFT_WHITE : TFT_LIGHTGREY, bg);
+    t.setTextColor(sel ? ui::kText : ui::kTextDim, bg);
     t.drawString(kTiles[i].hint, x + w / 2, y + h / 2 + 16, 2);
     t.setTextDatum(TL_DATUM);
+    ui::mark_dirty(x, y, w, h);
     ui::mirror_row(i, std::string(kTiles[i].name) + " - " + kTiles[i].hint, sel);
   }
 
@@ -103,7 +104,7 @@ class HomeApp : public App {
   void draw_footer() {
     _known = station_link::station_known();
     ui::footer(station_link::node_id() + (_known ? "   Station reachable" : "   looking for Station..."),
-               _known ? TFT_GREEN : TFT_DARKGREY);
+               _known ? ui::kLive : ui::kMuted);
   }
 
   int _sel = 0;

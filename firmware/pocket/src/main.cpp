@@ -35,13 +35,15 @@ static void board_power_on() {
 
 static void draw_splash() {
   auto& t = ui::tft();
-  t.fillScreen(TFT_BLACK);
+  t.fillScreen(ui::kBg);
   t.drawXBitmap((ui::kWidth - WAYPOST_MARK_WIDTH) / 2, 40, WAYPOST_MARK_BITS, WAYPOST_MARK_WIDTH,
-                WAYPOST_MARK_HEIGHT, TFT_WHITE);
+                WAYPOST_MARK_HEIGHT, ui::kText);
   t.setTextDatum(MC_DATUM);
-  t.setTextColor(TFT_WHITE, TFT_BLACK);
+  t.setTextColor(ui::kText, ui::kBg);
   t.drawString("WAYPOST SCOUT", ui::kWidth / 2, 110, 4);
   t.setTextDatum(TL_DATUM);
+  ui::mark_dirty();
+  ui::present();
 }
 
 // Boot progress under the splash: what's happening now + a bar, so a slow
@@ -49,15 +51,17 @@ static void draw_splash() {
 static void draw_boot_progress(const char* step, int percent) {
   auto& t = ui::tft();
   const int bar_x = 60, bar_y = 150, bar_w = ui::kWidth - 120, bar_h = 8;
-  t.fillRect(0, bar_y - 26, ui::kWidth, 24, TFT_BLACK);
+  t.fillRect(0, bar_y - 26, ui::kWidth, 24, ui::kBg);
   t.setTextDatum(MC_DATUM);
-  t.setTextColor(percent < 0 ? TFT_ORANGE : TFT_LIGHTGREY, TFT_BLACK);
+  t.setTextColor(percent < 0 ? ui::kWarn : ui::kTextDim, ui::kBg);
   t.drawString(step, ui::kWidth / 2, bar_y - 14, 2);
   t.setTextDatum(TL_DATUM);
-  t.drawRect(bar_x, bar_y, bar_w, bar_h, TFT_DARKGREY);
+  t.drawRect(bar_x, bar_y, bar_w, bar_h, ui::kMuted);
   if (percent > 0) {
-    t.fillRect(bar_x + 1, bar_y + 1, (bar_w - 2) * percent / 100, bar_h - 2, TFT_DARKCYAN);
+    t.fillRect(bar_x + 1, bar_y + 1, (bar_w - 2) * percent / 100, bar_h - 2, ui::kLive);
   }
+  ui::mark_dirty(0, bar_y - 26, ui::kWidth, bar_h + 26);
+  ui::present();
 }
 
 void setup() {
@@ -106,6 +110,8 @@ void loop() {
     last_status = millis();
     ui::set_station_ok(station_link::station_known());
   }
+
+  ui::present();
 
   delay(5);
 }

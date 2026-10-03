@@ -43,7 +43,7 @@ void Reader::open(const std::string& title, Fetch fetch, bool links) {
 
 bool Reader::fetch_more() {
   if (_started && _loaded >= _total) return false;
-  ui::footer("Loading...", TFT_YELLOW);
+  ui::footer("Loading...", ui::kLive);
   std::string text, err;
   size_t total = 0;
   station_link::Result r = _fetch(_loaded, text, total, err);
@@ -83,7 +83,7 @@ void Reader::relayout() {
     if (!complete && !fully_loaded() && _links_enabled && starts_with(raw, "=")) break;
 
     std::string text;
-    uint16_t color = TFT_LIGHTGREY;
+    uint16_t color = ui::kTextDim;
     int link = -1;
     if (_links_enabled && starts_with(raw, "=>")) {
       std::string rest = trim(raw.substr(2));
@@ -93,11 +93,11 @@ void Reader::relayout() {
       link = static_cast<int>(_links.size());
       _links.push_back(target);
       text = "> " + (label.empty() ? target : label);
-      color = TFT_CYAN;
+      color = ui::kLive;
     } else if (starts_with(raw, "#")) {
       size_t hashes = raw.find_first_not_of('#');
       text = trim(hashes == std::string::npos ? "" : raw.substr(hashes));
-      color = TFT_YELLOW;
+      color = ui::kText;
     } else {
       text = raw;
     }
@@ -190,10 +190,10 @@ void Reader::draw() {
   }
 
   std::string foot;
-  uint16_t color = TFT_DARKGREY;
+  uint16_t color = ui::kMuted;
   if (!_error.empty()) {
     foot = _error + " - scroll to retry";
-    color = TFT_ORANGE;
+    color = ui::kWarn;
   } else if (_total > 0) {
     int pct = static_cast<int>(_loaded * 100 / _total);
     foot = (fully_loaded() ? std::string("all loaded") : std::to_string(pct) + "% loaded") +

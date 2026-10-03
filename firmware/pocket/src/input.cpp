@@ -69,6 +69,7 @@ constexpr uint8_t kSerialLeft = 0x02;    // Ctrl-B
 constexpr uint8_t kSerialRight = 0x06;   // Ctrl-F
 constexpr uint8_t kSerialSelect = 0x07;  // Ctrl-G
 constexpr uint8_t kSerialDump = 0x04;    // Ctrl-D
+constexpr uint8_t kSerialPixels = 0x18;  // Ctrl-X: coarse pixel readback
 
 Event poll() {
   Event e;
@@ -88,6 +89,7 @@ Event poll() {
       case kSerialRight: e.kind = Kind::Right; return e;
       case kSerialSelect: e.kind = Kind::Select; return e;
       case kSerialDump: ui::dump_to_serial(); return e;
+      case kSerialPixels: ui::pixels_to_serial(); return e;
       default: break;
     }
     if (b == '\r' || b == '\n') e.kind = Kind::Enter;

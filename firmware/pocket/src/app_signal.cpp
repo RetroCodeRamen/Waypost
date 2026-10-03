@@ -42,7 +42,7 @@ class SignalApp : public App {
 
  private:
   void ping() {
-    ui::footer("PING...", TFT_YELLOW);
+    ui::footer("PING...", ui::kLive);
     waylink::Reply reply;
     uint32_t start = millis();
     _ping_result = station_link::request("CORE", "PING", {}, reply, 1, 15000);
@@ -54,20 +54,20 @@ class SignalApp : public App {
   void draw() {
     _known = station_link::station_known();
     std::string station = WAYPOST_STATION_DEST_HASH;
-    ui::body_line(0, "This Scout", TFT_WHITE);
+    ui::body_line(0, "This Scout", ui::kText);
     ui::body_line(1, "  node   " + station_link::node_id());
     ui::body_line(2, "  dest   " + station_link::dest_hex().substr(0, 16) + "...");
-    ui::body_line(4, "Station", TFT_WHITE);
+    ui::body_line(4, "Station", ui::kText);
     ui::body_line(5, "  dest   " + (station.size() >= 16 ? station.substr(0, 16) + "..." : "(not set)"));
     ui::body_line(6, std::string("  path   ") + (_known ? "known" : "not yet"),
-                  _known ? TFT_GREEN : TFT_ORANGE);
+                  _known ? ui::kOk : ui::kWarn);
     if (!_pinged) {
       ui::body_line(8, "  PING   press to test");
     } else if (_ping_result == station_link::Result::Ok) {
-      ui::body_line(8, "  PING   ok, " + std::to_string(_ping_ms) + " ms round trip", TFT_GREEN);
+      ui::body_line(8, "  PING   ok, " + std::to_string(_ping_ms) + " ms round trip", ui::kOk);
     } else {
       ui::body_line(8, std::string("  PING   failed: ") + station_link::describe(_ping_result),
-                    TFT_ORANGE);
+                    ui::kWarn);
     }
     ui::footer("press: PING   roll left: back");
   }

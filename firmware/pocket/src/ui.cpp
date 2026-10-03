@@ -6,7 +6,15 @@
 
 namespace ui {
 namespace {
-TFT_eSPI g_tft;
+TFT_eSPI g_lcd;
+TFT_eSprite g_canvas(&g_lcd);
+TFT_eSPI* g_surface = &g_lcd;  // the canvas once created; the LCD as fallback
+bool g_have_canvas = false;
+
+// Union of areas drawn since the last present().
+bool g_dirty = false;
+int g_dx0 = 0, g_dy0 = 0, g_dx1 = 0, g_dy1 = 0;
+
 bool g_station_ok = false;
 int g_unread = 0;
 std::string g_title;
@@ -15,17 +23,6 @@ std::string g_rows[kBodyLines];
 int g_highlight_row = -1;
 std::string g_footer;
 
-void draw_status() {
-  g_tft.fillRect(kWidth - 90, 0, 90, kTitleH - 1, TFT_NAVY);
-  g_tft.setTextDatum(TR_DATUM);
-  if (g_unread > 0) {
-    g_tft.setTextColor(TFT_YELLOW, TFT_NAVY);
-    g_tft.drawString(("msg " + std::to_string(g_unread)).c_str(), kWidth - 26, 3, kFont);
-  }
-  g_tft.fillCircle(kWidth - 12, kTitleH / 2, 5, g_station_ok ? TFT_GREEN : TFT_DARKGREY);
-  g_tft.setTextDatum(TL_DATUM);
-}
-
 constexpr int kSpinX = kWidth - 104;
 constexpr int kSpinY = kTitleH / 2;
 constexpr int kSpinR = 6;
@@ -33,35 +30,91 @@ constexpr int kSpinDots = 8;
 int g_spin_step = -1;  // -1 = not shown
 uint32_t g_spin_last_ms = 0;
 
-void draw_spinner() {
-  for (int i = 0; i < kSpinDots; i++) {
-    float a = i * 2.0f * PI / kSpinDots;
-    int x = kSpinX + static_cast<int>(kSpinR * cosf(a));
-    int y = kSpinY + static_cast<int>(kSpinR * sinf(a));
-    int age = (g_spin_step - i + kSpinDots) % kSpinDots;
-    uint16_t c = age == 0 ? TFT_WHITE : age < 3 ? TFT_LIGHTGREY : TFT_DARKGREY;
-    g_tft.fillCircle(x, y, 1, c);
+TFT_eSPI& s() { return *g_surface; }
+
+void draw_status() {
+  s().fillRect(kWidth - 90, 0, 90, kTitleH - 1, kBar);
+  s().setTextDatum(TR_DATUM);
+  if (g_unread > 0) {
+    s().setTextColor(kWarn, kBar);
+    s().drawString(("msg " + std::to_string(g_unread)).c_str(), kWidth - 26, 3, kFont);
   }
+  s().fillCircle(kWidth - 12, kTitleH / 2, 5, g_station_ok ? kLive : kMuted);
+  s().setTextDatum(TL_DATUM);
+  mark_dirty(kWidth - 90, 0, 90, kTitleH);
+}
+
+void draw_spinner() {
+  s().fillRect(kSpinX - kSpinR - 2, kSpinY - kSpinR - 2, 2 * kSpinR + 5, 2 * kSpinR + 5, kBar);
+  if (g_spin_step >= 0) {
+    for (int i = 0; i < kSpinDots; i++) {
+      float a = i * 2.0f * PI / kSpinDots;
+      int x = kSpinX + static_cast<int>(kSpinR * cosf(a));
+      int y = kSpinY + static_cast<int>(kSpinR * sinf(a));
+      int age = (g_spin_step - i + kSpinDots) % kSpinDots;
+      uint16_t c = age == 0 ? kText : age < 3 ? kTextDim : kMuted;
+      s().fillCircle(x, y, 1, c);
+    }
+  }
+  mark_dirty(kSpinX - kSpinR - 2, kSpinY - kSpinR - 2, 2 * kSpinR + 5, 2 * kSpinR + 5);
 }
 }  // namespace
 
-TFT_eSPI& tft() { return g_tft; }
+TFT_eSPI& tft() { return s(); }
 
 void init() {
   pinMode(BOARD_TFT_BACKLIGHT, OUTPUT);
   digitalWrite(BOARD_TFT_BACKLIGHT, HIGH);
-  g_tft.init();
-  g_tft.setRotation(1);
-  g_tft.fillScreen(TFT_BLACK);
+  g_lcd.init();
+  g_lcd.setRotation(1);
+  g_lcd.fillScreen(kBg);
+
+  g_canvas.setColorDepth(16);
+  g_have_canvas = g_canvas.createSprite(kWidth, kHeight) != nullptr;  // ~150 KB, PSRAM
+  if (g_have_canvas) {
+    g_surface = &g_canvas;
+  } else {
+    Serial.println("ui: no memory for the screen canvas; drawing directly");
+  }
+  s().fillScreen(kBg);
+  mark_dirty();
+}
+
+void mark_dirty(int x, int y, int w, int h) {
+  int x1 = x + w, y1 = y + h;
+  if (x < 0) x = 0;
+  if (y < 0) y = 0;
+  if (x1 > kWidth) x1 = kWidth;
+  if (y1 > kHeight) y1 = kHeight;
+  if (x1 <= x || y1 <= y) return;
+  if (!g_dirty) {
+    g_dx0 = x, g_dy0 = y, g_dx1 = x1, g_dy1 = y1;
+    g_dirty = true;
+    return;
+  }
+  if (x < g_dx0) g_dx0 = x;
+  if (y < g_dy0) g_dy0 = y;
+  if (x1 > g_dx1) g_dx1 = x1;
+  if (y1 > g_dy1) g_dy1 = y1;
+}
+
+void mark_dirty() { mark_dirty(0, 0, kWidth, kHeight); }
+
+void present() {
+  if (!g_dirty) return;
+  g_dirty = false;
+  if (!g_have_canvas) return;  // already drawn straight to the LCD
+  g_canvas.pushSprite(g_dx0, g_dy0, g_dx0, g_dy0, g_dx1 - g_dx0, g_dy1 - g_dy0);
 }
 
 void title_bar(const char* title) {
   g_title = title;
-  g_tft.fillRect(0, 0, kWidth, kTitleH - 1, TFT_NAVY);
-  g_tft.drawFastHLine(0, kTitleH - 1, kWidth, TFT_DARKGREY);
-  g_tft.setTextDatum(TL_DATUM);
-  g_tft.setTextColor(TFT_WHITE, TFT_NAVY);
-  g_tft.drawString(title, kMargin, 3, kFont);
+  s().fillRect(0, 0, kWidth, kTitleH - 1, kBar);
+  s().drawFastHLine(0, kTitleH - 1, kWidth, kRule);
+  s().setTextDatum(TL_DATUM);
+  s().setTextColor(kText, kBar);
+  s().drawString(title, kMargin, 3, kFont);
+  mark_dirty(0, 0, kWidth, kTitleH);
   draw_status();
   if (g_spin_step >= 0) draw_spinner();
 }
@@ -78,24 +131,25 @@ void set_unread(int n) {
   draw_status();
 }
 
-
 void busy_tick() {
   uint32_t now = millis();
   if (g_spin_step >= 0 && now - g_spin_last_ms < 100) return;
   g_spin_last_ms = now;
   g_spin_step = (g_spin_step + 1) % kSpinDots;
   draw_spinner();
+  present();  // the main loop isn't running during a blocking wait
 }
 
 void busy_clear() {
   if (g_spin_step < 0) return;
   g_spin_step = -1;
-  g_tft.fillRect(kSpinX - kSpinR - 2, kSpinY - kSpinR - 2, 2 * kSpinR + 5, 2 * kSpinR + 5,
-                 TFT_NAVY);
+  draw_spinner();
+  present();
 }
 
 void clear_body() {
-  g_tft.fillRect(0, kTitleH, kWidth, kHeight - kTitleH, TFT_BLACK);
+  s().fillRect(0, kTitleH, kWidth, kHeight - kTitleH, kBg);
+  mark_dirty(0, kTitleH, kWidth, kHeight - kTitleH);
   for (auto& r : g_rows) r.clear();
   g_highlight_row = -1;
   g_footer.clear();
@@ -108,20 +162,22 @@ void body_line(int row, const std::string& text, uint16_t color, bool highlight)
     else if (g_highlight_row == row) g_highlight_row = -1;
   }
   int y = kBodyTop + row * kLineH;
-  uint16_t bg = highlight ? TFT_DARKCYAN : TFT_BLACK;
-  g_tft.fillRect(0, y, kWidth, kLineH, bg);
-  g_tft.setTextDatum(TL_DATUM);
-  g_tft.setTextColor(highlight ? TFT_WHITE : color, bg);
-  g_tft.drawString(text.c_str(), kMargin, y + 1, kFont);
+  uint16_t bg = highlight ? kSelect : kBg;
+  s().fillRect(0, y, kWidth, kLineH, bg);
+  s().setTextDatum(TL_DATUM);
+  s().setTextColor(highlight ? kText : color, bg);
+  s().drawString(text.c_str(), kMargin, y + 1, kFont);
+  mark_dirty(0, y, kWidth, kLineH);
 }
 
 void footer(const std::string& text, uint16_t color) {
   g_footer = text;
-  g_tft.fillRect(0, kBodyBottom, kWidth, kFooterH, TFT_BLACK);
-  g_tft.drawFastHLine(0, kBodyBottom, kWidth, TFT_DARKGREY);
-  g_tft.setTextDatum(TL_DATUM);
-  g_tft.setTextColor(color, TFT_BLACK);
-  g_tft.drawString(text.c_str(), kMargin, kBodyBottom + 4, 1);
+  s().fillRect(0, kBodyBottom, kWidth, kFooterH, kBg);
+  s().drawFastHLine(0, kBodyBottom, kWidth, kRule);
+  s().setTextDatum(TL_DATUM);
+  s().setTextColor(color, kBg);
+  s().drawString(text.c_str(), kMargin, kBodyBottom + 4, 1);
+  mark_dirty(0, kBodyBottom, kWidth, kFooterH);
 }
 
 void message(const std::string& text, uint16_t color) {
@@ -135,7 +191,7 @@ void message(const std::string& text, uint16_t color) {
 std::vector<std::string> wrap(const std::string& text, int width) {
   std::vector<std::string> out;
   std::string line;
-  auto fits = [&](const std::string& s) { return g_tft.textWidth(s.c_str(), kFont) <= width; };
+  auto fits = [&](const std::string& str) { return s().textWidth(str.c_str(), kFont) <= width; };
 
   size_t i = 0;
   while (i <= text.size()) {
@@ -178,11 +234,41 @@ void list(const std::vector<std::string>& items, int selected, int& top) {
   for (int row = 0; row < kBodyLines; row++) {
     int idx = top + row;
     if (idx < static_cast<int>(items.size())) {
-      body_line(row, items[idx], TFT_LIGHTGREY, idx == selected);
+      body_line(row, items[idx], kTextDim, idx == selected);
     } else {
       body_line(row, "");
     }
   }
+}
+
+void pixels_to_serial() {
+  // One character per sample, by palette role:
+  //   '.' background  'b' title bar  's' selection  'o' outline/divider
+  //   '#' white text  ':' body text  '-' muted      'a' aqua (links/live)
+  //   'g' ok  'y' warn  'r' error  '?' anything else (e.g. anti-aliasing)
+  struct Key { uint16_t c; char ch; };
+  static const Key keys[] = {
+      {kBg, '.'}, {kBar, 'b'}, {kSelect, 's'}, {kBorder, 'o'}, {kRule, 'o'},
+      {kText, '#'}, {kTextDim, ':'}, {kMuted, '-'}, {kLive, 'a'},
+      {kOk, 'g'}, {kWarn, 'y'}, {kError, 'r'},
+  };
+  Serial.println(g_have_canvas ? "=== pixels 4x8 grid ===" : "=== pixels: no canvas ===");
+  for (int y = 4; g_have_canvas && y < kHeight; y += 8) {
+    std::string row;
+    for (int x = 2; x < kWidth; x += 4) {
+      uint16_t c = g_canvas.readPixel(x, y);
+      char ch = '?';
+      for (const auto& k : keys) {
+        if (k.c == c) {
+          ch = k.ch;
+          break;
+        }
+      }
+      row += ch;
+    }
+    Serial.println(row.c_str());
+  }
+  Serial.println("=== end ===");
 }
 
 void mirror_row(int row, const std::string& text, bool highlight) {

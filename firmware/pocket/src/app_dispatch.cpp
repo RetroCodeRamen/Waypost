@@ -41,8 +41,8 @@ class DispatchApp : public App {
     ui::title_bar(title());
     ui::clear_body();
     if (_history.empty()) {
-      add("Type a message and press Enter.", TFT_DARKGREY);
-      add("Roll left to go back.", TFT_DARKGREY);
+      add("Type a message and press Enter.", ui::kMuted);
+      add("Roll left to go back.", ui::kMuted);
     }
     draw();
   }
@@ -83,7 +83,7 @@ class DispatchApp : public App {
   }
 
   void deliver(const waylink::IncomingChatMessage& msg) {
-    add(msg.sender + ": " + msg.body, TFT_WHITE);
+    add(msg.sender + ": " + msg.body, ui::kText);
     // Ack so Station marks it delivered; if this is lost, Station keeps the
     // message pending and nothing is dropped.
     station_link::send(waylink::encode_msg_ack(station_link::node_id().c_str(),
@@ -106,14 +106,14 @@ class DispatchApp : public App {
   void send() {
     if (_input.empty()) return;
     if (strlen(WAYPOST_DISPATCH_PEER) == 0) {
-      add("(no WAYPOST_DISPATCH_PEER configured)", TFT_ORANGE);
+      add("(no WAYPOST_DISPATCH_PEER configured)", ui::kWarn);
       draw_history();
       return;
     }
     std::string body = _input;
     _input.clear();
     draw_input();
-    ui::footer("Sending...", TFT_YELLOW);
+    ui::footer("Sending...", ui::kLive);
 
     waylink::Reply reply;
     // One attempt: a retry would get a fresh mid, and a lost *reply* would
@@ -126,8 +126,8 @@ class DispatchApp : public App {
         },
         reply, 1, 15000);
     bool ok = result == station_link::Result::Ok && reply.payload().flag("ok");
-    add("me: " + body, ok ? TFT_GREEN : TFT_ORANGE);
-    if (!ok) add(std::string("  (not sent: ") + station_link::describe(result) + ")", TFT_ORANGE);
+    add("me: " + body, ok ? ui::kTextDim : ui::kWarn);
+    if (!ok) add(std::string("  (not sent: ") + station_link::describe(result) + ")", ui::kWarn);
     _scroll = 0;
     draw();
   }
@@ -153,7 +153,7 @@ class DispatchApp : public App {
     // Keep the end of a long input visible.
     while (shown.size() > 3 && ui::tft().textWidth(shown.c_str(), ui::kFont) > ui::kWidth - 8)
       shown.erase(2, 1);
-    ui::body_line(kHistoryRows, shown, TFT_GREEN);
+    ui::body_line(kHistoryRows, shown, ui::kLive);
   }
 
   std::string _title;
