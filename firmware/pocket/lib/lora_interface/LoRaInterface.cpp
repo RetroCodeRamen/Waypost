@@ -60,6 +60,16 @@
 #define RADIO_FEM_CE                2    // LORA_PA_CSD:    FEM chip enable  (active HIGH)
 #define RADIO_PA_MODE              46    // LORA_PA_CPS:    PA mode HIGH=TX, LOW=RX
 
+#elif defined(BOARD_TDECK)
+// LilyGO T-Deck — ESP32-S3 + SX1262, 1.8V TCXO (matches RNode BOARD_TDECK)
+#define RADIO_SCLK_PIN              40
+#define RADIO_MISO_PIN              38
+#define RADIO_MOSI_PIN              41
+#define RADIO_CS_PIN                 9
+#define RADIO_DIO1_PIN              45
+#define RADIO_RST_PIN               17
+#define RADIO_BUSY_PIN              13
+
 #endif
 
 using namespace RNS;
@@ -167,8 +177,17 @@ bool LoRaInterface::start() {
 	int state = chip->begin(frequency, bandwidth, spreading, coding,
 	                        RADIOLIB_SX126X_SYNC_WORD_PRIVATE, power, 20, 1.8, false);
 
+#elif defined(BOARD_TDECK)
+	SPI.begin(RADIO_SCLK_PIN, RADIO_MISO_PIN, RADIO_MOSI_PIN);
+	_module = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN, SPI);
+	SX1262* chip = new SX1262(_module);
+	_radio = chip;
+	chip->setDio2AsRfSwitch(true);
+	int state = chip->begin(frequency, bandwidth, spreading, coding,
+	                        RADIOLIB_SX126X_SYNC_WORD_PRIVATE, power, 20, 1.8, false);
+
 #else
-	#error "Unsupported board: define BOARD_TBEAM, BOARD_LORA32_V21, BOARD_RAK4631, BOARD_HELTEC_V3, or BOARD_HELTEC_V4"
+	#error "Unsupported board: define BOARD_TBEAM, BOARD_LORA32_V21, BOARD_RAK4631, BOARD_HELTEC_V3, BOARD_HELTEC_V4, or BOARD_TDECK"
 	int state = RADIOLIB_ERR_UNKNOWN;
 #endif
 

@@ -45,8 +45,7 @@ public:
 	// needing more than one physical LoRa frame (~254 bytes packed) gets
 	// silently corrupted on receive — this was the actual root cause of
 	// "it worked once, then never again" for anything beyond a tiny
-	// payload (e.g. this Outpost's own BOARD_SYNC reply), found
-	// 2026-10-03 debugging Scout chat and confirmed live here too.
+	// payload, found 2026-10-03 debugging Scout chat.
 	static constexpr uint8_t HEADER_SPLIT     = 0x01;  // bit 0 — matches RNode's FLAG_SPLIT
 	static constexpr uint8_t SEQ_UNSET        = 0xFF;  // sentinel: no split in progress (never transmitted)
 	static constexpr int     LORA_MAX_PAYLOAD = 254;   // 255 - 1 header byte
