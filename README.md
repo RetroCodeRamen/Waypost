@@ -11,7 +11,7 @@
 
 ---
 
-**Waypost** aims to be a self-contained community network you can run without the Internet: a Raspberry Pi **Station**, local Wi‑Fi, LoRa mesh, handheld **Pockets**, and cheap **Outpost** nodes — with familiar apps like chat, mail, a wiki, files, and notices.
+**Waypost** aims to be a self-contained community network you can run without the Internet: a Raspberry Pi **Station**, local Wi‑Fi, LoRa mesh, handheld **Scouts** (T-Deck; internally the **Pocket** device class in code), and cheap **Outpost** nodes — with familiar apps like chat, mail, a wiki, files, and notices.
 
 That is the goal. **It is not there yet.**
 
@@ -61,7 +61,7 @@ These are **early prototype** captures of the laptop Station portal — not a sh
 |------|------|
 | **Waypost** | The overall platform / network |
 | **Waypost Station** | Raspberry Pi community server |
-| **Waypost Pocket** | LilyGO T-Deck handheld |
+| **Waypost Scout** | LilyGO T-Deck handheld (internal class: Pocket) |
 | **Waypost Outpost** | ESP32 LoRa hop / coverage node |
 | **Waylink** | Radio / transport layer |
 | **Waygate** | Captive portal when you join Wi‑Fi |
@@ -106,7 +106,7 @@ image/          Brand artwork
 docs/           Architecture, protocol, **roadmap/milestones**, hardware notes
 server/         Station API (early)
 web/portal/     Web UI shell (early)
-firmware/       Heltec bridge (dev); Pocket/Outpost still early
+firmware/       Scout (T-Deck), Outpost (Heltec), RNode, heltec bridge
 shared/         Shared protocol bits
 deploy/         Pi install templates (unvalidated on hardware)
 tools/          Simulators, radio helpers, screenshots

@@ -12,7 +12,7 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 |------|---------|
 | **Waypost** | The complete ecosystem and network. Example: “Connect to the Waypost network.” |
 | **Waypost Station** | The Raspberry Pi server that hosts community services. Central but not required for every peer-to-peer function. |
-| **Waypost Pocket** | The LilyGO T-Deck handheld computer — a Cybiko-like personal device, not a LoRa terminal. Also a **mobile courier**: can carry/forward messages for peers when Station is unreachable. |
+| **Waypost Scout** | The LilyGO T-Deck handheld computer — a Cybiko-like personal device, not a LoRa terminal. Also a **mobile courier**: can carry/forward messages for peers when Station is unreachable. |
 | **Waypost Outpost** | Autonomous ESP32 LoRa hop / coverage node (e.g. MakerHawk ESP32 LoRa V3). Always-on courier; not a Station and not a Pocket. |
 | **Waylink** | The logical communications / transport layer. First implementation: Reticulum/LXMF. Transport-agnostic. |
 | **Waygate** | Captive portal splash when joining Waypost Wi‑Fi — explains off‑grid / local-only access, then Continue to trust + sign-in (Station) or the Corkboard (Outpost). |
@@ -51,8 +51,9 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 |------|-------|
 | **Profile** | User’s personal profile; may live under Rollcall or status UI. Preferred web path: `/~username` |
 | **Station** | Short form for Waypost Station when unambiguous |
-| **Pocket** | Short form for Waypost Pocket when unambiguous |
+| **Scout** | Short form for Waypost Scout when unambiguous |
 | **Outpost** | Short form for Waypost Outpost when unambiguous |
+| **Pocket** | **Internal only** — device class in protocol, code, and DB (`pocket-*` node IDs, `PeerDispatchNode`, courier). Not the user-facing product name; the T-Deck product is **Waypost Scout**. |
 
 Former name **Relay** is retired — use **Outpost** in all user-facing and plan docs. Internal verbs (“relays a packet”) are fine; the product/node type is Outpost.
 
@@ -71,3 +72,5 @@ Former name **Relay** is retired — use **Outpost** in all user-facing and plan
 ## Internal identifiers (protocol / code)
 
 Protocol service IDs may be concise (`MAIL`, `FIELDBOOK`, `DISPATCH`). User-facing labels stay branded (`Postbox`, `Fieldbook`, `Dispatch`).
+
+**Pocket vs Scout:** firmware lives under `firmware/pocket/`, node IDs use the `pocket-` prefix, and server sims use `PeerDispatchNode` / “Pocket” in comments — that is intentional. UI, docs, and packaging say **Scout** / **Waypost Scout**.

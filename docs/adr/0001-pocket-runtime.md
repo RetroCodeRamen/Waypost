@@ -1,12 +1,12 @@
-# ADR 0001 — Waypost Pocket runtime
+# ADR 0001 — Waypost Scout (Pocket) runtime
 
 ## Status
 
-Proposed (research required before Phase 2/8 commitment)
+Accepted (2026-10-02): slice 0 boot splash; slice 1 uses the same vendored **microReticulum + lora_interface** stack as `firmware/outpost/` (not a third-party T-Deck mesh firmware base). Dispatch slice proven to path Station; full reply round trip blocked on the same Station RNode TX gap as Outpost.
 
 ## Context
 
-The Waypost Pocket (LilyGO T-Deck) needs keyboard, display, Wi-Fi, LoRa, Reticulum/LXMF, and eventually a Cybiko-like application shell. Two broad approaches exist:
+**Waypost Scout** is the T-Deck product; **Pocket** is the internal device class (protocol node IDs, server sims). The Scout needs keyboard, display, Wi-Fi, LoRa, Reticulum/LXMF, and eventually a Cybiko-like application shell. Two broad approaches exist:
 
 **A.** Build upon an existing T-Deck Reticulum / mesh UI firmware  
 **B.** Native ESP-IDF + LVGL (or similar) with Reticulum integrated underneath  

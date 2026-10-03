@@ -38,7 +38,7 @@ from server.services.dispatch.peer import (
 from server.services.dispatch.service import DispatchService
 from server.services.dispatch.store import DispatchStore
 from server.transports.mock import MockMesh, MockTransportConfig
-from shared.protocol.envelope import SVC_CORKBOARD, SVC_DISPATCH, Envelope, Flags
+from shared.protocol.envelope import SVC_CORKBOARD, SVC_DISPATCH, Envelope, Flags, decode_cbor
 
 
 def _cfg(seed: int) -> MockTransportConfig:
@@ -237,6 +237,32 @@ async def test_sync_piggybacks_station_pending():
     finally:
         await station_gateway.stop()
         await b.stop()
+
+
+@pytest.mark.asyncio
+async def test_pocket_node_gets_live_radio_push():
+    """Regression: _enqueue_push's radio-TX gate only covered radio-* and
+    rns-* node_ids, treating pocket-* (Scout/T-Deck) as HTTP-outbox-only --
+    wrong for a LoRa-only handheld with no Wi-Fi path to poll with. A bound
+    pocket-* device must get pushed over the live transport immediately,
+    the same as radio-*/rns-*, not just queued for a poll that never comes."""
+    mesh = MockMesh()
+    dispatch, station_gateway, _corkboard = _station(mesh)
+    pocket_t = mesh.attach("pocket-1-abcd", _cfg(13))
+    dispatch.store.bind_device("pocket-1-abcd", "bob")
+    mesh.link("pocket-1-abcd", "station")
+    await station_gateway.start()
+    await pocket_t.start()
+    try:
+        dispatch.send_direct(sender="aj", peer="bob", body="over the air", transport="wifi")
+
+        packet = await pocket_t.receive_one(timeout=2)
+        env = decode_cbor(packet.payload)
+        assert env.op == OP_MSG_PUSH
+        assert env.payload["message"]["body"] == "over the air"
+    finally:
+        await station_gateway.stop()
+        await pocket_t.stop()
 
 
 @pytest.mark.asyncio

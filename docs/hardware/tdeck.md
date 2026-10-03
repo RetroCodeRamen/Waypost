@@ -1,8 +1,10 @@
-# LilyGO T-Deck — Waypost Pocket
+# LilyGO T-Deck — hardware reference
+
+> **Canonical doc:** [scout.md](scout.md) (Waypost Scout product naming). This file is kept as a short alias for searches on “T-Deck”.
 
 ## Product role
 
-**Waypost Pocket**: handheld community computer (modern Cybiko successor), not a LoRa radio with menus.
+**Waypost Scout** (internal device class: **Pocket**): handheld community computer (modern Cybiko successor), not a LoRa radio with menus.
 
 ## Hardware (vendor-documented; confirm on unit)
 

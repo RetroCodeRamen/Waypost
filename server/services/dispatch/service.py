@@ -247,9 +247,12 @@ class DispatchService:
         )
         self._outbox[node_id].append(env.to_dict())
         self._queued_push_keys.add(key)
-        # Air-TX to radio-* (Heltec) and rns-* (Reticulum) peers; HTTP outbox for pocket-*
+        # Air-TX to radio-* (Heltec), rns-* (Reticulum), and pocket-* (Scout/
+        # T-Deck -- LoRa-only, no Wi-Fi path to poll the HTTP outbox with).
         if self._radio_push is not None and (
-            str(node_id).startswith("radio-") or str(node_id).startswith("rns-")
+            str(node_id).startswith("radio-")
+            or str(node_id).startswith("rns-")
+            or str(node_id).startswith("pocket-")
         ):
             try:
                 self._radio_push(env)
