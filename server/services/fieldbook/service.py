@@ -31,6 +31,11 @@ from server.services.fieldbook.constants import (
 )
 from server.services.fieldbook.store import FieldbookStore
 from shared.protocol.envelope import Envelope, Flags
+from shared.protocol.radio import CHUNK_DEFAULT, chunk_utf8, fit_list_reply, fit_text_reply
+
+# Titles/headings are cut for radio listings; slugs never are (they're the
+# key the Pocket fetches with).
+RADIO_TITLE_CHARS = 40
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -360,6 +365,8 @@ class FieldbookService:
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         try:
             if op == OP_WIKI_SEARCH:
+                if payload.get("compact"):
+                    return self._rpc_search_compact(envelope, payload)
                 results = self.search(
                     str(payload.get("q") or payload.get("query") or ""),
                     limit=int(payload.get("limit") or SEARCH_LIMIT_DEFAULT),
@@ -445,12 +452,83 @@ class FieldbookService:
             found = self.get_section(slug, payload.get("section"))
             if not found:
                 return self._err(envelope, "section_not_found")
+            if payload.get("limit") is not None:
+                return self._rpc_section_chunk(envelope, payload, found)
             return envelope.make_response(op=op, payload=found)
 
         if payload.get("outline"):
+            if payload.get("limit") is not None:
+                return self._rpc_outline_page(envelope, payload, page)
             return envelope.make_response(op=op, payload=self.get_outline(slug))
 
         return envelope.make_response(op=op, payload={"page": page})
+
+    # -- radio-sized reads (one encrypted Reticulum packet each) -------------
+    # Selected by the request carrying `limit` (or `compact` for search), so
+    # Wi-Fi/portal callers keep the full shapes. See shared/protocol/radio.py.
+
+    def _rpc_search_compact(self, envelope: Envelope, payload: dict[str, Any]) -> Envelope:
+        offset = max(0, int(payload.get("offset") or 0))
+        q = str(payload.get("q") or payload.get("query") or "").strip()
+        hits = self.store.search(q, limit=offset + SEARCH_LIMIT_MAX) if q else []
+        items = [
+            {"slug": h["slug"], "title": h["title"][:RADIO_TITLE_CHARS]}
+            for h in hits[offset:]
+        ]
+        env, _count = fit_list_reply(
+            lambda part, more: envelope.make_response(
+                op=envelope.op,
+                payload={"results": part, "offset": offset, "more": more},
+            ),
+            items,
+        )
+        return env
+
+    def _rpc_outline_page(
+        self, envelope: Envelope, payload: dict[str, Any], page: dict[str, Any]
+    ) -> Envelope:
+        offset = max(0, int(payload.get("offset") or 0))
+        entries = [
+            {"index": s["index"], "heading": (s["heading"] or "")[:RADIO_TITLE_CHARS]}
+            for s in outline_of(page["body"])
+        ][offset:]
+        env, _count = fit_list_reply(
+            lambda part, more: envelope.make_response(
+                op=envelope.op,
+                payload={
+                    "slug": page["slug"],
+                    "revision": page["revision"],
+                    "outline": part,
+                    "offset": offset,
+                    "more": more,
+                },
+            ),
+            entries,
+        )
+        return env
+
+    def _rpc_section_chunk(
+        self, envelope: Envelope, payload: dict[str, Any], found: dict[str, Any]
+    ) -> Envelope:
+        section = found["section"]
+        offset = max(0, int(payload.get("offset") or 0))
+        _, total = chunk_utf8(section["text"], 0, 0)
+        return fit_text_reply(
+            lambda piece: envelope.make_response(
+                op=envelope.op,
+                payload={
+                    "slug": found["slug"],
+                    "revision": found["revision"],
+                    "index": section["index"],
+                    "offset": offset,
+                    "total": total,
+                    "text": piece,
+                },
+            ),
+            section["text"],
+            offset,
+            int(payload.get("limit") or CHUNK_DEFAULT),
+        )
 
     @staticmethod
     def _compact(page: dict[str, Any]) -> dict[str, Any]:

@@ -25,6 +25,7 @@ from server.api.db import Database
 from server.api.deps import get_current_user
 from server.api.dispatch_routes import build_dispatch_router
 from server.api.fieldbook_routes import build_fieldbook_router
+from server.api.trailhead_routes import build_trailhead_router
 from server.api.finder_routes import build_finder_router
 from server.api.groups_routes import build_groups_router
 from server.api.locker_routes import build_locker_router
@@ -63,6 +64,8 @@ from server.services.fieldbook.constants import (
     OP_WIKI_UPDATE,
 )
 from server.services.fieldbook.service import FieldbookService
+from server.services.trailhead.constants import OP_TRAIL_GET
+from server.services.trailhead.service import TrailheadService
 from server.services.finder.constants import OP_SEARCH
 from server.services.finder.service import FinderService
 from server.services.groups.service import GroupsService
@@ -106,6 +109,7 @@ from shared.protocol.envelope import (
     SVC_NOTICEBOARD,
     SVC_PROFILE,
     SVC_SIGNAL,
+    SVC_TRAILHEAD,
     Envelope,
 )
 
@@ -154,6 +158,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         fieldbook = FieldbookService(
             db.fieldbook, get_binding=lambda n: db.dispatch.get_binding(n)
         )
+        trailhead = TrailheadService(db.trailhead)
+        trailhead.seed_defaults()
         finder = FinderService(
             commons=commons,
             noticeboard=noticeboard,
@@ -180,6 +186,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.groups = groups
         app.state.locker = locker
         app.state.fieldbook = fieldbook
+        app.state.trailhead = trailhead
         app.state.finder = finder
         app.state.rollcall = rollcall
         app.state.signal = SignalService(lambda: app.state)
@@ -233,6 +240,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             gateway.register(SVC_LOCKER, op, locker.handle_rpc)
         for op in (OP_WIKI_SEARCH, OP_WIKI_GET, OP_WIKI_UPDATE, OP_WIKI_CREATE):
             gateway.register(SVC_FIELDBOOK, op, fieldbook.handle_rpc)
+        gateway.register(SVC_TRAILHEAD, OP_TRAIL_GET, trailhead.handle_rpc)
         gateway.register(SVC_FINDER, OP_SEARCH, finder.handle_rpc)
         for op in (OP_SIGNAL_STATUS, OP_SIGNAL_ROUTE):
             gateway.register(SVC_SIGNAL, op, app.state.signal.handle_rpc)
@@ -391,6 +399,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.include_router(build_groups_router())
     app.include_router(build_locker_router())
     app.include_router(build_fieldbook_router())
+    app.include_router(build_trailhead_router())
     app.include_router(build_finder_router())
     app.include_router(build_signal_router())
     app.include_router(build_rollcall_router())
@@ -590,6 +599,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         @app.get("/fieldbook.html")
         def portal_fieldbook():
             return FileResponse(PORTAL_DIR / "fieldbook.html")
+
+        @app.get("/trailhead.html")
+        def portal_trailhead():
+            return FileResponse(PORTAL_DIR / "trailhead.html")
 
         @app.get("/finder.html")
         def portal_finder():

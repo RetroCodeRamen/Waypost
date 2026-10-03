@@ -17,6 +17,7 @@ from server.services.locker.store import LockerStore
 from server.services.mail.store import MailStore
 from server.services.noticeboard.store import NoticeStore
 from server.services.profiles.store import RollcallStore
+from server.services.trailhead.store import TrailheadStore
 
 
 SCHEMA = """
@@ -75,6 +76,7 @@ class Database:
         self.corkboard = CorkboardStore(self._conn)
         self.groups = GroupsStore(self._conn)
         self.fieldbook = FieldbookStore(self._conn)
+        self.trailhead = TrailheadStore(self._conn)
         self.rollcall = RollcallStore(self._conn)
         root = locker_root or (path.parent / "locker")
         self.locker = LockerStore(self._conn, root)
