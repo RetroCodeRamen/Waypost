@@ -31,6 +31,10 @@ const std::string& dest_hex();  // Scout's Reticulum destination hash
 
 // True when Station's path and identity are already known (cheap, no I/O).
 bool station_known();
+// Non-blocking: if Station's path isn't known, ask the network for it
+// (throttled to once per 30 s). Paths aren't kept across reboots, and
+// Station only announces now and then, so a fresh boot must ask.
+void seek_station();
 
 enum class Result { Ok, NoPath, Timeout, Error };
 const char* describe(Result r);

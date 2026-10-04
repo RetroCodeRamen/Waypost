@@ -10,11 +10,14 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 
 | App | What it does | Waylink ops |
 |-----|--------------|-------------|
-| **Home** | 2×2 tile launcher; first letter of an app name opens it | — |
+| **Pairing** | First boot: type the 6-digit code from the portal's Devices page (or the Scout adopts its account automatically if Station already has it bound) | `PAIR_REDEEM`, `WHOAMI` |
+| **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
+| **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
 | **Dispatch** | Chat with one default peer (`WAYPOST_DISPATCH_PEER`); unread badge in the title bar | `MSG_SEND`, `MSG_PUSH` + ack |
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
+| **Settings** | Who the Scout belongs to; set / change / remove the PIN; unpair | `UNPAIR` |
 
 Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply) as you scroll — see `docs/protocol.md` "Trailhead" and the radio-sized Fieldbook forms.
 
@@ -49,11 +52,12 @@ pio device monitor -p /dev/ttyACM0 -b 115200
 |------------|---------|
 | `WAYPOST_POCKET_ID` | Node id prefix (default `pocket-1`); the full id adds the first 4 hex of the destination hash, e.g. `pocket-1-e75a` |
 | `WAYPOST_STATION_DEST_HASH` | Station's Reticulum destination hash (32 hex) |
-| `WAYPOST_DISPATCH_USER` / `WAYPOST_DISPATCH_PEER` | Scout's own username and its default chat peer |
+| `WAYPOST_DISPATCH_PEER` | Default chat peer (until contacts land). The Scout's own user comes from Station, not a flag |
+| `WAYPOST_USB_REMOTE` | `1` (default) keeps the USB-serial remote control; `0` for field builds |
 
 Station hash: log in to the dev Station and read `GET /api/signal` → `waylink.rns_hash`, or use the hash printed at Station startup.
 
-Chat needs the Scout bound to its user on Station, **with** its destination hash, or Station can't route pushes back:
+**Pairing:** a new Scout opens on the Pairing screen. On the portal, open Devices → Pair a device and type the 6-digit code on the Scout; it sends its own destination hash, so Station can push to it. A Scout already bound via the API is recognized automatically (`WHOAMI`) once Station is in reach. Lab shortcut, equivalent to pairing:
 
 ```bash
 curl -X POST http://localhost:8000/api/dispatch/devices/bind -H 'Content-Type: application/json' \

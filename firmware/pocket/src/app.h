@@ -26,6 +26,20 @@ App& dispatch_app();
 App& fieldbook_app();
 App& trailhead_app();
 App& signal_app();
+App& pairing_app();
+App& lock_app();
+App& settings_app();
+
+// Lock screen (when a PIN is set); unlocking returns to the app that was
+// showing.
+void lock();
+bool locked();
+
+// Asks Station which account this Scout is bound to (PROFILE/WHOAMI), once
+// per boot as soon as Station is reachable: adopts the account if this
+// Scout was bound elsewhere (portal/API), or drops a stale one if it was
+// unpaired. Called from loop().
+void check_identity();
 
 // A live chat message pushed by Station: Dispatch records it, acks it, and
 // counts it as unread when another app has the screen.

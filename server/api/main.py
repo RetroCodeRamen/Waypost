@@ -89,7 +89,7 @@ from server.services.noticeboard.constants import (
     OP_NOTICE_LIST,
 )
 from server.services.noticeboard.service import NoticeboardService
-from server.services.profiles.constants import OP_PAIR_REDEEM
+from server.services.profiles.constants import OP_PAIR_REDEEM, OP_UNPAIR, OP_WHOAMI
 from server.services.profiles.rollcall import RollcallService
 from server.services.signal.service import (
     OP_SIGNAL_ROUTE,
@@ -136,7 +136,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             settings.waypost_sqlite_path,
             locker_root=settings.waypost_locker_dir,
         )
-        dispatch = DispatchService(db.dispatch)
+        dispatch = DispatchService(
+            db.dispatch, is_trusted_courier=lambda n: db.corkboard.is_claimed(n)
+        )
         postbox = PostboxService(
             db.mail,
             nodes_for_user=lambda u: db.dispatch.nodes_for_user(u),
@@ -245,6 +247,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         for op in (OP_SIGNAL_STATUS, OP_SIGNAL_ROUTE):
             gateway.register(SVC_SIGNAL, op, app.state.signal.handle_rpc)
         gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_WHOAMI, app.state.pairing.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_UNPAIR, app.state.pairing.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
         # PairingService is constructed before Transport exists (it needs

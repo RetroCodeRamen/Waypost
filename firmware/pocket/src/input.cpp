@@ -62,6 +62,11 @@ void init() {
 // whatever the Scout just logged back to it before raw mode is applied. Bare
 // bytes turned that echoed log text into keypresses (a 'd' opened Dispatch,
 // a newline sent a message). Log text never contains 0x1D.
+// Compile it out of field builds with -DWAYPOST_USB_REMOTE=0 (anyone with a
+// cable can otherwise drive the UI as the paired user; docs/security.md).
+#ifndef WAYPOST_USB_REMOTE
+#define WAYPOST_USB_REMOTE 1
+#endif
 constexpr uint8_t kSerialPrefix = 0x1D;  // Ctrl-]
 constexpr uint8_t kSerialUp = 0x10;      // Ctrl-P
 constexpr uint8_t kSerialDown = 0x0E;    // Ctrl-N
@@ -74,6 +79,7 @@ constexpr uint8_t kSerialPixels = 0x18;  // Ctrl-X: full screenshot (raw RGB565)
 Event poll() {
   Event e;
 
+#if WAYPOST_USB_REMOTE
   static bool armed = false;  // saw the prefix; next byte is a key
   if (Serial.available() > 0) {
     uint8_t b = static_cast<uint8_t>(Serial.read());
@@ -100,6 +106,7 @@ Event poll() {
     }
     return e;
   }
+#endif
 
   uint8_t key = keyboard::poll();
   if (key != 0) {

@@ -1,6 +1,7 @@
 // Home launcher — Cybiko-style tile grid.
 #include <string>
 
+#include "account.h"
 #include "app.h"
 #include "station_link.h"
 #include "ui.h"
@@ -18,8 +19,10 @@ const Tile kTiles[] = {
     {"Fieldbook", "Camp wiki", apps::fieldbook_app},
     {"Trailhead", "Station pages", apps::trailhead_app},
     {"Signal", "Radio + Station", apps::signal_app},
+    {"Settings", "PIN, pairing", apps::settings_app},
 };
-constexpr int kCols = 2;
+constexpr int kCols = 3;
+constexpr int kRows = 3;
 constexpr int kCount = sizeof(kTiles) / sizeof(kTiles[0]);
 
 class HomeApp : public App {
@@ -77,21 +80,21 @@ class HomeApp : public App {
 
  private:
   void draw_tile(int i) {
-    const int pad = 8;
-    const int w = (ui::kWidth - pad * 3) / kCols;
-    const int h = (ui::kBodyBottom - ui::kBodyTop - pad * 3) / 2;
+    const int pad = 6;
+    const int w = (ui::kWidth - pad * (kCols + 1)) / kCols;
+    const int h = (ui::kBodyBottom - ui::kBodyTop - pad * (kRows + 1)) / kRows;
     int x = pad + (i % kCols) * (w + pad);
     int y = ui::kBodyTop + pad + (i / kCols) * (h + pad);
     bool sel = i == _sel;
     auto& t = ui::tft();
     uint16_t bg = sel ? ui::kSelect : ui::kBg;
-    t.fillRoundRect(x, y, w, h, 8, bg);
-    t.drawRoundRect(x, y, w, h, 8, sel ? ui::kLive : ui::kBorder);
+    t.fillRoundRect(x, y, w, h, 6, bg);
+    t.drawRoundRect(x, y, w, h, 6, sel ? ui::kLive : ui::kBorder);
     t.setTextDatum(MC_DATUM);
     t.setTextColor(ui::kText, bg);
-    t.drawString(kTiles[i].name, x + w / 2, y + h / 2 - 10, 4);
-    t.setTextColor(sel ? ui::kText : ui::kTextDim, bg);
-    t.drawString(kTiles[i].hint, x + w / 2, y + h / 2 + 16, 2);
+    t.drawString(kTiles[i].name, x + w / 2, y + h / 2 - 7, 2);
+    t.setTextColor(sel ? ui::kText : ui::kMuted, bg);
+    t.drawString(kTiles[i].hint, x + w / 2, y + h / 2 + 11, 1);
     t.setTextDatum(TL_DATUM);
     ui::mark_dirty(x, y, w, h);
     ui::mirror_row(i, std::string(kTiles[i].name) + " - " + kTiles[i].hint, sel);
@@ -103,7 +106,8 @@ class HomeApp : public App {
 
   void draw_footer() {
     _known = station_link::station_known();
-    ui::footer(station_link::node_id() + (_known ? "   Station reachable" : "   looking for Station..."),
+    std::string who = account::paired() ? account::display_name() : std::string("not paired");
+    ui::footer(who + (_known ? "   Station reachable" : "   looking for Station..."),
                _known ? ui::kLive : ui::kMuted);
   }
 

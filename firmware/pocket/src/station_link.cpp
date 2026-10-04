@@ -195,6 +195,18 @@ bool station_known() {
          static_cast<bool>(RNS::Identity::recall(hash));
 }
 
+void seek_station() {
+  static uint32_t last = 0;
+  static bool asked = false;
+  if (station_known()) return;
+  if (asked && millis() - last < 30000) return;
+  RNS::Bytes hash;
+  if (!station_hash(hash)) return;
+  asked = true;
+  last = millis();
+  RNS::Transport::request_path(hash);
+}
+
 const char* describe(Result r) {
   switch (r) {
     case Result::Ok: return "ok";

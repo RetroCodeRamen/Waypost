@@ -7,13 +7,11 @@
 
 #include <Arduino.h>
 
+#include "account.h"
 #include "app.h"
 #include "station_link.h"
 #include "ui.h"
 
-#ifndef WAYPOST_DISPATCH_USER
-#define WAYPOST_DISPATCH_USER "aj"
-#endif
 #ifndef WAYPOST_DISPATCH_PEER
 #define WAYPOST_DISPATCH_PEER ""
 #endif
@@ -122,7 +120,7 @@ class DispatchApp : public App {
         [&](const std::string& mid, const std::string& rid) {
           return waylink::encode_msg_send_request(
               station_link::node_id().c_str(), station_link::kStationNodeId, mid, rid, 120,
-              WAYPOST_DISPATCH_USER, WAYPOST_DISPATCH_PEER, body.c_str());
+              account::username().c_str(), WAYPOST_DISPATCH_PEER, body.c_str());
         },
         reply, 1, 15000);
     bool ok = result == station_link::Result::Ok && reply.payload().flag("ok");

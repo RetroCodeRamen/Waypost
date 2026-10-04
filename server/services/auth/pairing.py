@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from server.api.db import Database
 from server.services.corkboard.constants import OP_OUTPOST_CLAIM
-from server.services.profiles.constants import OP_PAIR_REDEEM
+from server.services.profiles.constants import OP_PAIR_REDEEM, OP_UNPAIR, OP_WHOAMI
 from shared.protocol.envelope import Envelope, Flags
 
 if TYPE_CHECKING:
@@ -102,6 +102,15 @@ class PairingService:
     async def handle_rpc(self, env: Envelope) -> Envelope:
         """Waylink parity for radio-only devices — same single-use code,
         no password ever crosses LoRa (docs/security.md)."""
+        if env.op == OP_WHOAMI:
+            return self._rpc_whoami(env)
+        if env.op == OP_UNPAIR:
+            # Idempotent: an already-unbound device gets ok too, so a Scout
+            # retrying after a lost reply converges.
+            binding = self.dispatch.store.get_binding(env.src)
+            if binding:
+                self.dispatch.unbind_device(env.src, username=binding["username"])
+            return env.make_response(op=OP_UNPAIR, payload={"ok": True})
         if env.op != OP_PAIR_REDEEM:
             return env.make_response(
                 op=env.op,
@@ -128,6 +137,21 @@ class PairingService:
             op=OP_PAIR_REDEEM,
             payload={"ok": True, **binding},
             flags=Flags.RESPONSE | Flags.ACK,
+        )
+
+    def _rpc_whoami(self, env: Envelope) -> Envelope:
+        binding = self.dispatch.store.get_binding(env.src)
+        if not binding:
+            return env.make_response(
+                op=OP_WHOAMI, payload={"error": "not_paired"}, error=True
+            )
+        user = self.db.get_user_by_username(binding["username"]) or {}
+        return env.make_response(
+            op=OP_WHOAMI,
+            payload={
+                "username": binding["username"],
+                "display_name": (user.get("display_name") or binding["username"])[:40],
+            },
         )
 
     def redeem_outpost_code(

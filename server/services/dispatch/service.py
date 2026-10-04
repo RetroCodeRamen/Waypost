@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, Optional
+from typing import Any, Callable, Deque, Dict, Optional
 
 from server.services.dispatch.constants import (
     DELIVERY_DELIVERED,
@@ -30,8 +30,16 @@ logger = logging.getLogger("waypost.dispatch")
 
 
 class DispatchService:
-    def __init__(self, store: DispatchStore) -> None:
+    def __init__(
+        self,
+        store: DispatchStore,
+        *,
+        is_trusted_courier: Optional[Callable[[str], bool]] = None,
+    ) -> None:
         self.store = store
+        # Claimed Outposts relay other people's messages (MSG_SEND with a
+        # payload sender they aren't bound to); see _rpc_send.
+        self._is_trusted_courier = is_trusted_courier or (lambda _node_id: False)
         self._outbox: Dict[str, Deque[dict[str, Any]]] = defaultdict(deque)
         # Optional: push envelopes over radio (serial/Reticulum) as well as HTTP outbox
         self._radio_push = None  # Callable[[Envelope], None]
@@ -352,8 +360,29 @@ class DispatchService:
                 op=OP_MSG_SEND, payload={"error": "invalid_payload"}, error=True
             )
 
+        # Who may say who sent this (same principle as Noticeboard/Beacon,
+        # docs/protocol.md):
+        # - a bound device (a Scout) sends only as its own user; a payload
+        #   `sender` is accepted only when it agrees;
+        # - a claimed Outpost may relay someone else's message, carrying the
+        #   author in the payload (claimed Outposts are trusted relay
+        #   infrastructure, as for BEACON_SYNC; signatures would make this
+        #   end-to-end, see docs/security.md);
+        # - anything else is rejected.
         binding = self.store.get_binding(env.src)
-        sender = payload.get("sender") or (binding["username"] if binding else None)
+        claimed = payload.get("sender")
+        if binding:
+            sender = binding["username"]
+            if claimed and str(claimed).lower() != str(sender).lower():
+                return env.make_response(
+                    op=OP_MSG_SEND, payload={"error": "sender_mismatch"}, error=True
+                )
+        elif claimed and self._is_trusted_courier(str(env.src)):
+            sender = claimed
+        else:
+            return env.make_response(
+                op=OP_MSG_SEND, payload={"error": "unauthorized_device"}, error=True
+            )
         body = payload.get("body") or payload.get("text")
         message_id = payload.get("message_id") or env.mid
         conversation_id = payload.get("conversation_id")

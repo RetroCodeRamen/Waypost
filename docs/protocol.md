@@ -92,6 +92,18 @@ Attachments: metadata over LoRa; bodies normally Wi-Fi only.
 
 ---
 
+## Profile (`PROFILE`) — device pairing
+
+| Operation | Payload | Reply |
+|-----------|---------|-------|
+| `PAIR_REDEEM` | `{code, node_id, transport_dest}` | `{ok, username, node_id, transport_dest, ...}` — binds the device to the account that created the 6-digit code |
+| `WHOAMI` | `{}` | `{username, display_name}` for the sending device's binding, or `not_paired` |
+| `UNPAIR` | `{}` | `{ok}` — the sending device revokes **its own** binding (never another device's); idempotent |
+
+A Scout asks `WHOAMI` once Station is reachable after boot: it adopts the account if it was bound
+elsewhere (portal/API) and drops a stale one if it was unpaired. After a local unpair it sends
+`UNPAIR` before ever asking `WHOAMI` again, so Station can't hand the old account back.
+
 ## Fieldbook (`FIELDBOOK`) — M5 ✅ (2026-09-24, sim)
 
 Progressive: **search → outline → section → diff**. A Pocket never has to pull a whole page to
@@ -163,6 +175,12 @@ only (`PUT /api/trailhead/pages/{path}`). Paths: `a-z 0-9 - _ /`, max 64; pages 
 | `MSG_SYNC` | Catch-up / upload carried copies after reconnect (to Station or peer) |
 
 Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or `EXPIRED`).
+
+**Who the sender is (2026-10-03):** over Waylink, `MSG_SEND`'s sender is the account the sending
+device is bound to (`device_bindings`), never the payload. A bound device may include `sender`
+only if it matches (`sender_mismatch` otherwise). A **claimed Outpost** may relay someone else's
+message with the author in the payload (trusted relay infrastructure, as for `BEACON_SYNC`).
+Anything else gets `unauthorized_device`.
 
 **Offline / no-Station path:**
 - `MSG_SEND` may target another Pocket directly over Waylink; destination **delivers locally** when it is the recipient.  

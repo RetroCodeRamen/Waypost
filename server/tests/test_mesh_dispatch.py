@@ -54,7 +54,12 @@ def _memory_store() -> DispatchStore:
 def _station(
     mesh: MockMesh, store: DispatchStore | None = None
 ) -> tuple[DispatchService, WaylinkGateway, CorkboardService]:
-    dispatch = DispatchService(store or _memory_store())
+    # Outposts in these sims stand in for claimed Outposts (the claim flow
+    # itself is covered in test_pairing.py), so they may relay others' mail.
+    dispatch = DispatchService(
+        store or _memory_store(),
+        is_trusted_courier=lambda n: str(n).startswith("outpost-"),
+    )
     corkboard = CorkboardService(_memory_corkboard_store())
     transport = mesh.attach("station", _cfg(1))
     gateway = WaylinkGateway(transport, local_id="station")

@@ -21,6 +21,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
+#include "account.h"
 #include "app.h"
 #include "input.h"
 #include "station_link.h"
@@ -108,8 +109,16 @@ void setup() {
   }
   Serial.printf("boot: home after %lu ms\n", static_cast<unsigned long>(millis() - splash_start));
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
-  apps::home();
+  account::load();
+  if (!account::paired()) {
+    apps::open(apps::pairing_app());  // adopted automatically if Station already knows us
+  } else {
+    apps::home();
+    apps::lock();  // no-op without a PIN
+  }
 }
+
+static const uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;
 
 void loop() {
   station_link::loop();
@@ -119,11 +128,21 @@ void loop() {
 
   App* app = apps::current();
   if (app) {
+    static uint32_t last_input = millis();
     input::Event e = input::poll();
-    if (e.kind != input::Kind::None) app->on_event(e);
+    if (e.kind != input::Kind::None) {
+      last_input = millis();
+      app->on_event(e);
+    } else if (millis() - last_input >= kIdleLockMs && account::has_pin() && !apps::locked()) {
+      apps::lock();
+    }
     // on_event may have switched apps.
     apps::current()->tick();
   }
+
+  // Learns/confirms which account this Scout belongs to once Station is in
+  // reach (rate-limited inside).
+  if (!apps::locked()) apps::check_identity();
 
   static uint32_t last_status = 0;
   if (millis() - last_status >= 1000) {
