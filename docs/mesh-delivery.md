@@ -5,6 +5,12 @@
 hardware**. Builds on the comms rule in [roadmap.md](roadmap.md) and the store-and-forward
 rules in [architecture.md](architecture.md#pocketpocket-and-store-and-forward).
 
+**Refined 2026-10-04 by [network-model.md](network-model.md):** this doc's messaging rules stand, but
+"Station is the memory" now means Station is the *archive*, not a step that delivery waits on.
+Messages are signed objects synced peer to peer by the general `SYNC_*` protocol. The signature
+check uses offline certificates ([identity.md](identity.md#offline-identity-target)) instead of
+`ROLL_LIST` hashes. The build order below is folded into roadmap track **D**.
+
 ## What the human asked for (2026-10-04)
 
 > I want all messages to be stored by the Station as like a memory, a history, all of that. But

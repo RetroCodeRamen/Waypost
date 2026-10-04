@@ -11,7 +11,7 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 | Name | Meaning |
 |------|---------|
 | **Waypost** | The complete ecosystem and network. Example: “Connect to the Waypost network.” |
-| **Waypost Station** | The Raspberry Pi server that hosts community services. Central but not required for every peer-to-peer function. |
+| **Waypost Station** | The Raspberry Pi server: headquarters, archive, sync hub, recovery point, portal. The best-equipped peer — it enhances the network but does not create it; nothing else requires it to be up ([network-model.md](network-model.md)). |
 | **Waypost Scout** | The LilyGO T-Deck handheld computer — a Cybiko-like personal device, not a LoRa terminal. Also a **mobile courier**: can carry/forward messages for peers when Station is unreachable. |
 | **Waypost Outpost** | Autonomous ESP32 LoRa hop / coverage node (e.g. MakerHawk ESP32 LoRa V3). Always-on courier; not a Station and not a Pocket. |
 | **Waylink** | The logical communications / transport layer. First implementation: Reticulum/LXMF. Transport-agnostic. |
@@ -27,7 +27,7 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 |------|---------|
 | **Dispatch** | Instant messaging / group chat |
 | **Postbox** | Email |
-| **Rollcall** | People / profiles / contacts / presence |
+| **Rollcall** | People / profiles / contacts / presence — and on a Scout, **Nearby** (who and what is in range) |
 | **Commons** | Community / social feed |
 | **Fieldbook** | Editable community wiki |
 | **Trailhead** | The Station's small web: short linked text pages, readable on a Scout over the radio |
@@ -54,6 +54,9 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 | **Station** | Short form for Waypost Station when unambiguous |
 | **Scout** | Short form for Waypost Scout when unambiguous |
 | **Outpost** | Short form for Waypost Outpost when unambiguous |
+| **Courier** | A **role**, not a product: any device that physically carries objects between places that can't otherwise reach each other (a Scout in a pocket, a laptop, a moved Outpost). "The Scout acted as courier." |
+| **Object** | Anything the network syncs — a message, receipt, notice, Beacon event, wiki revision, identity certificate. Internal/design term ([network-model.md](network-model.md)). |
+| **Community key** | The Station-held key that signs identity and device certificates and revocations. Design term; not an app. Identity has no app name — people see it through Rollcall and Settings. |
 | **Pocket** | **Internal only** — device class in protocol, code, and DB (`pocket-*` node IDs, `PeerDispatchNode`, courier). Not the user-facing product name; the T-Deck product is **Waypost Scout**. |
 
 Former name **Relay** is retired — use **Outpost** in all user-facing and plan docs. Internal verbs (“relays a packet”) are fine; the product/node type is Outpost.

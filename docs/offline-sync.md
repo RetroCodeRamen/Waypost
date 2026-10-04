@@ -3,6 +3,11 @@
 **Status:** Design now · implement starting with milestone **N1** (Dispatch first). M3 added a first `courier_queue` / `MSG_SYNC` implementation for Dispatch (peer↔peer without Station + carry-forward to Station, dedup by `mid`) — see `server/services/dispatch/peer.py` and `server/tests/test_mesh_dispatch.py`. Multi-hop courier and Wi‑Fi↔LoRa failover are covered in the same sim. **Sim-only so far** — no Pocket firmware, no hardware.  
 **Not:** A speculative framework — first consumer is Dispatch; other apps adopt the same states.
 
+**2026-10-04:** the general mechanism these states ride on — immutable signed objects, one
+`SYNC_*` protocol between any two nodes, "converge at Station **or peer**" — is now defined in
+[network-model.md](network-model.md). Note the rule there: convergence must not *require* Station.
+The states below stay the user-facing view of an object's progress.
+
 ---
 
 ## Requirements

@@ -13,6 +13,30 @@ LoRa is **not** conventional IP. Do not transmit complete HTML sites across LoRa
 
 Both paths hit the same Station service layer (or peer services when Station is unavailable for Dispatch).
 
+## Network principle (adopted 2026-10-04)
+
+**No individual Waypost device is strictly necessary.** Waypost is a local-first, offline-first,
+store-and-forward network of peers that sync **objects** opportunistically and converge eventually.
+The Station is the best-equipped peer — headquarters, archive, sync hub, recovery point, portal —
+and **enhances the network; it does not create it.** Outposts are fixed infrastructure that run on
+their own; Scouts are complete personal devices; any moving device can act as a **Courier**.
+
+The full model is in **[network-model.md](network-model.md)**: objects and dedup, one peer-sync
+protocol for every node, capability discovery, offline-verifiable identity, long-range vs local
+transport tiers, graceful degradation. What the current code already does and what has to change
+is in **[decentralization-review.md](decentralization-review.md)**. Outpost design:
+**[outpost.md](outpost.md)**.
+
+The diagram below shows the **Station's** software and its place when present. It is not the shape
+of the network. With no Station the same diagram has no hub: Scouts and Outposts sync with each
+other.
+
+```text
+   Scout ◄──► Scout          Scout ◄──► Outpost ◄──► Outpost ◄──► Station
+     ▲          ▲              ▲                         ▲
+     └─ Courier (any moving device) carries objects between islands ─┘
+```
+
 ---
 
 ## System context
@@ -107,9 +131,16 @@ Application code must not import Reticulum directly outside the transport adapte
 
 ## Automatic transport selection (Pocket)
 
+Target (📋, [network-model.md](network-model.md) §9): two tiers. **Tier 1** long-range LoRa
+carries small, critical objects (messages, receipts, identity, Beacon, presence, sync summaries).
+**Tier 2** local high-throughput links (Wi-Fi to an Outpost/Station AP, ESP-NOW Scout↔Scout) carry
+large objects and bulk sync. The user sees what is available, not which radio is in use.
+
 1. Waypost Wi-Fi if available → HTTP API (prefer Station for sync)  
 2. Else Waylink route if destination reachable → compact RPC (may be peer Pocket or Outpost, **not** only Station)  
 3. Else queue locally and **carry** until a peer/Outpost/Station appears  
+
+Today (✅) the Scout uses only path 2, and only to Station.
 
 Conversations and mailboxes are identified by logical IDs, **not** by transport. Global unique IDs (`mid`) enable deduplication when a device switches Wi-Fi ↔ LoRa or when a carried copy finally reaches Station.
 
@@ -176,6 +207,11 @@ One Waypost account → username, `user@waypost` (or configured domain), profile
 
 Preferred: Stalwart as account authority + OIDC for apps that support it. Pocket radio identity is separate and **linked** via pairing codes.
 
+Target (📋): identities verifiable **offline** — the Station's community key signs identity and
+device certificates that every node caches; a Scout's PIN unlocks its device key locally; Station
+handles issuing, revocation and recovery but is not asked at login. See
+[identity.md](identity.md#offline-identity-target).
+
 Registration modes: `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.
 
 ---
@@ -184,6 +220,8 @@ Registration modes: `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.
 
 - Station: SQLite for core Waypost app state initially; FOSS apps keep their own stores.  
 - Pocket: microSD caches (`/waypost/...`), drafts, queues, local Logbook/Planner/Arcade.  
+- Every node (target): one **object store** keyed by a 128-bit object id, synced with peers by
+  set difference — "what do I have that you don't?" ([network-model.md](network-model.md) §3–5).  
 - Sync states: `LOCAL` | `QUEUED` | `SYNCING` | `SYNCED` | `CONFLICT` | `FAILED`.
 
 ---

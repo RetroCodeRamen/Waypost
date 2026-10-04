@@ -13,11 +13,16 @@ An off-grid community network you can run without the Internet:
 
 | Piece | Intent |
 |-------|--------|
-| **Waypost Station** | Raspberry Pi hub — Wi‑Fi apps + Waylink gateway |
+| **Waypost Station** | Raspberry Pi — headquarters, archive, sync hub, recovery point, portal. Enhances the network; doesn't create it |
 | **Waygate** | Captive portal when joining community Wi‑Fi |
 | **Waylink** | Compact RPC over LoRa (not HTML-over-radio) |
-| **Waypost Scout** | Handheld (T-Deck) — Cybiko-like personal device; internal class **Pocket** |
-| **Waypost Outpost** | Cheap ESP32 LoRa hop nodes |
+| **Waypost Scout** | Handheld (T-Deck) — complete personal Waypost, works with only another Scout; internal class **Pocket** |
+| **Waypost Outpost** | Fixed ESP32 LoRa infrastructure that runs on its own: relay, store, local services, Wi-Fi page |
+| **Courier** | A role: any moving device carrying objects between islands |
+
+**Network rule (2026-10-04, non‑negotiable):** **no individual device is strictly necessary.** Waypost is local-first, offline-first, store-and-forward, opportunistically connected and eventually synchronized. Every device adds capability, never a mandatory dependency. Model: [network-model.md](network-model.md). Gap analysis: [decentralization-review.md](decentralization-review.md).
+
+**Acceptance tests for the whole plan:** **T1** Station unplugged → two Scouts and an Outpost still form a useful network. **T2** Station returns → the network reconciles with no manual rebuild. **T3** adding a device adds capability, not a dependency.
 
 **Design rule:** full-bandwidth community computing on local Wi‑Fi; the *important* stuff still works slowly over LoRa.
 
@@ -111,6 +116,36 @@ transport proof → resilient messaging → identity/presence → shared sync
 
 Full analysis: **[priority-review.md](priority-review.md)**.  
 Foundational designs (implement later): [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md).
+
+## Decentralization track (dependency order)
+
+**Adopted 2026-10-04.** This is now the main line of work. It continues M3 (mesh semantics), M6
+(Outpost courier network) and M7 (Scout) rather than replacing them. Nothing is rewritten: each step
+adds to working code and keeps today's Station paths working alongside.
+
+Status key: ✅ implemented · 🟡 partial · 📋 planned · 🔧 architectural change required.
+
+| Step | What | Builds on | Status | Proves |
+|---|---|---|---|---|
+| **D0** | Model + review docs: [network-model.md](network-model.md), [decentralization-review.md](decentralization-review.md), [outpost.md](outpost.md), offline identity in [identity.md](identity.md#offline-identity-target) | — | ✅ 2026-10-04 | — |
+| **D1** | **Scout keeps its own data:** local store (own messages, receipts, outbox, Beacon events, contacts); apps read from it; outbox sends when a path appears; states queued / sent / delivered / archived | account + contacts cache ✅ | 🔧 | Scout useful with Station off (read history, compose) |
+| **D2** | **Offline identity:** community key on Station; identity + device certificates issued at `PAIR_REDEEM` / claim; cached on every device; revocation objects; PIN unlocks the Scout's device key | pairing ✅, device keys ✅ | 📋 / 🔧 | any node can verify a person offline |
+| **D3** | **Objects + signing:** 128-bit `oid`, object codec, Ed25519 signature over canonical CBOR (Python + C++, one shared test vector); `firmware/common/` lib shared by Scout and Outpost; Station verifies and accepts signed `dispatch.msg` alongside today's unsigned path | D2; `mid` dedup ✅ | 📋 | messages can't be forged by whoever carries them |
+| **D4** | **Peer sync:** `SYNC_HELLO/DIFF/WANT/PUT` in the Python sim first (port `PeerDispatchNode`/`OutpostNode` onto it), then on Station, then Scout. `station_link` → `link` (any peer). Scout↔Scout direct | D1, D3; `MSG_SYNC` ✅ | 📋 (sim precursor ✅) | **two Scouts, no Station** (T1 part); **Station rejoins and catches up** (T2) |
+| **D5** | **Outpost as a node:** flash object store (Corkboard notes too), `SYNC_*` with Scouts/Outposts/Station, local delivery to Scouts in range, cached certificates, Beacon events spread from any node | D3, D4 | 🔧 | **T1 complete** (2 Scouts + Outpost, Station unplugged) |
+| **D6** | **Capability discovery + status:** announce capability record, `CAPS_GET`, Scout "Nearby" and the home status block (Dispatch available / Station via Outpost); peers chosen by capability, not compiled-in hash | D4 (announce parsing can start earlier) | 📋 (auto-claim marker ✅) | **T3** |
+| **D7** | **Courier role:** carry budget, priority, retention (drop on archive receipt or expiry), Outpost→Courier→Outpost | D4, D5 | 📋 (sim ✅) | islands with no radio path converge |
+| **D8** | **Tier 2 transport:** Scout joins Outpost/Station Wi-Fi (Reticulum over UDP) and ESP-NOW Scout↔Scout for large objects; same `SYNC_*`. In parallel any time: **LoRa profile field test** (range vs airtime, SF8–SF11) | D4 | 📋 | full sync in seconds when close |
+| **D9** | **Services onto objects:** Noticeboard (area-local at Outposts), Fieldbook page cache, Postbox, Commons, Rollcall presence, Trailhead cache; Outpost Wi-Fi Dispatch page + sign-in without a Scout ([outpost.md](outpost.md#signing-in-without-a-scout)) | D5, D8 for large items | 📋 | Outpost serves people with no Scout and no Station |
+| **D10** | **Retire Station-only paths:** refuse unsigned device messages once every device has certificates; drop `is_trusted_courier`; portal shows how/when each item arrived | D2–D5 everywhere | 🔧 | — |
+
+**Test hardware:** D4's Scout↔Scout needs a **second T-Deck** (until then a Python stand-in Scout on
+the RNode with Station stopped). D5 uses the Heltec Outpost on hand. D7 needs no new hardware.
+
+**Acceptance demo (after D5/D6):** unplug Station → Scout A messages Scout B directly and via the
+Outpost; a Beacon raised on A shows on B; Outpost Wi-Fi shows the board → plug Station back in → the
+portal shows every message and the Beacon with no manual step → add a second Outpost → range grows,
+nothing is reconfigured.
 
 ### Just finished — **M7 Scout over real LoRa** (2026-10-03)
 
@@ -332,6 +367,8 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 
 ## Near-term queue (do in order)
 
+**From 2026-10-04: follow the [Decentralization track](#decentralization-track-dependency-order), D1 next.** Parallel, no dependencies: the physical Outpost claim test, the Pi install, the LoRa profile field test, hand-checking the Scout's Beacon screens. The list below is the earlier queue, kept for history.
+
 1. ~~**M2e** radio transport crypto~~ ✅ (over-air PASS 2026-09-22)  
 2. **M3** mesh/sim peer + shared sync adoption — sim ✅; hardware with Pocket firmware  
 3. **M4** identity depth — pairing codes + per-device revocation + `ADMIN_APPROVAL`/admin-role all ✅; Stalwart decision still open  
@@ -380,6 +417,10 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Pocket↔Pocket works without Station | Direct + Outpost + Pocket-as-courier | Camp life must not depend on the Pi being reachable |
 | Recipient reads now, still syncs to Station | Local delivery + durable `mid` sync later | Portal/history converge without blocking the human conversation |
 | Mesh delivery on hardware (2026-10-04) | Hop-by-hop courier; relays (Outposts, Scouts) may read what they carry; messages signed; Outposts serve nearby Scouts **and** people signed in on their Wi-Fi | Human's direction; design in [mesh-delivery.md](mesh-delivery.md). End-to-end encryption offered, not chosen for now |
+| **No device is strictly necessary (2026-10-04)** | Peer object sync for every node; Station = archive/hub/recovery, not a dependency; roadmap track D | Human's direction: a Cybiko-like, local-first network. Refinement, not a rewrite — services, names, hardware and working code kept ([decentralization-review.md](decentralization-review.md)) |
+| Offline identity (2026-10-04) | Station community key signs identity + device certificates; PIN unlocks the device key; any node verifies offline | Login and message checks must not need Station; passwords still never cross LoRa |
+| Naming (2026-10-04) | Beacon stays alerts; identity has no app name, discovery/presence = Rollcall "Nearby"; Fieldbook = wiki, Commons = social; Courier = a role | Human's choices; keeps every existing service name |
+| Tier 2 first choices (2026-10-04) | Wi-Fi to Outpost/Station APs + ESP-NOW Scout↔Scout; fast LoRa profile later | Separate radio from LoRa, so Tier 1 keeps listening; hardware already present |
 | **Next build = N2 username/password auth** | One account for portal + Pocket | Overdue; passwordless Station is not community-safe |
 | Production LoRa must be encrypted | M2e Reticulum (Heltec = lab only) | Cleartext CBOR on air is unacceptable for real camps |
 | Scout replies fit one packet | Radio-sized ops (`compact`/`limit`/`offset`), chunked text, a test guard at 383 bytes | microReticulum on the device can't receive anything larger; Resource transfer is a later speed-up |

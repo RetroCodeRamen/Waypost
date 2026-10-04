@@ -27,13 +27,38 @@ Do not rename protocol identifiers or SQLite bindings from `pocket` to `scout` �
 | microSD | Target for local-first caches (`/waypost/...`). Not used yet: firmware state (identity, Reticulum stores) lives in internal flash (LittleFS); the SD chip-select is held high at boot so the card stays off the shared SPI bus |
 | USB | `/dev/ttyACM0` — ESP32-S3 native CDC |
 
-## Software (current state, 2026-10-03)
+## Software (current state, 2026-10-04)
 
 - Runtime: [ADR 0001](../adr/0001-pocket-runtime.md) — Arduino + TFT_eSPI UI of our own over the same vendored **microReticulum** stack as `firmware/outpost/`.
 - Firmware tree: [`firmware/pocket/`](../../firmware/pocket/) (directory name = internal **Pocket** class). Build, flash, configuration, controls, and the USB-serial remote control are in its [README](../../firmware/pocket/README.md).
-- **Working over real LoRa:** Waypost Scout logo boot screen → home tile launcher → **Dispatch** (chat with one default peer, Station-relayed, live `MSG_PUSH` + ack, unread badge), **Fieldbook** (search → outline → section, read in ~160-byte chunks), **Trailhead** (Station's linked text pages), **Signal** (identity, Station path, PING ~1.8 s round trip).
-- Every reply a Scout asks for fits one encrypted Reticulum packet (383 bytes) — see `docs/protocol.md` (Trailhead; radio-sized Fieldbook forms).
-- **Not yet:** Scout↔Scout without Station, contact list / multiple conversations, Fieldbook editing, `PAIR_REDEEM` on-device (bind via portal/API for now), GPS `LOC_REPORT`, courier queue, microSD caches.
+- **Working over real LoRa:** logo boot screen; the radio starts in the background (Station reachable in ~10–20 s) → **pairing** on the device with a portal code (`WHOAMI`, `PAIR_REDEEM`), **PIN lock**, **Settings** → 3×3 launcher → **Dispatch** (conversations, contact picker from cached `ROLL_LIST`, chat, live push + ack, catch-up every 3 min), **Beacon** (full-screen alerts over any screen including the lock screen, list, raise), **Fieldbook**, **Trailhead**, **Signal**.
+- Every reply a Scout asks for fits one encrypted Reticulum packet (383 bytes) — see `docs/protocol.md`.
+- **Not yet:** anything without Station — see the plan below.
+
+## Firmware plan — a Scout that works on its own
+
+Direction adopted 2026-10-04 ([network-model.md](../network-model.md)): a Scout is a complete
+personal Waypost, not a Station terminal. Two Scouts in range must work with nothing else. In
+dependency order (roadmap track **D**, [roadmap.md](../roadmap.md#decentralization-track-dependency-order)):
+
+| Step | What | Status |
+|---|---|---|
+| Account + contacts cached in flash, owner-tagged | | ✅ |
+| PIN lock | UI lock only today | ✅ → 🔧 PIN unlocks the device key (D2) |
+| **Local object store** | messages (own conversations), receipts, outbox, Beacon events, contacts with certificates; LittleFS first, microSD when the card is used; bounded with retention rules | 📋 D1 |
+| **Apps read from the store** | Dispatch history/compose work offline; outbox sends when any path appears; screen shows "queued / sent / delivered / archived" | 🔧 D1 |
+| **Identity certificates** | stores its device cert and the community public key; verifies others offline | 📋 D2 |
+| **Signed objects** | every message/receipt/Beacon it creates is signed with its device key | 📋 D3 |
+| **`station_link` → `link`** | talks to any peer by destination; Station is one peer, picked by capability | 🔧 D4 |
+| **Peer sync** | `SYNC_*` with whoever is near: other Scouts, Outposts, Station | 📋 D4 |
+| **Nearby + status** | from announces: "Nearby: 2 Scouts, 1 Outpost · Station: via Outpost" | 📋 D6 |
+| **Courier role** | carries others' objects within a budget; drops them on archive receipt | 📋 D7 |
+| **Beacon spread** | relays Beacon events to peers; raise works without Station | 🔧 D5 |
+| **Tier 2** | ESP-NOW to other Scouts, Wi-Fi to Outpost/Station APs, for big syncs | 📋 D8 |
+| Fieldbook / Trailhead / Noticeboard pinned pages cached | | 📋 D9 |
+
+Storage note: internal flash has ~ a few MB of LittleFS free; the microSD slot shares the SPI bus
+with the radio and display, so it needs its own bring-up (bus locking) before use.
 
 ## Location (product intent)
 

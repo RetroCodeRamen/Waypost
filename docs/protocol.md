@@ -378,6 +378,36 @@ Portal Atlas (Wi‑Fi) uses HTTP against the same logical model; distance / rang
 - Outposts, Pockets (as couriers), and Station drop duplicates.  
 - Expired TTL → do not forward; may surface as `EXPIRED` to originator when known.  
 - Carry-forward queues are bounded (disk/RAM); oldest or lowest-priority drop first under pressure.
+- 🔧 Planned: `mid` stays the per-request id (64-bit, request/reply correlation). Synced **objects**
+  get their own 128-bit `oid`, created once by the author's device. Every store is keyed by `oid`,
+  insert-if-absent ([network-model.md](network-model.md) §4).
+
+---
+
+## Peer sync and capabilities (`SYNC`, `CAPS`) — 📋 planned (2026-10-04)
+
+Design: [network-model.md](network-model.md) §5–6. The same ops run between **any** two nodes —
+Scout, Outpost, Station, Courier — over any transport. Nothing here needs Station.
+
+| Op | Direction | Payload (sketch) | Reply |
+|---|---|---|---|
+| `SYNC_HELLO` | either | `{caps, interests:[scope…], sum:{scope: {n, x}}}` — per-scope count + XOR of oids | peer's own HELLO |
+| `SYNC_DIFF` | either | `{scope, prefix, buckets:[{n, x}×16]}` for differing prefixes | same shape, or `{oids:[…]}` once a bucket is small |
+| `SYNC_WANT` | either | `{oids:[…]}` (≤ 20 per packet) | `SYNC_PUT` stream |
+| `SYNC_PUT` | either | `{obj}` (one per packet on Tier 1; batches on Tier 2) | `ACK` |
+| `CAPS_GET` | either | `{}` | full capability record (storage, counts, Station path age, area) |
+
+**Object on the wire:** CBOR map `{oid, k (kind), a (identity id), d (device hash), c (created ms),
+s (scope), r (refs), e (expires?), b (body), sig}`. Signature = Ed25519 by the device key over the
+canonical CBOR of all other fields. A test pins the canonical bytes in Python and C++.
+
+**Announce `app_data`** (Tier 1): compact capability record (`r` roles, `s` services bitmap,
+`t` transports, `st` Station reachability + age, `h` Bloom filter of identity ids it holds objects
+for, `v` summary version). Generalizes today's Outpost auto-claim marker ✅.
+
+**Compatibility:** `DISPATCH/MSG_SYNC` ✅ keeps working as the Dispatch-only form; `MSG_SEND` ✅
+keeps working and becomes "create a `dispatch.msg` object at the receiving node" when unsigned
+(bound device, today's rule) or "ingest the object" when signed.
 
 ---
 
