@@ -174,6 +174,16 @@ class DispatchStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_radio_nodes(self) -> list[str]:
+        """Bound devices that only reach Station over LoRa (Scouts etc.)."""
+        rows = self._conn.execute(
+            """
+            SELECT node_id FROM device_bindings
+            WHERE node_id LIKE 'pocket-%' OR node_id LIKE 'radio-%' OR node_id LIKE 'rns-%'
+            """
+        ).fetchall()
+        return [r[0] for r in rows]
+
     def unbind_user(self, username: str) -> int:
         cur = self._conn.execute(
             "DELETE FROM device_bindings WHERE username = ? COLLATE NOCASE",

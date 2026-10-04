@@ -76,7 +76,10 @@ void init() {
   } else {
     Serial.println("ui: no memory for the screen canvas; drawing directly");
   }
-  s().fillScreen(kBg);
+  // Not fillScreen(): on the canvas sprite it fills the panel's native
+  // 240-px width, leaving the rotated canvas's right 80 px black — the
+  // "dark right quarter" reported 2026-10-03.
+  s().fillRect(0, 0, kWidth, kHeight, kBg);
   mark_dirty();
 }
 

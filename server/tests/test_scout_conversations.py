@@ -197,3 +197,45 @@ def test_every_scout_op_is_registered_with_the_gateway(tmp_path: Path):
             ("TRAILHEAD", "TRAIL_GET"), ("CORE", "PING"),
         ]:
             assert key in handlers, key
+
+
+# -- Beacon alerts -------------------------------------------------------------
+
+
+def test_beacon_push_and_clear_alert_every_paired_scout_in_one_packet(tmp_path: Path):
+    from server.services.beacon.service import BeaconService
+
+    db = Database(tmp_path / "b.db")
+    db.dispatch.bind_device("pocket-1-aaaa", "aj")
+    db.dispatch.bind_device("pocket-1-bbbb", "bob")
+    db.dispatch.bind_device("wifi-carol", "carol")  # not a radio device
+    beacon = BeaconService(db.beacon, list_radio_nodes=db.dispatch.list_radio_nodes)
+    sent = []
+    beacon.set_radio_push(sent.append)
+
+    b = beacon.push(author="aj", title="Flash flood warning — move to high ground now",
+                    body="Creek is rising fast. " * 60, severity="emergency")
+    assert sorted(e.dst for e in sent) == ["pocket-1-aaaa", "pocket-1-bbbb"]
+    for e in sent:
+        assert e.op == "BEACON_ALERT" and _fits(e)
+        assert e.payload["id"] == b["id"] and e.payload["on"] is True
+        assert e.payload["sev"] == "emergency" and e.payload["b"].endswith("…")
+
+    sent.clear()
+    beacon.clear(b["id"])
+    assert len(sent) == 2 and all(e.payload["on"] is False for e in sent)
+
+
+def test_beacon_get_and_list_compact_fit(tmp_path: Path):
+    from server.services.beacon.service import BeaconService
+
+    db = Database(tmp_path / "b.db")
+    db.dispatch.bind_device(SCOUT, "aj")
+    beacon = BeaconService(db.beacon, get_binding=db.dispatch.get_binding)
+    for i in range(8):
+        beacon.push(author=f"user{i}", title=f"Advisory number {i} about the trail conditions",
+                    body="Details " * 100, severity="advisory")
+    r = beacon.handle_rpc(_env("BEACON", "BEACON_GET", {"compact": True}))
+    assert _fits(r) and r.payload["beacon"]["on"] is True
+    r = beacon.handle_rpc(_env("BEACON", "BEACON_LIST", {"compact": True}))
+    assert _fits(r) and r.payload["beacons"]

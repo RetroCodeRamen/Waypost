@@ -16,6 +16,7 @@ struct Tile {
 
 const Tile kTiles[] = {
     {"Dispatch", "Messages", apps::dispatch_app},
+    {"Beacon", "Emergency alerts", apps::beacon_app},
     {"Fieldbook", "Camp wiki", apps::fieldbook_app},
     {"Trailhead", "Station pages", apps::trailhead_app},
     {"Signal", "Radio + Station", apps::signal_app},

@@ -46,6 +46,7 @@ bool g_reply_ready = false;
 waylink::Reply g_reply;
 
 std::deque<waylink::IncomingChatMessage> g_incoming;
+std::deque<waylink::Reply> g_events;  // unsolicited requests (not chat)
 
 void (*g_busy_tick)() = nullptr;
 void (*g_busy_done)() = nullptr;
@@ -68,6 +69,12 @@ void on_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
   waylink::Reply reply;
   if (!waylink::parse_reply(data.data(), data.size(), reply)) {
     Serial.println("link: undecodable packet dropped");
+    return;
+  }
+  // A REQUEST that isn't a RESPONSE is Station telling us something
+  // unprompted (Flags.REQUEST = 1, RESPONSE = 2).
+  if ((reply.flags & 1) && !(reply.flags & 2)) {
+    if (g_events.size() < 8) g_events.push_back(std::move(reply));
     return;
   }
   if (g_waiting_rid.empty() || reply.rid != g_waiting_rid) {
@@ -196,7 +203,7 @@ void radio_task(void*) {
 
 }  // namespace
 
-bool start() {
+bool mount_storage() {
   step("Mounting storage");
   static microStore::FileSystem filesystem{microStore::Adapters::LittleFSFileSystem()};
   filesystem.init(false);
@@ -209,11 +216,14 @@ bool start() {
   filesystem.mkdir("/known_store");
   filesystem.mkdir("/hashlist_store");
 
+  return true;
+}
+
+void start_radio() {
   // Core 0, so the UI's loop() (core 1) keeps running. The display and the
   // radio share one SPI bus; both go through the global SPI object, whose
   // transactions are locked, so they can't interleave mid-transfer.
   xTaskCreatePinnedToCore(radio_task, "radio_boot", 24576, nullptr, 1, nullptr, 0);
-  return true;
 }
 
 bool ready() { return g_state.load(std::memory_order_acquire) == kReady; }
@@ -349,6 +359,13 @@ bool send(const RNS::Bytes& payload) {
   if (!connect(dest)) return false;
   RNS::Packet pkt(dest, payload);
   pkt.send();
+  return true;
+}
+
+bool pop_event(waylink::Reply& out) {
+  if (g_events.empty()) return false;
+  out = std::move(g_events.front());
+  g_events.pop_front();
   return true;
 }
 

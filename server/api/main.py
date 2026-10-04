@@ -156,6 +156,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             db.beacon,
             get_binding=lambda n: db.dispatch.get_binding(n),
             is_claimed_outpost=lambda n: db.corkboard.is_claimed(n),
+            list_radio_nodes=db.dispatch.list_radio_nodes,
         )
         corkboard = CorkboardService(db.corkboard)
         groups = GroupsService(db.groups)
@@ -341,6 +342,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 loop.create_task(gateway.send_envelope(env))
 
             dispatch.set_radio_push(_radio_push)
+            app.state.beacon.set_radio_push(_radio_push)
 
         if settings.waypost_transport in (
             "mock",

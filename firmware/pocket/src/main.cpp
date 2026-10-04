@@ -103,12 +103,14 @@ void setup() {
   Serial.println("Waypost Scout");
   // Storage now; the radio starts on a background task, so the apps don't
   // wait for it (a cold power-on once took ~3 minutes to bring it up).
-  if (!station_link::start()) {
+  if (!station_link::mount_storage()) {
     draw_boot_progress("Storage failed to mount - check the board", -1);
     return;
   }
+  // Files first, radio after: storage isn't safe for two tasks at once.
   account::load();
   contacts::load();
+  station_link::start_radio();
   // Show the logo for its minimum time; the bar just marks the time.
   while (millis() - splash_start < kSplashMinMs) {
     draw_boot_progress("", static_cast<int>((millis() - splash_start) * 100 / kSplashMinMs));
@@ -143,6 +145,10 @@ void loop() {
 
   waylink::IncomingChatMessage msg;
   while (station_link::pop_incoming(msg)) apps::deliver_chat(msg);
+  waylink::Reply event;
+  while (station_link::pop_event(event)) {
+    if (event.envelope.text("op") == "BEACON_ALERT") apps::beacon_event(event.payload());
+  }
 
   App* app = apps::current();
   if (app) {
@@ -151,7 +157,8 @@ void loop() {
     if (e.kind != input::Kind::None) {
       last_input = millis();
       app->on_event(e);
-    } else if (millis() - last_input >= kIdleLockMs && account::has_pin() && !apps::locked()) {
+    } else if (millis() - last_input >= kIdleLockMs && account::has_pin() && !apps::locked() &&
+               !apps::beacon_showing()) {
       apps::lock();
     }
     // on_event may have switched apps.
@@ -173,9 +180,11 @@ void loop() {
   bool came_back = known && !station_was_known &&
                    (last_catch_up == 0 || millis() - last_catch_up > 60000);
   bool periodic = known && last_catch_up != 0 && millis() - last_catch_up > kCatchUpEveryMs;
-  if ((came_back || periodic) && account::paired() && !apps::locked()) {
+  if ((came_back || periodic) && account::paired()) {
     last_catch_up = millis();
-    apps::catch_up_chat();
+    if (!apps::locked()) apps::catch_up_chat();
+    // A Beacon raised while we were off or away — shown even when locked.
+    apps::check_beacon();
   }
   station_was_known = known;
 

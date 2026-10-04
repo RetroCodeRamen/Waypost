@@ -29,6 +29,7 @@ App& signal_app();
 App& pairing_app();
 App& lock_app();
 App& settings_app();
+App& beacon_app();
 
 // Lock screen (when a PIN is set); unlocking returns to the app that was
 // showing.
@@ -46,5 +47,12 @@ void check_identity();
 void deliver_chat(const waylink::IncomingChatMessage& msg);
 // Fetch messages missed while out of range (DISPATCH/MSG_SYNC, paged).
 void catch_up_chat();
+
+// A Beacon from Station (BEACON_ALERT push or BEACON_GET, compact form):
+// shows the full-screen alert over any app, or closes it when cleared.
+void beacon_event(const waylink::Value& compact);
+bool beacon_showing();
+// Ask Station for the active Beacon (an alert sent while we were away).
+void check_beacon();
 
 }  // namespace apps

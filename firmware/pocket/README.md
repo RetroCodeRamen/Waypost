@@ -14,6 +14,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
 | **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
 | **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). Missed messages (or ones whose delivery ack was lost) arrive by catch-up when Station comes into reach and every 3 minutes while it is | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
+| **Beacon** | Emergency alerts: full-screen alarm in the severity's colour over any app (lock screen too) until acknowledged; shows "CLEARED" if cancelled. The app lists the current and recent Beacons and can raise one (severity → headline → details → type SEND) | `BEACON_ALERT` (pushed), `BEACON_GET`, `BEACON_LIST`, `BEACON_PUSH` |
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
@@ -86,7 +87,7 @@ the off-screen canvas; framing in `src/ui.cpp`), and **Ctrl-D** prints the curre
 
 ## Known limitations
 
-- The radio starts on a background task (`station_link::start`), so the apps open after the logo even if the radio is slow; the title-bar dot and home footer say "radio starting…" until it's up, and radio-dependent screens say so instead of hanging. Signal shows the last boot's total and slowest step (`/waypost_lastboot`). Test a slow radio with `PLATFORMIO_BUILD_FLAGS=-DWAYPOST_TEST_SLOW_RADIO_MS=30000`.
+- The radio starts on a background task (`station_link::start_radio`, after the account and contacts files are loaded — storage isn't safe for two tasks at once), so the apps open after the logo even if the radio is slow; the title-bar dot and home footer say "radio starting…" until it's up, and radio-dependent screens say so instead of hanging. Signal shows the last boot's total and slowest step (`/waypost_lastboot`). Test a slow radio with `PLATFORMIO_BUILD_FLAGS=-DWAYPOST_TEST_SLOW_RADIO_MS=30000`.
 - Boot shows the Waypost Scout logo (`src/scout_logo.h`, from `image/waypost-scout-logo.png` via `tools/make_scout_logo.py`) with a progress bar, for at least 5 s. Requests show a spinner in the title bar while waiting.
 - Colors are the night-sky blue-greens of the README header art (`image/logo2.png`) and the logo, defined once as named roles in `src/ui.h`. The panel is **BGR** (`include/tdeck_tft_setup.h`); with RGB, blue-greens show as olive.
 - Changing `include/tdeck_tft_setup.h` needs `pio run -t clean`: it's force-included into TFT_eSPI, and PlatformIO doesn't rebuild the library when it changes.

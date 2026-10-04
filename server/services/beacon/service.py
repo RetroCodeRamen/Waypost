@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Callable, Optional
 
 from server.services.beacon.constants import (
     MAX_BODY,
     MAX_TITLE,
+    OP_BEACON_ALERT,
     OP_BEACON_CLEAR,
     OP_BEACON_GET,
     OP_BEACON_LIST,
@@ -16,7 +18,10 @@ from server.services.beacon.constants import (
     PUSH_COOLDOWN_SEC,
 )
 from server.services.beacon.store import BeaconStore
-from shared.protocol.envelope import Envelope, Flags
+from shared.protocol.envelope import SVC_BEACON, Envelope, Flags, encode_cbor
+from shared.protocol.radio import RADIO_MDU, chunk_utf8, fit_list_reply
+
+logger = logging.getLogger("waypost.beacon")
 
 ALLOWED_SEVERITY = {"emergency", "urgent", "advisory"}
 
@@ -28,8 +33,13 @@ class BeaconService:
         *,
         get_binding: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
         is_claimed_outpost: Optional[Callable[[str], bool]] = None,
+        list_radio_nodes: Optional[Callable[[], list[str]]] = None,
     ) -> None:
         self.store = store
+        # Every paired radio device (Scouts) is told the moment a Beacon is
+        # raised or cleared — an emergency can't wait for someone to look.
+        self._list_radio_nodes = list_radio_nodes or (lambda: [])
+        self._radio_push: Optional[Callable[[Envelope], None]] = None
         # Same injected cross-service lookup as PostboxService/NoticeboardService
         # (avoids importing DispatchStore directly). Without it, BEACON_PUSH/
         # CLEAR over Waylink trusted whatever the packet's own payload
@@ -39,6 +49,57 @@ class BeaconService:
         # Same shape, for BEACON_SYNC: is envelope.src a Corkboard-claimed
         # Outpost (went through OUTPOST_CLAIM, not just "sent a packet once")?
         self._is_claimed_outpost = is_claimed_outpost or (lambda _node_id: False)
+
+    def set_radio_push(self, callback: Callable[[Envelope], None]) -> None:
+        self._radio_push = callback
+
+    @staticmethod
+    def compact(beacon: dict[str, Any], body_limit: int = 160) -> dict[str, Any]:
+        """Radio form of a Beacon (keys kept short; body cut to fit)."""
+        body = str(beacon.get("body") or "")
+        piece, total = chunk_utf8(body, 0, body_limit)
+        return {
+            "id": beacon["id"],
+            "t": str(beacon.get("title") or "")[:60],
+            "sev": beacon.get("severity") or "emergency",
+            "b": piece if len(piece.encode("utf-8")) >= total else piece + "…",
+            "a": str(beacon.get("author") or "")[:32],
+            "ts": int(beacon.get("created_at") or 0),
+            "on": bool(beacon.get("active")),
+        }
+
+    def _notify(self, beacon: Optional[dict[str, Any]]) -> None:
+        if not beacon or self._radio_push is None:
+            return
+        for node_id in self._list_radio_nodes():
+            env = self._fit_alert(node_id, beacon)
+            try:
+                self._radio_push(env)
+            except Exception:
+                logger.exception("beacon_alert_push_failed node=%s", node_id)
+        logger.info(
+            "beacon_alert id=%s active=%s nodes=%d",
+            beacon["id"], bool(beacon.get("active")), len(self._list_radio_nodes()),
+        )
+
+    @staticmethod
+    def _shrink_to_fit(build: Callable[[int], Envelope]) -> Envelope:
+        """build(body_limit) -> Envelope; cut the body until it fits one
+        packet (shared/protocol/radio.py)."""
+        limit = 160
+        env = build(limit)
+        while len(encode_cbor(env)) > RADIO_MDU and limit > 8:
+            limit = max(8, limit - (len(encode_cbor(env)) - RADIO_MDU) - 2)
+            env = build(limit)
+        return env
+
+    def _fit_alert(self, node_id: str, beacon: dict[str, Any]) -> Envelope:
+        return self._shrink_to_fit(
+            lambda limit: Envelope(
+                src="station", dst=node_id, svc=SVC_BEACON, op=OP_BEACON_ALERT,
+                flags=int(Flags.REQUEST), payload=self.compact(beacon, limit),
+            )
+        )
 
     def _bound_username(self, node_id: str) -> Optional[str]:
         binding = self._get_binding(node_id)
@@ -77,7 +138,7 @@ class BeaconService:
                 raise ValueError(
                     f"rate limited — wait {PUSH_COOLDOWN_SEC}s between Beacon pushes"
                 )
-        return self.store.push(
+        beacon = self.store.push(
             author=author,
             title=title,
             body=body,
@@ -85,6 +146,8 @@ class BeaconService:
             beacon_id=beacon_id,
             mid=mid,
         )
+        self._notify(beacon)
+        return beacon
 
     def get_active(self) -> Optional[dict[str, Any]]:
         return self.store.get_active()
@@ -96,7 +159,9 @@ class BeaconService:
         return self.store.list_beacons(limit=limit, active_only=active_only)
 
     def clear(self, beacon_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-        return self.store.clear(beacon_id)
+        cleared = self.store.clear(beacon_id)
+        self._notify(cleared)
+        return cleared
 
     def sync(
         self,
@@ -153,7 +218,26 @@ class BeaconService:
         try:
             if op == OP_BEACON_GET:
                 active = self.get_active()
+                if payload.get("compact"):  # radio-sized, for Scouts
+                    if not active:
+                        return envelope.make_response(op=op, payload={"beacon": None})
+                    return self._shrink_to_fit(
+                        lambda limit: envelope.make_response(
+                            op=op, payload={"beacon": self.compact(active, limit)}
+                        )
+                    )
                 return envelope.make_response(op=op, payload={"beacon": active})
+            if op == OP_BEACON_LIST and payload.get("compact"):
+                items = [
+                    {"id": b["id"], "t": str(b.get("title") or "")[:40], "sev": b.get("severity"),
+                     "ts": int(b.get("created_at") or 0), "on": bool(b.get("active"))}
+                    for b in self.list_beacons(limit=20)
+                ]
+                reply, _ = fit_list_reply(
+                    lambda part, more: envelope.make_response(op=op, payload={"beacons": part, "more": more}),
+                    items,
+                )
+                return reply
             if op == OP_BEACON_LIST:
                 beacons = self.list_beacons(
                     limit=int(payload.get("limit") or 20),
