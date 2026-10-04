@@ -73,8 +73,9 @@ class HomeApp : public App {
     last = millis();
     bool known = station_link::station_known();
     int radio = station_link::ready() ? 1 : station_link::failed() ? 2 : 0;
-    if (known != _known || radio != _radio) {
+    if (known != _known || radio != _radio || account::display_name() != _who) {
       _radio = radio;
+      _who = account::display_name();
       draw_footer();
     }
   }
@@ -121,6 +122,7 @@ class HomeApp : public App {
   int _sel = 0;
   bool _known = false;
   int _radio = -1;  // 0 starting, 1 ready, 2 failed
+  std::string _who;
 };
 
 }  // namespace

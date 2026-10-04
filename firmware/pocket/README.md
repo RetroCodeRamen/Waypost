@@ -13,7 +13,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Pairing** | First boot: type the 6-digit code from the portal's Devices page (or the Scout adopts its account automatically if Station already has it bound) | `PAIR_REDEEM`, `WHOAMI` |
 | **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
 | **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
-| **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). Missed messages arrive by catch-up when Station comes into reach | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
+| **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). Missed messages (or ones whose delivery ack was lost) arrive by catch-up when Station comes into reach and every 3 minutes while it is | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |

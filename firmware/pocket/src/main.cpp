@@ -162,12 +162,18 @@ void loop() {
   // reach (rate-limited inside).
   if (!apps::locked()) apps::check_identity();
 
-  // Each time Station comes (back) into reach: fetch missed messages.
+  // Fetch missed messages each time Station comes (back) into reach, and
+  // every few minutes while it's in reach: a push whose frames were lost,
+  // or whose delivery ack was lost, stays pending on Station until a
+  // MSG_SYNC collects it (duplicates are dropped by message id).
   static bool station_was_known = false;
   static uint32_t last_catch_up = 0;
+  const uint32_t kCatchUpEveryMs = 3UL * 60UL * 1000UL;
   bool known = station_link::station_known();
-  if (known && !station_was_known && account::paired() && !apps::locked() &&
-      (last_catch_up == 0 || millis() - last_catch_up > 60000)) {
+  bool came_back = known && !station_was_known &&
+                   (last_catch_up == 0 || millis() - last_catch_up > 60000);
+  bool periodic = known && last_catch_up != 0 && millis() - last_catch_up > kCatchUpEveryMs;
+  if ((came_back || periodic) && account::paired() && !apps::locked()) {
     last_catch_up = millis();
     apps::catch_up_chat();
   }

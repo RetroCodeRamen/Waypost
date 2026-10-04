@@ -3,14 +3,16 @@
 #include <Arduino.h>
 #include <microReticulum.h>
 
+#include "account.h"
+
 namespace contacts {
 namespace {
 
-const char* const kPath = "/waypost_contacts";  // one "user\tname\tdest" per line
+const char* const kPath = "/waypost_contacts";  // "#owner\t<user>", then "user\tname\tdest" lines
 std::vector<Contact> g_contacts;
 
 void save() {
-  std::string out;
+  std::string out = "#owner\t" + account::username() + "\n";
   for (const auto& c : g_contacts) out += c.username + "\t" + c.name + "\t" + c.scout_dest + "\n";
   RNS::Utilities::OS::write_file(kPath, RNS::Bytes(out));
 }
@@ -22,7 +24,15 @@ void load() {
   RNS::Bytes raw;
   if (RNS::Utilities::OS::read_file(kPath, raw) == 0) return;
   std::string s(reinterpret_cast<const char*>(raw.data()), raw.size());
-  size_t pos = 0;
+  // Another account's directory (or a file from before owners were
+  // recorded) is stale: drop it and let the picker fetch afresh.
+  std::string owner = "#owner\t" + account::username() + "\n";
+  if (s.compare(0, owner.size(), owner) != 0) {
+    Serial.println("contacts: cache belongs to another account, discarded");
+    clear();
+    return;
+  }
+  size_t pos = owner.size();
   while (pos < s.size()) {
     size_t nl = s.find('\n', pos);
     std::string line = s.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
@@ -36,6 +46,11 @@ void load() {
 }
 
 const std::vector<Contact>& all() { return g_contacts; }
+
+void clear() {
+  g_contacts.clear();
+  RNS::Utilities::OS::remove_file(kPath);
+}
 
 const Contact* find(const std::string& username) {
   for (const auto& c : g_contacts)

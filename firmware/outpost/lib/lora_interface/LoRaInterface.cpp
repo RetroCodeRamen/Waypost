@@ -260,11 +260,14 @@ bool LoRaInterface::read_frame(Bytes& out) {
 		}
 	} else if (state != RADIOLIB_ERR_NONE) {
 		DEBUGF("LoRaInterface: readData failed, code %d", state);
+		_radio->startReceive();  // recover from a bad read
 	}
 
-	// Re-arm receive mode (required after every packet on SX1262;
-	// harmless on SX1276)
-	_radio->startReceive();
+	// No re-arm after a good frame: startReceive() puts the radio in
+	// *continuous* receive, so it is still listening. Restarting it here
+	// (as this used to) aborted whatever frame was arriving — and RNode
+	// sends the second half of a split packet right behind the first, so
+	// two-frame packets (e.g. a long Dispatch push) were often lost.
 	return complete;
 }
 

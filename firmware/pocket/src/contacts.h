@@ -17,6 +17,8 @@ struct Contact {
 };
 
 void load();
+// Forget cached contacts (the Scout was unpaired or changed account).
+void clear();
 const std::vector<Contact>& all();
 const Contact* find(const std::string& username);
 // Fetches the whole directory from Station (paged) and saves it.

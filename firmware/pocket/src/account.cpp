@@ -5,6 +5,8 @@
 #include <Arduino.h>
 #include <microReticulum.h>
 
+#include "contacts.h"
+
 namespace account {
 namespace {
 
@@ -48,6 +50,8 @@ const std::string& username() { return g_username; }
 const std::string& display_name() { return g_display_name; }
 
 void set_user(const std::string& username, const std::string& display_name) {
+  // Contacts are the old account's directory (maybe from another Station).
+  if (username != g_username) contacts::clear();
   g_username = username;
   g_display_name = display_name.empty() ? username : display_name;
   std::string s = g_username + "\n" + g_display_name;
@@ -55,6 +59,7 @@ void set_user(const std::string& username, const std::string& display_name) {
 }
 
 void unpair() {
+  contacts::clear();
   g_username.clear();
   g_display_name.clear();
   remove_file(kUserPath);

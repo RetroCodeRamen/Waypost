@@ -36,6 +36,11 @@ detection, backs off 100–400 ms while the channel is busy (still receiving,
 into a backlog delivered after the send), and sends anyway after 8 tries.
 Without it, an Outpost re-broadcasting an announce would talk over a
 Scout's first request, and Station decoded neither.
+**Also (2026-10-04): no receive re-arm after a good frame.** The radio is
+in continuous receive; the driver used to call `startReceive()` after
+every frame, which aborted the second half of a split packet arriving
+right behind the first (2 of 5 two-frame Dispatch pushes lost in a test;
+0 of 10 after).
 `firmware/pocket/lib/lora_interface/` carries the identical patch.
 `lib/microReticulum/` is also a locally patched copy (absolute storage
 paths, `ad57a88`; `NEIGHBOR_PROBE_RATELIMIT` widened to `uint16_t`, since

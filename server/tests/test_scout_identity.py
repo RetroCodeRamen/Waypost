@@ -23,8 +23,12 @@ SCOUT_DEST = "e75a4c2818b4cd84b800d98827a11ed9"
 def svc(tmp_path: Path):
     db = Database(tmp_path / "test.db")
     dispatch = DispatchService(
-        db.dispatch, is_trusted_courier=lambda n: n == "outpost-1"
+        db.dispatch,
+        is_trusted_courier=lambda n: n == "outpost-1",
+        user_exists=lambda u: db.get_user_by_username(u) is not None,
     )
+    db.ensure_user("bob")
+    db.ensure_user("carol")
     return db, dispatch, PairingService(db, dispatch)
 
 
@@ -50,6 +54,27 @@ async def test_whoami_unpaired_then_paired(svc):
     assert len(encode_cbor(me)) <= RADIO_MDU
 
 
+class _Routes:
+    def __init__(self):
+        self.routes = {}
+
+    def learn_route(self, node_id, dest):
+        self.routes[node_id] = dest
+
+
+async def test_unbound_device_gets_a_reply_route_but_cannot_hijack_a_bound_one(svc):
+    _db, dispatch, pairing = svc
+    pairing.transport = _Routes()
+    # Unbound: Station learns where to send "not_paired".
+    r = await pairing.handle_rpc(_env(SCOUT, SVC_PROFILE, OP_WHOAMI, {"transport_dest": SCOUT_DEST}))
+    assert r.payload["error"] == "not_paired"
+    assert pairing.transport.routes == {SCOUT: SCOUT_DEST}
+    # Bound: a payload claiming another destination is ignored.
+    dispatch.bind_device("pocket-2-beef", "aj", transport_dest="be" * 16)
+    await pairing.handle_rpc(_env("pocket-2-beef", SVC_PROFILE, OP_WHOAMI, {"transport_dest": "ff" * 16}))
+    assert "pocket-2-beef" not in pairing.transport.routes
+
+
 async def test_unpair_revokes_only_the_sender_and_is_idempotent(svc):
     _db, dispatch, pairing = svc
     dispatch.bind_device(SCOUT, "aj")
@@ -69,6 +94,13 @@ async def test_bound_scout_sends_as_itself(svc):
     assert r.payload["ok"]
     msgs = dispatch.list_messages(r.payload["conversation_id"])
     assert msgs[-1]["sender"] == "aj"
+
+
+async def test_scout_message_to_unknown_user_is_rejected(svc):
+    _db, dispatch, _pairing = svc
+    dispatch.bind_device(SCOUT, "aj")
+    r = await dispatch.handle_rpc(_env(SCOUT, SVC_DISPATCH, OP_MSG_SEND, {"peer": "nobody", "body": "hi"}))
+    assert r.flags & Flags.ERROR and r.payload["error"] == "unknown_user"
 
 
 async def test_bound_scout_cannot_claim_another_sender(svc):

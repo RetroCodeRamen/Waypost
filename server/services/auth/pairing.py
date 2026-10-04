@@ -102,6 +102,8 @@ class PairingService:
     async def handle_rpc(self, env: Envelope) -> Envelope:
         """Waylink parity for radio-only devices — same single-use code,
         no password ever crosses LoRa (docs/security.md)."""
+        if env.op in (OP_WHOAMI, OP_UNPAIR):
+            self._route_reply_to_unbound(env)
         if env.op == OP_WHOAMI:
             return self._rpc_whoami(env)
         if env.op == OP_UNPAIR:
@@ -138,6 +140,25 @@ class PairingService:
             payload={"ok": True, **binding},
             flags=Flags.RESPONSE | Flags.ACK,
         )
+
+    def _route_reply_to_unbound(self, env: Envelope) -> None:
+        """A Reticulum packet doesn't say where it came from: Station can
+        only reply to a device whose destination hash it knows, normally from
+        its binding. An unbound device (never paired, or unpaired from the
+        portal) would never hear "not_paired", so it may include its own
+        `transport_dest`. Only honoured when the node has **no binding** — a
+        bound device's route always comes from its binding, so nobody can
+        redirect another device's traffic by claiming its node id."""
+        if self.dispatch.store.get_binding(env.src):
+            return
+        payload = env.payload if isinstance(env.payload, dict) else {}
+        dest = payload.get("transport_dest")
+        if not dest:
+            return
+        try:
+            self._learn_route(str(env.src), str(dest))
+        except ValueError:
+            logger.info("whoami_bad_transport_dest node=%s", env.src)
 
     def _rpc_whoami(self, env: Envelope) -> Envelope:
         binding = self.dispatch.store.get_binding(env.src)

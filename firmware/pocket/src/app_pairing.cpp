@@ -101,14 +101,14 @@ void apps::check_identity() {
   if (account::unpair_pending()) {
     // Finish an unpair done on this Scout before asking who we are —
     // otherwise WHOAMI would hand the old account straight back.
-    if (station_link::request("PROFILE", "UNPAIR", {}, reply, 2, 8000) != station_link::Result::Ok) {
+    if (station_link::request("PROFILE", "UNPAIR", {Field::text("transport_dest", station_link::dest_hex())}, reply, 2, 8000) != station_link::Result::Ok) {
       return;  // try again in a minute
     }
     account::clear_unpair_pending();
     Serial.println("identity: Station unpaired this Scout");
   }
 
-  auto r = station_link::request("PROFILE", "WHOAMI", {}, reply, 2, 8000);
+  auto r = station_link::request("PROFILE", "WHOAMI", {Field::text("transport_dest", station_link::dest_hex())}, reply, 2, 8000);
   if (r == station_link::Result::Ok || r == station_link::Result::Error) g_identity_settled = true;
   if (r == station_link::Result::Ok) {
     std::string user = reply.payload().text("username");

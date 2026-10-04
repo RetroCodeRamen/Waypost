@@ -97,8 +97,13 @@ Attachments: metadata over LoRa; bodies normally Wi-Fi only.
 | Operation | Payload | Reply |
 |-----------|---------|-------|
 | `PAIR_REDEEM` | `{code, node_id, transport_dest}` | `{ok, username, node_id, transport_dest, ...}` — binds the device to the account that created the 6-digit code |
-| `WHOAMI` | `{}` | `{username, display_name}` for the sending device's binding, or `not_paired` |
-| `UNPAIR` | `{}` | `{ok}` — the sending device revokes **its own** binding (never another device's); idempotent |
+| `WHOAMI` | `{transport_dest}` | `{username, display_name}` for the sending device's binding, or `not_paired` |
+| `UNPAIR` | `{transport_dest}` | `{ok}` — the sending device revokes **its own** binding (never another device's); idempotent |
+
+`transport_dest` (the device's own Reticulum destination hash) lets Station answer a device it has
+**no binding** for — a Reticulum packet doesn't carry a return address, so an unpaired Scout would
+otherwise never hear `not_paired`. It is ignored for bound devices: their route only ever comes
+from the binding, so nobody can redirect another device's replies by claiming its node id.
 | `ROLL_LIST` | `{offset?}` | `{people:[{u, n, d}], offset, more}` — the directory minus the caller: username, display name, their Scout's destination hash (`d`, for direct Scout-to-Scout later; `""` if none). **Paired devices only** |
 
 A Scout asks `WHOAMI` once Station is reachable after boot: it adopts the account if it was bound
@@ -190,7 +195,9 @@ Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or
 device is bound to (`device_bindings`), never the payload. A bound device may include `sender`
 only if it matches (`sender_mismatch` otherwise). A **claimed Outpost** may relay someone else's
 message with the author in the payload (trusted relay infrastructure, as for `BEACON_SYNC`).
-Anything else gets `unauthorized_device`.
+Anything else gets `unauthorized_device`. From a radio device, a `peer` Station has no account
+for gets `unknown_user` (rather than a dead-end conversation; the portal's HTTP path still creates
+users on send).
 
 **Offline / no-Station path:**
 - `MSG_SEND` may target another Pocket directly over Waylink; destination **delivers locally** when it is the recipient.  

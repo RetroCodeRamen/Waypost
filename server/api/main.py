@@ -138,7 +138,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             locker_root=settings.waypost_locker_dir,
         )
         dispatch = DispatchService(
-            db.dispatch, is_trusted_courier=lambda n: db.corkboard.is_claimed(n)
+            db.dispatch,
+            is_trusted_courier=lambda n: db.corkboard.is_claimed(n),
+            user_exists=lambda u: db.get_user_by_username(u) is not None,
         )
         postbox = PostboxService(
             db.mail,

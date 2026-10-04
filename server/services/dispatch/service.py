@@ -37,8 +37,10 @@ class DispatchService:
         store: DispatchStore,
         *,
         is_trusted_courier: Optional[Callable[[str], bool]] = None,
+        user_exists: Optional[Callable[[str], bool]] = None,
     ) -> None:
         self.store = store
+        self._user_exists = user_exists
         # Claimed Outposts relay other people's messages (MSG_SEND with a
         # payload sender they aren't bound to); see _rpc_send.
         self._is_trusted_courier = is_trusted_courier or (lambda _node_id: False)
@@ -409,6 +411,18 @@ class DispatchService:
         message_id = payload.get("message_id") or env.mid
         conversation_id = payload.get("conversation_id")
         peer = payload.get("peer") or payload.get("to")
+        # From a radio device, a peer Station has never heard of is a typo or
+        # a stale contact — say so instead of silently creating a dead-end
+        # conversation (the portal's HTTP path keeps its create-on-send).
+        if (
+            peer
+            and not conversation_id
+            and self._user_exists is not None
+            and not self._user_exists(str(peer))
+        ):
+            return env.make_response(
+                op=OP_MSG_SEND, payload={"error": "unknown_user"}, error=True
+            )
 
         if not sender or body is None:
             return env.make_response(
