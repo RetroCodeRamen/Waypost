@@ -105,7 +105,11 @@ void RNS::doLog(LogLevel level, const char* msg) {
 		Serial.print(getLevelName(level));
 		Serial.print("] ");
 		Serial.println(msg);
-		Serial.flush();
+		// No Serial.flush() (local fix): on the T-Deck's native USB serial,
+		// flush() waits with no time limit until a host has read everything.
+		// With the cable in and nothing reading the port, the first log line
+		// stalled whatever task logged it — radio start-up sat for minutes
+		// until someone opened the port.
 	}
 #else
 	printf("%s [%s] %s\n", getTimeString(), getLevelName(level), msg);
