@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-02): slice 0 boot splash; slice 1 uses the same vendored **microReticulum + lora_interface** stack as `firmware/outpost/` (not a third-party T-Deck mesh firmware base). Dispatch slice proven to path Station; full reply round trip blocked on the same Station RNode TX gap as Outpost.
+Accepted, decided (2026-10-02, updated 2026-10-03): **option B in practice** — the same vendored **microReticulum + lora_interface** stack as `firmware/outpost/` underneath, with our own Arduino + TFT_eSPI UI on top, not a third-party T-Deck mesh firmware base. The reply round trip that looked blocked was two bugs, both fixed: the embedded radio driver's split-frame format didn't match real RNode (`3586bfb`), and Scout rejected PONG for lacking `ok` (`192a32a`). Dispatch, Fieldbook, Trailhead, and Signal now run over real LoRa (`ce23568`) — see [scout.md](../hardware/scout.md).
 
 ## Context
 
@@ -13,7 +13,9 @@ Accepted (2026-10-02): slice 0 boot splash; slice 1 uses the same vendored **mic
 
 ## Decision
 
-For the **first working prototype**, prefer adapting a proven Reticulum-capable T-Deck base **if** it can support our Dispatch vertical slice without fighting the architecture. Document the chosen base when selected.
+Originally: for the first working prototype, prefer adapting a proven Reticulum-capable T-Deck base **if** it could support our Dispatch slice without fighting the architecture.
+
+**Chosen:** no third-party base. microReticulum was already proven on the Outpost, so the Scout reuses it and draws its own UI with TFT_eSPI (an off-screen canvas in PSRAM, pushed row by row). LVGL was not needed for the current launcher-and-lists UI.
 
 Long term, **UI quality and application architecture** (Workshop, launcher, local-first apps) outweigh loyalty to any firmware base. Revisit this ADR before Phase 8.
 

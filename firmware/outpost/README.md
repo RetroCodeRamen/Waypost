@@ -23,10 +23,16 @@ encrypted between outposts and station" requirement with a reviewed
 library instead of hand-rolled crypto. See `docs/architecture.md` and the
 plan history for the full story.
 
-`lib/lora_interface/` is vendored unmodified from microReticulum's own
+`lib/lora_interface/` is vendored from microReticulum's own
 `examples/common/lora_interface` (Apache-2.0) — it already has a
 `BOARD_HELTEC_V3` pin mapping that matches `firmware/heltec/src/main.cpp`'s
-independently-verified pins exactly.
+independently-verified pins exactly. **Patched (2026-10-03, `3586bfb`):**
+its split-frame header (packets larger than one ~254-byte LoRa frame) now
+matches real RNode firmware bit for bit — the original used different bits,
+so anything needing two frames (e.g. a `BOARD_SYNC` reply) was silently
+lost. `firmware/pocket/lib/lora_interface/` carries the identical patch.
+`lib/microReticulum/` is also a locally patched copy (absolute storage
+paths, `ad57a88`).
 
 ## Protocol
 
@@ -141,6 +147,13 @@ Outpost to a different Station.
 
 ## Known limitations (hardware-verified 2026-09-23)
 
+- **Fixed 2026-09-25 (`ad57a88`), kept for history:** the bullet below
+  described the original problem. microReticulum is now vendored locally
+  with absolute storage paths, and remembering Station's identity
+  (`Identity::recall`) works. Not yet checked: boot logs still print
+  "`/path_store/journal.dat` does not exist" on every boot, so whether
+  the path/known-destination stores actually persist across reboots is
+  unverified.
 - **Reticulum's own internal path/announce cache does not survive a
   reboot.** `Reticulum::storagepath()` defaults to `"."` and gets reset by
   `Reticulum()`'s own constructor; setting it (done in `main.cpp`, right
@@ -177,3 +190,8 @@ Outpost to a different Station.
   this was built, so the full Outpost→air→Station round trip for either
   feature hasn't been exercised over real LoRa yet, only over TCP for the
   parts that don't need the physical firmware at all).
+- **Update 2026-10-03:** auto-claim and `BOARD_SYNC` now complete over real
+  LoRa against the Station RNode — serial printed "Station confirms this
+  Outpost is now claimed." — after the radio-driver patch above. The
+  `/beacon` push over real LoRa, the physical button, and the OLED status
+  render are still unverified.

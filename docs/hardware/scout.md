@@ -20,19 +20,20 @@ Do not rename protocol identifiers or SQLite bindings from `pocket` to `scout` �
 |---------|-----|
 | Keyboard | Primary text input |
 | Trackball | Pointer / navigation |
-| Display | 320×240 ST7789 — design UI for this density |
+| Display | 320×240 ST7789, **BGR** colour order (with RGB, blue-greens show as olive) — design UI for this density |
 | LoRa (SX1262) | Waylink / Reticulum |
 | Wi‑Fi | Station API when in range |
 | GPS | Atlas / `LOC_REPORT` — **T-Deck Plus** (or GPS module). Base T-Deck may lack GNSS |
-| microSD | Local-first caches (`/waypost/...` on SD, target layout in ADR) |
+| microSD | Target for local-first caches (`/waypost/...`). Not used yet: firmware state (identity, Reticulum stores) lives in internal flash (LittleFS); the SD chip-select is held high at boot so the card stays off the shared SPI bus |
 | USB | `/dev/ttyACM0` — ESP32-S3 native CDC |
 
-## Software direction
+## Software (current state, 2026-10-03)
 
-- Runtime choice: [ADR 0001](../adr/0001-pocket-runtime.md) — first prototype favors a proven Reticulum-capable base if it unblocks Dispatch; long-term UI may move to native LVGL.
-- Firmware tree: [`firmware/pocket/`](../../firmware/pocket/) (directory name = internal **Pocket** class).
-- First milestone: **Dispatch over Waylink** on real LoRa, not a finished launcher (M7).
-- **Slice 1 (2026-10-02):** `firmware/pocket/` — microReticulum + LoRa (T-Deck SX1262 pins), auto `CORE/PING` ~45s after boot; TFT shows path/PING status. Flash: `pio run -e tdeck -t upload --upload-port /dev/ttyACM0`. Set `WAYPOST_STATION_DEST_HASH` in `platformio.ini` (same as Outpost). Optional `WAYPOST_DISPATCH_PEER` for `MSG_SEND` after binding `pocket-*` + `transport_dest` in portal.
+- Runtime: [ADR 0001](../adr/0001-pocket-runtime.md) — Arduino + TFT_eSPI UI of our own over the same vendored **microReticulum** stack as `firmware/outpost/`.
+- Firmware tree: [`firmware/pocket/`](../../firmware/pocket/) (directory name = internal **Pocket** class). Build, flash, configuration, controls, and the USB-serial remote control are in its [README](../../firmware/pocket/README.md).
+- **Working over real LoRa:** Waypost Scout logo boot screen → home tile launcher → **Dispatch** (chat with one default peer, Station-relayed, live `MSG_PUSH` + ack, unread badge), **Fieldbook** (search → outline → section, read in ~160-byte chunks), **Trailhead** (Station's linked text pages), **Signal** (identity, Station path, PING ~1.8 s round trip).
+- Every reply a Scout asks for fits one encrypted Reticulum packet (383 bytes) — see `docs/protocol.md` (Trailhead; radio-sized Fieldbook forms).
+- **Not yet:** Scout↔Scout without Station, contact list / multiple conversations, Fieldbook editing, `PAIR_REDEEM` on-device (bind via portal/API for now), GPS `LOC_REPORT`, courier queue, microSD caches.
 
 ## Location (product intent)
 
@@ -40,4 +41,4 @@ Same as the prior T-Deck doc: Pocket-class devices report GPS to Station (`LOC_R
 
 ## Launcher apps (user-facing names)
 
-Rollcall, Dispatch, Postbox, Commons, Fieldbook, Noticeboard, Locker, Archive, Atlas, Finder, Workshop, Arcade, Logbook, Signal — plus Control/Profile via system UI. Branding: [naming.md](../naming.md).
+Built: Dispatch, Fieldbook, Trailhead, Signal. Planned: Rollcall, Postbox, Commons, Noticeboard, Locker, Archive, Atlas, Finder, Workshop, Arcade, Logbook — plus Control/Profile via system UI. Branding: [naming.md](../naming.md).

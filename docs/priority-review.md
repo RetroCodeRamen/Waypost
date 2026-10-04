@@ -1,8 +1,10 @@
 # Waypost Priority Review
 
-**Date:** 2026-09-24 (refresh of the 2026-09-23 review, after the M6 session)
+**Date:** 2026-09-24 (refresh of the 2026-09-23 review, after the M6 session); targeted corrections 2026-10-03 (Scout hardware, radio fixes) — see the note below
 **Method:** Full repo inspection + architecture/roadmap/protocol/ADR review, reconciled against `AGENT_HANDOFF.md`'s message board.
 **Intent:** Build order by dependency and network truth — not by app catalog completeness.
+
+> **2026-10-03 corrections:** the T-Deck is in hand and running Scout firmware over real LoRa — home launcher, Dispatch (send + live push + ack), Fieldbook reads, the new Trailhead small web, and Signal — so the "Pocket is hardware-blocked / no T-Deck firmware" statements below were stale and are corrected inline. Two real bugs behind months of "works once, then never again" LoRa behavior were fixed: Station's gateway receive loop dying silently (`e88bec5`) and the embedded radio driver's split-frame format not matching RNode (`3586bfb`). Outpost `BOARD_SYNC` + auto-claim now complete over real LoRa. Trailhead was built at the human's direction despite the app freeze (§3, §11, §12.3), which still hasn't been formally revisited. Test suite: 212 passed, 1 skipped. The rest of this document is the 2026-09-24 review as written.
 
 Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md)
 
@@ -47,7 +49,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 | Area | Gap |
 |------|-----|
-| Dispatch | Sim proves Pocket↔Pocket, courier, and `MSG_SYNC`; **none of it runs on real Pocket hardware yet** (no T-Deck firmware) |
+| Dispatch | Sim proves Pocket↔Pocket, courier, and `MSG_SYNC`. On real hardware (2026-10-03) the Scout does Station-relayed chat only — no peer↔peer, courier, or `MSG_SYNC` on device yet |
 | Outpost | Real firmware + real encryption + claiming all proven on Heltec V3; multi-hop relay *logic* is deliberately not hand-built (Reticulum's own Transport mode handles it) and the physical claim-over-real-LoRa step hasn't been run by a human yet; MakerHawk (the intended production SKU) has unverified GPIO and isn't confirmed ordered |
 | Delivery / offline | Durable per-device pending now (Wi‑Fi↔LoRa failover slice); still Dispatch-only — other apps (Postbox, Fieldbook) haven't adopted the shared queue states from `offline-sync.md` |
 | Signal | Lists radios / airtest / RNode security state; still no unified "Today" sync surface across apps (though `/api/dashboard`'s `sync` field, extended 2026-09-24, now covers cross-app pending — see Home dashboard row) |
@@ -57,7 +59,7 @@ Related: [roadmap.md](roadmap.md) · [architecture.md](architecture.md) · [offl
 
 ### Not started (architectural / planned)
 
-Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Atlas · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate) — Fieldbook and Finder were both on this list; both are now built (2026-09-24)
+~~Pocket (T-Deck) firmware~~ (started 2026-10-02; apps over real LoRa 2026-10-03) · Outpost firmware **specifically on MakerHawk** (Heltec V3 version is done — see above) · Shared offline-sync subsystem beyond Dispatch · Network time bootstrap (no RTC) · Provisioning product · Station↔Station federation · Atlas · Archive · Workshop/Arcade · Stalwart/BookStack/Memos adapters · openNDS (Waygate) — Fieldbook and Finder were both on this list; both are now built (2026-09-24)
 
 ---
 
@@ -74,8 +76,8 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 
 ## 3. Weak parts
 
-- **Hardware is now the pacing item for Pocket and Pi specifically, not Outpost anymore.** M1b and T-Deck-based M3 are still blocked purely on physical arrival. Outpost moved out of this category this session — real firmware exists and runs on Heltec V3; only the MakerHawk-specific build and the physical claim-over-air test remain hardware/human-gated.
-- **250-byte LoRa frames** still force compacted Dispatch payloads; easy to regress as more ops move to RNode.
+- **Hardware is now the pacing item for the Pi specifically** (corrected 2026-10-03: the T-Deck has arrived and runs Scout firmware; M1b's Pi is waiting on a genuine SD card — the first one was counterfeit). Outpost moved out of this category this session — real firmware exists and runs on Heltec V3; only the MakerHawk-specific build and the physical claim-over-air test remain hardware/human-gated.
+- **250-byte LoRa frames** still force compacted Dispatch payloads; easy to regress as more ops move to RNode. (2026-10-03: the embedded driver now splits packets the way RNode does, up to Reticulum's MTU; Scout-facing replies are sized to one 383-byte encrypted packet and guarded by a test.)
 - **Identity** has real pairing/revocation/`ADMIN_APPROVAL` now (M4 fully built, reused for Outposts too), but still no crypto device identity beyond that, and the Stalwart decision is still open.
 - **This document's own freeze condition is now stale-adjacent — more so than when this line was first written.** The roadmap's "no Atlas / Workshop / new portal apps until network depth advances" freeze predates M2e, M3-sim, *and* M6. All three have since landed. Whether "network depth" has now advanced enough to revisit the freeze is a call for the human, not this review — flagged here again so it isn't silently forgotten a second time.
 
@@ -87,9 +89,9 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 2. Shared offline / sync subsystem beyond Dispatch (states visible in Signal/Today; Postbox/Fieldbook haven't adopted it)
 3. ~~Account ≠ radio identity depth — pairing UX, revocation~~ — **done (M4 slice 1 ✅, extended to Outposts in M6)**; cryptographic device identity beyond that is still open
 4. Network time without public NTP — no RTC on the Pi means 30-day certs are already the practical ceiling (`network-time.md`)
-5. Provisioning: Outpost enroll is **done** (`OUTPOST_CLAIM`, M6); Pocket join still needs T-Deck firmware first
+5. Provisioning: Outpost enroll is **done** (`OUTPOST_CLAIM`, M6); Pocket join: T-Deck firmware now exists, but on-device `PAIR_REDEEM` isn't built yet — Scouts are bound via the portal/API
 6. ~~Groups as shared authz (rooms today ≠ Groups)~~ — **done (v1, 2026-09-24)**: `server/services/groups/`, 2 services integrated (Locker, Dispatch); rooms remain their own concept, seedable from a Group
-7. Multi-hop Outpost path + Pocket-as-courier **on real hardware** — **partially done**: Outpost firmware is real and hardware-proven (M6), and Reticulum's own Transport mode handles multi-hop path discovery without app code; Pocket-as-courier still has no real hardware since T-Deck firmware doesn't exist
+7. Multi-hop Outpost path + Pocket-as-courier **on real hardware** — **partially done**: Outpost firmware is real and hardware-proven (M6), and Reticulum's own Transport mode handles multi-hop path discovery without app code; Pocket-as-courier isn't on the Scout yet (its firmware does Station-relayed chat only, 2026-10-03)
 8. Federation / home-Station assumptions (document only for now)
 9. ~~`ADMIN_APPROVAL` registration mode + admin-role~~ — **done, same day** (see header)
 
@@ -104,7 +106,7 @@ Pocket (T-Deck) firmware · Outpost firmware **specifically on MakerHawk** (Helt
 | Rooms ≠ Groups | Permission sprawl if each app invents ACL | **Resolved (2026-09-24)** — Groups v1 is the one model; Locker/Dispatch consult it via injected lookups, no per-app ACL |
 | Portal feature momentum | Tempting to polish Commons/Locker instead of transport | Still open — freeze still in effect |
 | Clock skew | Notice/Beacon expiry and certs fail off-grid without Station time | **Sharper now**: Caddy issues real 30-day certs on the Pi, so a Pi that boots weeks behind serves certs phones reject — see `network-time.md` and `pi-setup.md#notes-and-limits` |
-| Payload size | LoRa MAX_FRAME 250 — fragmentation or progressive ops needed before rich messages | Still open |
+| Payload size | LoRa MAX_FRAME 250 — fragmentation or progressive ops needed before rich messages | **Mostly addressed (2026-10-03)** — RNode-compatible splitting in the embedded driver; radio-sized, chunked ops for Scout (`shared/protocol/radio.py`) with a 383-byte test guard. Bulk transfer (Reticulum Resource) still not used |
 | Uncommitted work | M1b prep + all of M6 (Outpost firmware, Corkboard, `OUTPOST_CLAIM`, RNode display patch) | **Committed as of this refresh** |
 
 ---
@@ -117,14 +119,14 @@ proven air path (done)
     → production transport (done — M2e ✅, over real LoRa)
       → mesh semantics without Station (done in sim — M3 ✅; hardware pending)
         → Outpost as real relay infrastructure (done on Heltec V3 — M6 ✅; MakerHawk pending)
-          → Pocket comms foundation (T-Deck) ← hardware-blocked
-            → multi-hop courier with a real Pocket ← hardware-blocked
+          → Pocket comms foundation (T-Deck) ← in progress: Station-relayed apps over real LoRa (2026-10-03)
+            → multi-hop courier with a real Pocket ← next for the Scout
               → identity/presence depth (M4) ← ALMOST DONE, one software-only piece left
                 → Postbox / Fieldbook / Notice+Beacon polish
                   → Groups (done ✅) → Commons/Locker → Atlas/Archive → Pocket PDA apps
 ```
 
-M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware-verified, Station can address it" — genuinely done, not just de-risked. That leaves exactly two things still hardware-blocked (T-Deck-dependent Pocket work, and M1b's Pi), and one thing nearly done in software (M4 — see §8).
+M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware-verified, Station can address it" — genuinely done, not just de-risked. That leaves exactly two things still hardware-blocked (T-Deck-dependent Pocket work, and M1b's Pi) — *2026-10-03: the T-Deck has since arrived; only the Pi remains*, and one thing nearly done in software (M4 — see §8).
 
 **Freeze:** new portal apps and deep Commons/Locker UX until Tier 1 exits — see the note in §3 about revisiting this now that M2e, M3-sim, *and* M6 are all done.
 
@@ -144,7 +146,7 @@ M6 moved Outpost from "sim + flaky hardware attempt" to "real firmware, hardware
 ### TIER 2 — Build next (mixed: some done, most hardware-blocked)
 
 - ~~`ReticulumTransport` / RNode~~ — **done (M2e ✅)**
-- T-Deck Pocket communications foundation (Dispatch + queue + sync-to-Station) — **hardware in transit; sim (`PeerDispatchNode`) is ready to port once firmware exists**
+- T-Deck Pocket communications foundation (Dispatch + queue + sync-to-Station) — **in progress (2026-10-03): Scout firmware does Station-relayed Dispatch over real LoRa; queue, `MSG_SYNC`, and peer↔peer from `PeerDispatchNode` still to port**
 - ~~Outpost store-and-forward firmware~~ — **done on Heltec V3 (M6 ✅)**; MakerHawk-specific build still pending that hardware
 - Pocket↔Outpost↔Pocket / courier smoke — Outpost's half is ready; still blocked on real Pocket hardware
 - ~~`ADMIN_APPROVAL` + admin-role~~ — **done** (M4 fully built now — see header)
@@ -220,7 +222,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 - Stop adding portal apps until Tier 1 exits — **Tier 1 has now exited, more thoroughly than at the last review** (M6 landed on real hardware since); this is the trigger to revisit the freeze (see §3, §6).
 - Do not build Heltec-specific "product" features (keep bridge minimal) — moot now that Heltec's production role is RNode firmware, not the CBOR bridge.
 - ~~Do not invent per-app ACL — wait for Groups doc + one authz model.~~ — **the model now exists** (`server/services/groups/`); this is a live constraint, not a future one — any new group-scoped feature integrates with it, never a bespoke table.
-- Cardputer as Pocket reference — **rejected**; T-Deck Plus remains Pocket goal (now in transit).
+- Cardputer as Pocket reference — **rejected**; T-Deck Plus remains Pocket goal (a T-Deck is now in hand and running Scout firmware, 2026-10-03).
 - Live tracking / sub-minute GPS — out; 10–15 min reports only.
 
 ## 12. Decisions before more implementation
@@ -228,7 +230,7 @@ This review doesn't pick one — they're independent enough that the choice is p
 1. ~~N1 is next~~ — done; ~~M4 is next~~ — **done** (build-complete same day). **Next is a choice among independent Tier 2 software items** — see §8.
 2. **Heltec = dev transport; Reticulum/RNode is production** (ADR 0002) — no longer just a target, **proven over real LoRa, and now on Outpost's own standalone firmware too (M6)**.
 3. **Revisit the app-catalog freeze.** It was set when Tier 1 was open; Tier 1 has exited (sim-complete through M3, *and now real hardware through M6*). Options: lift it now that transport + mesh semantics + real Outpost hardware are all proven, keep it until M1b/T-Deck land, or redefine "network depth" explicitly. This review still doesn't decide it — flagging it a second time as the most consequential open call.
-4. **T-Deck Plus** remains the Pocket SKU; it's now physically in transit, not just a decision.
+4. **T-Deck Plus** remains the Pocket SKU. A T-Deck is in hand and running Scout firmware (2026-10-03); whether it's the Plus model (with GPS) isn't recorded.
 5. When hardware arrives: MakerHawk GPIO verify *before* writing Outpost product firmware (unchanged) — note the Heltec V3 firmware is already a proven reference to adapt from, not a from-scratch job.
 6. ~~Commit the uncommitted M1b work~~ — **done, along with all of M6, as of this refresh.**
 7. Open: MakerHawk order/arrival timeline — unlike Pi and T-Deck, not yet confirmed in the handoff.

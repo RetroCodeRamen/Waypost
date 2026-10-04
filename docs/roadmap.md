@@ -46,7 +46,7 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 
 ## Where we are (honest snapshot)
 
-**Date context:** early alpha · development on Linux laptop · two Heltec WiFi LoRa 32 **V3** boards in use.
+**Date context (updated 2026-10-03):** early alpha · development on Linux laptop · two Heltec WiFi LoRa 32 **V3** boards (one RNode = Station's radio on `/dev/ttyUSB0`, one running Outpost firmware on `/dev/ttyUSB1`) + a LilyGO **T-Deck** Scout (`/dev/ttyACM0`).
 
 ### Done — useful on a laptop today
 
@@ -73,6 +73,9 @@ Bidirectional **Dispatch** over that path proves the stack. Everything else buil
 | **Device pairing codes + per-device revocation** | **Done (M4 slice 1 ✅)** — also now reused for `OUTPOST_CLAIM` (infrastructure claiming), not just Pocket devices |
 | Role-label OLED splash (both board types) | **Done (2026-09-23)** — Outpost hardware-verified; Station's board runs a patched-but-genuine RNode build (`firmware/RNode_Firmware/`), logo shown on a new button gesture |
 | `ADMIN_APPROVAL` registration mode + admin-role | **Done (M4 slice 2 ✅)** — first-ever account bootstraps as admin; portal `/control.html` approves pending registrations |
+| **Scout (T-Deck) firmware** — launcher, Dispatch, Fieldbook, Trailhead, Signal | **Proven over real LoRa (M7, 2026-10-03)** — see `firmware/pocket/README.md` |
+| **Trailhead** (Station's small web: linked text pages, portal editor, `TRAIL_GET`) | **Done (2026-10-03)** — read on a Scout over real LoRa |
+| Outpost auto-claim + `BOARD_SYNC` over real LoRa | **Proven (2026-10-03)** — after the embedded radio driver's wire-format fix (`3586bfb`) |
 
 ### Explicitly not done
 
@@ -109,7 +112,11 @@ transport proof → resilient messaging → identity/presence → shared sync
 Full analysis: **[priority-review.md](priority-review.md)**.  
 Foundational designs (implement later): [offline-sync.md](offline-sync.md) · [identity.md](identity.md) · [groups-and-permissions.md](groups-and-permissions.md) · [provisioning.md](provisioning.md) · [network-time.md](network-time.md) · [federation-future.md](federation-future.md).
 
-### Just finished — **M6 standalone Outpost + OUTPOST_CLAIM** ✅ (sim/hardware, software side)
+### Just finished — **M7 Scout over real LoRa** (2026-10-03)
+
+The T-Deck runs a home launcher with Dispatch (chat with live push + ack), Fieldbook (search → outline → chunked sections), Trailhead (new: the Station's small web of linked text pages), and Signal, all over encrypted LoRa to Station. Details: M7 below, `firmware/pocket/README.md`, `AGENT_HANDOFF.md` 2026-10-03.
+
+### Before that — **M6 standalone Outpost + OUTPOST_CLAIM** ✅ (sim/hardware, software side)
 
 **Goal:** Outposts as real relay infrastructure — public noteboard, real on-device encryption, Station able to actually address one.
 
@@ -119,7 +126,7 @@ Standalone Outpost firmware (Heltec V3, real on-device Reticulum via microReticu
 
 **Next in the priority spine (no hardware needed):** M4 is build-complete except the Stalwart-vs-SQLite decision (a call for the human, not something to build around). M8 is now fully done (2026-09-24) — Noticeboard ack, Beacon auth, Today/sync dashboard, and Groups (core + Locker/Dispatch integration) all shipped. Postbox's progressive LoRa path turned out to already be built (`MAIL_STATUS`/`LIST`/`GET`, compact headers, Wi-Fi-only attachments — this was a stale claim in `priority-review.md`, corrected there). Fieldbook progressive path shipped 2026-09-24 (`docs/fieldbook.md`) — M5's software half is now done on both apps. Remaining Tier 2 software-only items: Beacon propagation through Outposts, extending Groups scoping to Noticeboard/Commons/Fieldbook (not required for M8's exit criteria, same pattern as Locker once needed). See `priority-review.md` §7, §8, §12.
 
-**Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.**
+**Still freeze:** new portal apps; Atlas; Workshop — **worth revisiting now that M2e, M3-sim, and M6 have all landed; see priority-review.md §3, §6, §12.2.** (Exception, 2026-10-03: Trailhead was added at the human's direction as part of a complete Scout — see the decision log.)
 
 ---
 
@@ -251,7 +258,7 @@ MakerHawk's own OLED still has only a planned diagnostic layout ([hardware/maker
 
 **Exit criteria:** MakerHawk pinout verified; transport-node firmware; Pocket↔Outpost↔Pocket + courier-to-Station smoke; queues survive power cycle. Recipient reads now; copy still syncs to Station (`mid` dedup).
 
-**Progress (sim + first hardware attempt):** `OutpostNode` (`server/services/dispatch/outpost.py`) — uncapped relay hops (unlike Pockets' 3-hop cap), preferred-route caching to Station, direct hand-off between two Pockets co-located at the same Outpost. Sim-tested via `MockMesh` (`server/tests/test_mesh_dispatch.py`) — not yet against real MakerHawk hardware, which still doesn't exist (GPIO unverified, not confirmed ordered). A first real-radio attempt used the two RNode-flashed Heltec V3 boards as a Station+Outpost stand-in (same precedent as Heltec-before-RNode) — `tools/radio/outpost_airtest.py`. One run completed a full send→process round trip over real encrypted LoRa; later runs haven't reproduced it reliably. Two real bugs surfaced and got fixed along the way: `ReticulumTransport.get_route`/`reachable` never resolved logical node_ids to RNS hashes (only `send` did), and nothing taught Station how to resolve a reply back to an Outpost without an explicit bind. **Still open:** reliable hardware round-trip (RF/timing, not app logic, is the suspect), the Beacon origin-outpost extension, and the session-isolated Wi-Fi terminal (needs real MakerHawk-class hardware or firmware work either way).
+**Progress (sim + first hardware attempt):** `OutpostNode` (`server/services/dispatch/outpost.py`) — uncapped relay hops (unlike Pockets' 3-hop cap), preferred-route caching to Station, direct hand-off between two Pockets co-located at the same Outpost. Sim-tested via `MockMesh` (`server/tests/test_mesh_dispatch.py`) — not yet against real MakerHawk hardware, which still doesn't exist (GPIO unverified, not confirmed ordered). A first real-radio attempt used the two RNode-flashed Heltec V3 boards as a Station+Outpost stand-in (same precedent as Heltec-before-RNode) — `tools/radio/outpost_airtest.py`. One run completed a full send→process round trip over real encrypted LoRa; later runs haven't reproduced it reliably. Two real bugs surfaced and got fixed along the way: `ReticulumTransport.get_route`/`reachable` never resolved logical node_ids to RNS hashes (only `send` did), and nothing taught Station how to resolve a reply back to an Outpost without an explicit bind. **Update 2026-10-03:** the "works once, then never again" pattern had two real causes, both fixed: Station's `WaylinkGateway` receive loop silently died on its first unhandled exception (`e88bec5`), and the embedded radio driver used by Outpost and Scout split large packets in a format real RNode firmware couldn't reassemble (`3586bfb`). The standalone Outpost's `BOARD_SYNC` + auto-claim now complete over real LoRa. `tools/radio/outpost_airtest.py` (Python on both boards) hasn't been re-run since — `/dev/ttyUSB1` now runs Outpost firmware, not RNode. **Still open:** the Beacon origin-outpost extension, and the session-isolated Wi-Fi terminal (needs real MakerHawk-class hardware or firmware work either way).
 
 **Progress — Corkboard (sim, both sides) + standalone Outpost firmware (hardware bring-up started 2026-09-23):** per-outpost public note board — `server/services/corkboard/` (`{constants,store,service}.py`), `BOARD_SYNC` op, portal page `corkboard.html`. Outpost's copy is the durable primary, Station's is backup; a Station user reads/posts exactly one known outpost at a time, never a merged view (deliberate UX + security choice). Registration is automatic — the first `BOARD_SYNC` from any `env.src` creates the outpost entry. `OutpostNode.add_local_note`/`sync_corkboard` complete the loop: upload not-yet-synced notes (tracked via a `synced_at` marker, never deleted locally), ingest whatever Station piggybacks back. Posting from the portal queues into a per-outpost outbox and gets piggybacked into that outpost's next sync — proven end-to-end both in the browser (portal → outbox → simulated resync) and in sim (`OutpostNode` ↔ `CorkboardService` full round trip, `server/tests/test_mesh_dispatch.py`). `server/tests/test_corkboard.py` + mesh tests, 110 passed.
 
@@ -330,7 +337,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 3. **M4** identity depth — pairing codes + per-device revocation + `ADMIN_APPROVAL`/admin-role all ✅; Stalwart decision still open  
 4. **Hardware spikes (parallel):** MakerHawk GPIO; T-Deck Plus  
 5. **M1b Pi AP + TLS** when camp Wi‑Fi is the blocker  
-6. Then M5 → M6/M7  
+6. Then M5 → M6/M7 — M7 underway on real hardware (Scout apps over LoRa, 2026-10-03)  
 
 **Do not:** Atlas, Workshop, or new portal apps before M2e/M3 network depth.
 
@@ -340,7 +347,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 
 | App | HTTP prototype | Waylink RPC | Over LoRa (air) | Production backend |
 |-----|----------------|-------------|-----------------|--------------------|
-| Dispatch | ✅ | Partial | ✅ M2c | — |
+| Dispatch | ✅ | Partial | ✅ M2c; ✅ Scout (send, live push + ack) | — |
 | Postbox | ✅ | Partial | ⬜ | Stalwart later |
 | Rollcall | ✅ | — | ⬜ | — |
 | Groups | ✅ | — (HTTP-only, same precedent as Rollcall) | N/A | — |
@@ -348,8 +355,10 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Noticeboard | ✅ | Partial | ⬜ | — |
 | Beacon | ✅ | Partial | ⬜ | — |
 | Locker | ✅ | Metadata only | N/A (Wi‑Fi bodies) | — |
-| Signal | ✅ | Partial | ✅ airtest/ping | — |
-| Fieldbook | ✅ | `WIKI_SEARCH/GET/UPDATE/CREATE` (outline/section/diff) | ⬜ | BookStack later |
+| Signal | ✅ | Partial | ✅ airtest/ping; ✅ Scout PING | — |
+| Fieldbook | ✅ | `WIKI_SEARCH/GET/UPDATE/CREATE` (outline/section/diff; radio-sized compact/chunked forms) | ✅ reads on Scout; edits ⬜ | BookStack later |
+| Trailhead | ✅ | `TRAIL_GET` (chunked) | ✅ Scout | — |
+| Corkboard | ✅ | `BOARD_SYNC` | ✅ Outpost ↔ Station | — |
 | **Atlas** | ⬜ | Spec (M9) | ⬜ `LOC_*` | Offline tiles on Station |
 | Finder | ✅ | `SEARCH` | ⬜ | — |
 | Control | ✅ (M4) | — | N/A | — |
@@ -372,6 +381,8 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Recipient reads now, still syncs to Station | Local delivery + durable `mid` sync later | Portal/history converge without blocking the human conversation |
 | **Next build = N2 username/password auth** | One account for portal + Pocket | Overdue; passwordless Station is not community-safe |
 | Production LoRa must be encrypted | M2e Reticulum (Heltec = lab only) | Cleartext CBOR on air is unacceptable for real camps |
+| Scout replies fit one packet | Radio-sized ops (`compact`/`limit`/`offset`), chunked text, a test guard at 383 bytes | microReticulum on the device can't receive anything larger; Resource transfer is a later speed-up |
+| Trailhead built despite the app freeze (2026-10-03) | Human direction: a complete Scout needs "a small web hosted on Station" | Text pages + links over LoRa, not HTML (Waylink ≠ IP networking) |
 
 When we change direction, add a row here and adjust milestones above.
 

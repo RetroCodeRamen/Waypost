@@ -38,6 +38,12 @@ WIKI_UPDATE {slug, base_revision, section, section_text}
 Full-page `WIKI_GET {slug}` exists and the portal uses it over Wi‑Fi; a Pocket should prefer
 the rungs above.
 
+**Over real LoRa (Scout, 2026-10-03):** even one section usually exceeds what a Pocket can
+receive in a single reply (one encrypted Reticulum packet: 383 bytes, ~170 of them text), so
+the Scout uses the radio-sized forms: `WIKI_SEARCH {compact:true, offset}` (paged slug + title),
+outline paging, and section text in byte-offset chunks (`{section, offset, limit}`). See
+[protocol.md](protocol.md) for the shapes; editing from a Scout isn't built yet.
+
 ## Conflicts
 
 An edit carries the `base_revision` it was made against. If that is no longer current:

@@ -30,7 +30,7 @@ See roadmap **M7** (reporting) and **M8** (Atlas UI).
 
 ## Software direction
 
-See [ADR 0001](../adr/0001-pocket-runtime.md). First prototype priority: keyboard, display, Wi-Fi, LoRa, Reticulum/LXMF, **Dispatch**. Full shell comes after transport is proven.
+See [ADR 0001](../adr/0001-pocket-runtime.md) and the current state in [scout.md](scout.md): transport is proven over real LoRa, and the Scout runs a launcher with Dispatch, Fieldbook, Trailhead, and Signal apps.
 
 ## Local storage layout (target)
 

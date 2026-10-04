@@ -132,7 +132,7 @@ Rules:
 
 Reticulum/LXMF (or successor transport) should provide the hop/carry primitives; Waypost apps speak logical `MSG_*` only.
 
-**Implemented in sim (M3):** `server/services/dispatch/peer.py` (`PeerDispatchNode`) proves this exact flow — direct delivery, courier carry, `MSG_SYNC` merge by `mid` — in the mock mesh. Real Pocket firmware (M7) is what's still missing to run it on hardware.
+**Implemented in sim (M3):** `server/services/dispatch/peer.py` (`PeerDispatchNode`) proves this exact flow — direct delivery, courier carry, `MSG_SYNC` merge by `mid` — in the mock mesh. Real Pocket firmware now exists (M7, `firmware/pocket/`), but it does Station-relayed chat only so far; this peer↔peer/courier flow still runs only in sim.
 
 **Implemented in sim, first hardware attempt (M6):** `server/services/dispatch/outpost.py` (`OutpostNode`) is the always-on-courier half — uncapped relay hops (Pockets cap at 3 device-to-device hops; Outposts don't), preferred-route caching toward Station, direct hand-off when two Pockets are both in range of the same Outpost. Both node types share transport/request-response plumbing via `server/services/dispatch/waylink_node.py` (`WaylinkPeerNode`) rather than duplicating it.
 
@@ -143,6 +143,8 @@ That shared base exists because of a real bug worth remembering: a node's inboun
 Both halves now exist: `OutpostNode.add_local_note`/`sync_corkboard` (Outpost-side — upload not-yet-synced notes, ingest whatever Station piggybacks back) and `CorkboardService.sync` (Station-side — ingest, auto-register, piggyback the outbox). Proven end-to-end in sim over a real `BOARD_SYNC` round trip (`server/tests/test_mesh_dispatch.py`).
 
 **Standalone Outpost firmware (`firmware/outpost`, hardware bring-up started 2026-09-23):** a real device now exists — Heltec V3, Wi-Fi AP + Corkboard web UI + real on-device Reticulum via [microReticulum](https://github.com/attermann/microReticulum) (a mature C++ port of the actual protocol, not a host-side-only library as earlier assumed — see `firmware/outpost/README.md`). Its own identity/destination persists across reboots (verified over four consecutive resets on real hardware).
+
+**Scout firmware (`firmware/pocket`, 2026-10-02 → 10-03):** the T-Deck runs the same vendored microReticulum stack as the Outpost, with its own TFT_eSPI UI: a home launcher plus Dispatch, Fieldbook, Trailhead, and Signal apps, all talking Waylink RPC to Station over real encrypted LoRa. `station_link` matches replies to requests by `rid` and retries idempotent reads with fresh ids; long text arrives in byte-offset chunks (see Bandwidth philosophy). Getting there fixed two bugs that had made LoRa look flaky for months: Station's `WaylinkGateway` receive loop died silently on its first unhandled exception (`e88bec5`), and the embedded radio driver split large packets in a format real RNode firmware couldn't reassemble (`3586bfb`).
 
 **Claiming an Outpost:** Station can only reply to a peer whose Reticulum destination hash it already knows via `learn_route()` — nothing discovers that automatically, so a never-claimed Outpost's `BOARD_SYNC` would arrive but Station couldn't route a response back. `OUTPOST_CLAIM` (`docs/protocol.md`) fixes this by reusing the M4 pairing-code system as-is: a Station user generates a code on the Corkboard portal page (same `POST /api/auth/pairing/create` Pocket pairing uses), a human enters it on the Outpost's own `/claim` Wi-Fi page, and the Outpost's claim request carries its own destination hash directly in its payload — `learn_route` runs synchronously inside the handler, before the reply is sent, so even that very first request gets a routable response. Building this surfaced (and fixed) a matching latent bug in the older Pocket radio-pairing path (`PAIR_REDEEM`): it accepted a `transport_dest` in its payload but never called `learn_route`, so a radio-only device's own first pairing reply could never have reached it either. Verified end-to-end over HTTP against a live Station (code → claim → registered with the right hash); the physical Outpost-Wi-Fi→`/claim`→real-LoRa leg still needs someone to join the Outpost's AP by hand.
 
@@ -156,8 +158,11 @@ Progressive retrieval only:
 
 - Postbox: count → headers → selected body → attachment metadata  
 - Fieldbook: search → page → section/diff  
+- Trailhead: page in ~160-byte chunks, links followed one page at a time  
 - Locker: listing → metadata (not large files over LoRa)  
-- Finder: titles → selected result  
+- Finder: titles → selected result
+
+**Hard limit for Pockets over LoRa:** one reply = one encrypted Reticulum packet, 383 bytes of plaintext, of which the CBOR envelope takes ~210. Replies meant for a Scout are sized by encoding and measuring them (`shared/protocol/radio.py`: `chunk_utf8`, `fit_text_reply`, `fit_list_reply`), and `server/tests/test_trailhead.py` fails if any Scout-facing reply shape exceeds the limit. Reticulum Resource transfer (multi-packet) isn't used yet.  
 
 Never auto-send large payloads because they exist.
 

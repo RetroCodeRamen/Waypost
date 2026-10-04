@@ -144,11 +144,17 @@ got found and fixed along the way (`ReticulumTransport.get_route`/
 `reachable` weren't resolving logical node_ids to RNS hashes; Station
 couldn't resolve a reply back to an Outpost without an explicit
 `device_bindings` entry — the tool now creates one as a lab-only shortcut,
-see its docstring). The remaining flakiness looks like RF/timing rather
-than application logic (the same relay logic passes consistently in the
-`MockMesh` sim suite) but hasn't been root-caused — treat repeat runs with
-some patience between attempts, and see `AGENT_HANDOFF.md` for the open
-thread before assuming it's fixed.
+see its docstring). The remaining flakiness was blamed on RF/timing at the
+time.
+
+**Update 2026-10-03:** a real cause of "works once, then never again" was
+found and fixed on Station: `WaylinkGateway`'s receive loop died silently
+on its first unhandled exception and never processed another packet
+(`e88bec5`). That fits this test's symptom, but this test hasn't been re-run
+since: `/dev/ttyUSB1` now runs the standalone Outpost firmware, not RNode.
+The Outpost firmware's own `BOARD_SYNC` round trip over real LoRa does
+work now (it also needed the embedded radio driver's wire-format fix,
+`3586bfb`, which doesn't affect this Python-on-both-boards test).
 
 ## Related
 
