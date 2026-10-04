@@ -44,5 +44,7 @@ void check_identity();
 // A live chat message pushed by Station: Dispatch records it, acks it, and
 // counts it as unread when another app has the screen.
 void deliver_chat(const waylink::IncomingChatMessage& msg);
+// Fetch messages missed while out of range (DISPATCH/MSG_SYNC, paged).
+void catch_up_chat();
 
 }  // namespace apps

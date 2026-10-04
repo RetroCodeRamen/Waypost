@@ -11,6 +11,7 @@ from server.services.dispatch.constants import (
     DELIVERY_QUEUED,
     DELIVERY_SENT,
     OP_MSG_ACK,
+    OP_MSG_CONVS,
     OP_MSG_LIST,
     OP_MSG_PUSH,
     OP_MSG_SEND,
@@ -19,6 +20,7 @@ from server.services.dispatch.constants import (
     TRANSPORT_WIFI,
 )
 from server.services.dispatch.store import DispatchStore, direct_conversation_id
+from shared.protocol.radio import RADIO_MDU, chunk_utf8, fit_list_reply, fit_text_reply
 from shared.protocol.envelope import (
     SVC_DISPATCH,
     Envelope,
@@ -239,6 +241,27 @@ class DispatchService:
             }
         }
 
+    @staticmethod
+    def _fit_push(env: Envelope, message: dict[str, Any]) -> Envelope:
+        """A radio device only receives what fits one encrypted packet
+        (shared/protocol/radio.py); a long message from the portal would
+        otherwise never arrive at all. Cut the body to fit and mark it with
+        an ellipsis — the whole message stays in history and on the portal."""
+        from shared.protocol.envelope import encode_cbor
+
+        if len(encode_cbor(env)) <= RADIO_MDU:
+            return env
+        body = str(message.get("body") or "")
+
+        def build(piece: str) -> Envelope:
+            payload = {"message": dict(env.payload["message"], body=piece + "…")}
+            return Envelope(
+                src=env.src, dst=env.dst, svc=env.svc, op=env.op, flags=env.flags,
+                mid=env.mid, ttl=env.ttl, payload=payload,
+            )
+
+        return fit_text_reply(build, body, 0, len(body.encode("utf-8")))
+
     def _enqueue_push(self, node_id: str, message: dict[str, Any]) -> bool:
         """Queue a MSG_PUSH for node. Returns False if already queued for this node."""
         key = (node_id, message["id"])
@@ -253,17 +276,14 @@ class DispatchService:
             mid=new_id(),
             payload=self._message_payload(message),
         )
-        self._outbox[node_id].append(env.to_dict())
+        self._outbox[node_id].append(env.to_dict())  # Wi-Fi outbox: full body
         self._queued_push_keys.add(key)
+        radio_env = self._fit_push(env, message)
         # Air-TX to radio-* (Heltec), rns-* (Reticulum), and pocket-* (Scout/
         # T-Deck -- LoRa-only, no Wi-Fi path to poll the HTTP outbox with).
-        if self._radio_push is not None and (
-            str(node_id).startswith("radio-")
-            or str(node_id).startswith("rns-")
-            or str(node_id).startswith("pocket-")
-        ):
+        if self._radio_push is not None and self._is_radio_node(node_id):
             try:
-                self._radio_push(env)
+                self._radio_push(radio_env)
             except Exception:
                 # SQLite pending row stays until a device confirms, so a later bind/retry recovers
                 logger.exception("radio_push_failed node=%s mid=%s", node_id, message["id"])
@@ -337,6 +357,8 @@ class DispatchService:
             return await self._rpc_send(env)
         if env.op == OP_MSG_LIST:
             return await self._rpc_list(env)
+        if env.op == OP_MSG_CONVS:
+            return self._rpc_convs(env)
         if env.op == OP_MSG_ACK:
             return await self._rpc_ack(env)
         if env.op == OP_MSG_SYNC:
@@ -438,44 +460,105 @@ class DispatchService:
         )
 
     async def _rpc_list(self, env: Envelope) -> Envelope:
+        """Conversation history, radio-sized: newest first, as many whole
+        messages as fit one packet; `skip` (how many newest messages the
+        device already has) pages further back. `ts` is integer
+        milliseconds (the Scout's CBOR reader has no floats).
+
+        Only a bound device whose user is in the conversation may read it —
+        direct conversation ids are predictable (dm:aj:bob)."""
         payload = env.payload or {}
         if not isinstance(payload, dict):
             return env.make_response(
                 op=OP_MSG_LIST, payload={"error": "invalid_payload"}, error=True
             )
+        binding = self.store.get_binding(env.src)
+        if not binding:
+            return env.make_response(
+                op=OP_MSG_LIST, payload={"error": "unauthorized_device"}, error=True
+            )
+        username = binding["username"]
         conversation_id = payload.get("conversation_id")
+        if not conversation_id and payload.get("peer"):
+            conversation_id = direct_conversation_id(str(username), str(payload["peer"]))
         if not conversation_id:
-            peer = payload.get("peer")
-            binding = self.store.get_binding(env.src)
-            username = payload.get("username") or (binding["username"] if binding else None)
-            if username and peer:
-                conversation_id = direct_conversation_id(str(username), str(peer))
-            else:
-                return env.make_response(
-                    op=OP_MSG_LIST,
-                    payload={"error": "conversation_id_or_peer_required"},
-                    error=True,
-                )
-        limit = min(int(payload.get("limit") or 20), 20)
-        # LoRa replies must stay under ~250B — return at most 3 compact rows on radio path
-        if str(env.src).startswith("radio-") or str(env.src).startswith("rns-"):
-            limit = min(limit, 3)
-        messages = self.list_messages(str(conversation_id), limit=limit)
-        compact = [
-            {
-                "id": m["id"],
-                "sender": m["sender"],
-                "body": (m["body"] or "")[:80],
-                "ts": m["created_at"],
-                "state": m["delivery_state"],
-                "conv": m["conversation_id"],
-            }
-            for m in messages
-        ]
-        return env.make_response(
-            op=OP_MSG_LIST,
-            payload={"conversation_id": conversation_id, "messages": compact},
+            return env.make_response(
+                op=OP_MSG_LIST,
+                payload={"error": "conversation_id_or_peer_required"},
+                error=True,
+            )
+        conversation_id = str(conversation_id)
+        if not self.store.is_member(conversation_id, username):
+            return env.make_response(
+                op=OP_MSG_LIST, payload={"error": "not_a_member"}, error=True
+            )
+        rows = self.store.list_messages_newest(
+            conversation_id, skip=int(payload.get("skip") or 0), limit=21
         )
+        items = [
+            {"id": m["id"], "s": m["sender"], "b": self._radio_body(m["body"]),
+             "ts": int(m["created_at"] * 1000)}
+            for m in rows
+        ]
+
+        def build(part: list[dict[str, Any]], more: bool) -> Envelope:
+            # `more` also covers older rows we didn't fetch this time.
+            return env.make_response(
+                op=OP_MSG_LIST,
+                payload={"conversation_id": conversation_id, "messages": part,
+                         "more": more or len(rows) == 21},
+            )
+
+        reply, _ = fit_list_reply(build, items[:20])
+        return reply
+
+    @staticmethod
+    def _is_radio_node(node_id: Any) -> bool:
+        """Devices that only reach Station over LoRa: one packet per reply."""
+        return str(node_id).startswith(("pocket-", "radio-", "rns-"))
+
+    @staticmethod
+    def _radio_body(body: Any, limit: int = 140) -> str:
+        """Message bodies in radio listings: up to 140 bytes (the Scout's
+        own limit), longer ones cut on a character boundary with an ellipsis."""
+        text = str(body or "")
+        piece, total = chunk_utf8(text, 0, limit)
+        return piece if len(piece.encode("utf-8")) >= total else piece + "…"
+
+    def _rpc_convs(self, env: Envelope) -> Envelope:
+        """The bound user's conversations, newest activity first, paged by
+        `offset`: {id, t (who it's with, or the room title), ts, from}."""
+        payload = env.payload if isinstance(env.payload, dict) else {}
+        binding = self.store.get_binding(env.src)
+        if not binding:
+            return env.make_response(
+                op=OP_MSG_CONVS, payload={"error": "unauthorized_device"}, error=True
+            )
+        username = binding["username"]
+        offset = max(0, int(payload.get("offset") or 0))
+        items = []
+        for c in self.store.list_conversations(username)[offset:]:
+            if c.get("kind") == "direct":
+                others = [m for m in c.get("members", []) if m.lower() != username.lower()]
+                title = ", ".join(others) or username
+            else:
+                title = c.get("title") or c["id"]
+            last = c.get("last_message") or {}
+            items.append(
+                {
+                    "id": c["id"],
+                    "t": str(title)[:32],
+                    "ts": int(last.get("created_at") or c.get("updated_at") or 0),
+                    "from": str(last.get("sender") or "")[:32],
+                }
+            )
+        reply, _ = fit_list_reply(
+            lambda part, more: env.make_response(
+                op=OP_MSG_CONVS, payload={"conversations": part, "offset": offset, "more": more}
+            ),
+            items,
+        )
+        return reply
 
     async def _rpc_ack(self, env: Envelope) -> Envelope:
         payload = env.payload or {}
@@ -552,19 +635,40 @@ class DispatchService:
             if created:
                 ingested += 1
 
+        # Piggyback this user's pending messages — only as many as fit one
+        # radio packet, and only those are confirmed delivered; `more` tells
+        # the device to sync again. (Previously everything went into one
+        # reply and was marked delivered up front: a reply too big for the
+        # radio never arrived and the messages were lost.)
+        # Radio devices get one packet's worth (bodies cut to 140 bytes);
+        # Wi-Fi/sim callers keep the whole queue with full bodies.
+        radio = self._is_radio_node(env.src)
         pending_rows = self.store.list_pending_for_user(str(username))
-        piggyback: list[dict[str, Any]] = []
-        for row in pending_rows:
-            piggyback.append(
-                {
-                    "id": row["message_id"],
-                    "conversation_id": row["conversation_id"],
-                    "sender": row["sender"],
-                    "body": row["body"],
-                    "transport": row.get("transport"),
-                }
+        candidates = [
+            {
+                "id": row["message_id"],
+                "conversation_id": row["conversation_id"],
+                "sender": row["sender"],
+                "body": self._radio_body(row["body"]) if radio else row["body"],
+                "transport": row.get("transport"),
+            }
+            for row in pending_rows
+        ]
+
+        def build(part: list[dict[str, Any]], more: bool) -> Envelope:
+            return env.make_response(
+                op=OP_MSG_SYNC,
+                payload={"ok": True, "ingested": ingested, "pending": part, "more": more},
+                flags=Flags.RESPONSE | Flags.ACK,
             )
-            self._confirm_delivered(str(username), row["message_id"])
+
+        if radio:
+            reply, packed = fit_list_reply(build, candidates)
+        else:
+            reply, packed = build(candidates, False), len(candidates)
+        piggyback = candidates[:packed]
+        for item in piggyback:
+            self._confirm_delivered(str(username), item["id"])
 
         logger.info(
             "dispatch_sync courier=%s user=%s ingested=%s piggyback=%s",
@@ -573,8 +677,4 @@ class DispatchService:
             ingested,
             len(piggyback),
         )
-        return env.make_response(
-            op=OP_MSG_SYNC,
-            payload={"ok": True, "ingested": ingested, "pending": piggyback},
-            flags=Flags.RESPONSE | Flags.ACK,
-        )
+        return reply

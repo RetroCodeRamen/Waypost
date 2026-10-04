@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Optional
 
+from server.services.profiles.constants import OP_ROLL_LIST
 from server.services.profiles.store import RollcallStore
+from shared.protocol.envelope import Envelope, Flags
+from shared.protocol.radio import fit_list_reply
 
 
 class RollcallService:
@@ -18,8 +21,12 @@ class RollcallService:
         set_user_status: Callable[[str, str], None],
         list_users: Callable[[], list[dict[str, Any]]],
         nodes_for_user: Callable[[str], list[str]],
+        get_binding: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+        bindings_for_user: Optional[Callable[[str], list[dict[str, Any]]]] = None,
     ) -> None:
         self.store = store
+        self._get_binding = get_binding or (lambda _node_id: None)
+        self._bindings_for_user = bindings_for_user or (lambda _username: [])
         # Injected the same way NoticeboardService/BeaconService take
         # get_binding -- Rollcall previously took the raw Database and
         # reached into users (owned by Database) and dispatch (owned by
@@ -87,3 +94,45 @@ class RollcallService:
     def list_people(self) -> list[dict[str, Any]]:
         users = self._list_users()
         return [self.get(u["username"]) for u in users if self.get(u["username"])]
+
+    # -- Waylink -----------------------------------------------------------
+
+    def handle_rpc(self, env: Envelope) -> Envelope:
+        if env.op != OP_ROLL_LIST:
+            return env.make_response(
+                op=env.op, payload={"error": f"unknown_op:{env.op}"}, flags=Flags.RESPONSE, error=True
+            )
+        # The directory isn't public over radio: paired devices only.
+        binding = self._get_binding(env.src)
+        if not binding:
+            return env.make_response(op=OP_ROLL_LIST, payload={"error": "unauthorized_device"}, error=True)
+        me = str(binding["username"]).lower()
+        payload = env.payload if isinstance(env.payload, dict) else {}
+        offset = max(0, int(payload.get("offset") or 0))
+        people = sorted(
+            (u for u in self._list_users() if str(u["username"]).lower() != me),
+            key=lambda u: str(u.get("display_name") or u["username"]).lower(),
+        )
+        items = [
+            {
+                "u": u["username"],
+                "n": str(u.get("display_name") or u["username"])[:32],
+                # The person's Scout destination hash, so Scouts can reach
+                # each other directly when Station is out of range.
+                "d": self._scout_dest(u["username"]),
+            }
+            for u in people[offset:]
+        ]
+        reply, _ = fit_list_reply(
+            lambda part, more: env.make_response(
+                op=OP_ROLL_LIST, payload={"people": part, "offset": offset, "more": more}
+            ),
+            items,
+        )
+        return reply
+
+    def _scout_dest(self, username: str) -> str:
+        for b in self._bindings_for_user(username):
+            if str(b.get("node_id", "")).startswith("pocket-") and b.get("transport_dest"):
+                return str(b["transport_dest"])
+        return ""

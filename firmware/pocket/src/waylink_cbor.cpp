@@ -762,6 +762,9 @@ RNS::Bytes encode_request(
       case Field::Bool:
         w.write_bool(f.b);
         break;
+      case Field::EmptyList:
+        w.write_array_header(0);
+        break;
     }
   }
   return out;

@@ -23,7 +23,7 @@ namespace waylink {
 // at most one Reticulum packet (383 bytes), so a tree costs nothing.
 
 struct Field {
-  enum Type { Text, Uint, Bool };
+  enum Type { Text, Uint, Bool, EmptyList };
   const char* key;
   Type type;
   std::string s;
@@ -47,6 +47,7 @@ struct Field {
     f.b = v;
     return f;
   }
+  static Field empty_list(const char* k) { return Field(k, EmptyList); }
 };
 
 RNS::Bytes encode_request(

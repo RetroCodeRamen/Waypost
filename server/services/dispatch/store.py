@@ -337,6 +337,32 @@ class DispatchStore:
         row = self._conn.execute("SELECT * FROM messages WHERE id = ?", (mid,)).fetchone()
         return dict(row), True
 
+    def is_member(self, conversation_id: str, username: str) -> bool:
+        row = self._conn.execute(
+            """
+            SELECT 1 FROM conversation_members
+            WHERE conversation_id = ? AND username = ? COLLATE NOCASE
+            """,
+            (conversation_id, username),
+        ).fetchone()
+        return row is not None
+
+    def list_messages_newest(
+        self, conversation_id: str, *, skip: int, limit: int
+    ) -> list[dict[str, Any]]:
+        """Newest first, skipping the `skip` newest. Paging by count, not by
+        timestamp: messages can share a timestamp, and a time cursor would
+        silently skip the ones on the boundary. A message arriving between
+        pages can make one show up twice; callers dedupe by id."""
+        rows = self._conn.execute(
+            """
+            SELECT * FROM messages WHERE conversation_id = ?
+            ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
+            """,
+            (conversation_id, limit, max(0, skip)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_messages(
         self,
         conversation_id: str,

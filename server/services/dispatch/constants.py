@@ -8,6 +8,8 @@ OP_MSG_LIST = "MSG_LIST"
 OP_MSG_ACK = "MSG_ACK"
 OP_MSG_SYNC = "MSG_SYNC"
 OP_MSG_PUSH = "MSG_PUSH"
+# Radio-sized list of the bound user's conversations (Scout).
+OP_MSG_CONVS = "MSG_CONVS"
 
 DELIVERY_QUEUED = "QUEUED"
 DELIVERY_SENT = "SENT"

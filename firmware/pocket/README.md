@@ -13,7 +13,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Pairing** | First boot: type the 6-digit code from the portal's Devices page (or the Scout adopts its account automatically if Station already has it bound) | `PAIR_REDEEM`, `WHOAMI` |
 | **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
 | **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
-| **Dispatch** | Chat with one default peer (`WAYPOST_DISPATCH_PEER`); unread badge in the title bar | `MSG_SEND`, `MSG_PUSH` + ack |
+| **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). Missed messages arrive by catch-up when Station comes into reach | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
@@ -52,7 +52,6 @@ pio device monitor -p /dev/ttyACM0 -b 115200
 |------------|---------|
 | `WAYPOST_POCKET_ID` | Node id prefix (default `pocket-1`); the full id adds the first 4 hex of the destination hash, e.g. `pocket-1-e75a` |
 | `WAYPOST_STATION_DEST_HASH` | Station's Reticulum destination hash (32 hex) |
-| `WAYPOST_DISPATCH_PEER` | Default chat peer (until contacts land). The Scout's own user comes from Station, not a flag |
 | `WAYPOST_USB_REMOTE` | `1` (default) keeps the USB-serial remote control; `0` for field builds |
 
 Station hash: log in to the dev Station and read `GET /api/signal` → `waylink.rns_hash`, or use the hash printed at Station startup.

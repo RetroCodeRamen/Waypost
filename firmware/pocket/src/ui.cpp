@@ -171,7 +171,31 @@ void clear_body() {
   g_footer.clear();
 }
 
-void body_line(int row, const std::string& text, uint16_t color, bool highlight) {
+std::string to_display(const std::string& text) {
+  std::string out;
+  out.reserve(text.size());
+  for (size_t i = 0; i < text.size();) {
+    unsigned char c = static_cast<unsigned char>(text[i]);
+    if (c < 0x80) {
+      out.push_back(static_cast<char>(c));
+      i++;
+      continue;
+    }
+    size_t n = (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : (c >= 0xC0) ? 2 : 1;
+    std::string ch = text.substr(i, n);
+    if (ch == "\xE2\x80\xA6") out += "...";
+    else if (ch == "\xE2\x80\x94" || ch == "\xE2\x80\x93") out += "-";
+    else if (ch == "\xE2\x80\x98" || ch == "\xE2\x80\x99") out += "'";
+    else if (ch == "\xE2\x80\x9C" || ch == "\xE2\x80\x9D") out += "\"";
+    else if (ch == "\xC2\xA0") out += " ";
+    else out += "?";
+    i += n;
+  }
+  return out;
+}
+
+void body_line(int row, const std::string& raw, uint16_t color, bool highlight) {
+  const std::string text = to_display(raw);
   if (row >= 0 && row < kBodyLines) {
     g_rows[row] = text;
     if (highlight) g_highlight_row = row;
@@ -204,7 +228,8 @@ void message(const std::string& text, uint16_t color) {
   }
 }
 
-std::vector<std::string> wrap(const std::string& text, int width) {
+std::vector<std::string> wrap(const std::string& raw, int width) {
+  const std::string text = to_display(raw);
   std::vector<std::string> out;
   std::string line;
   auto fits = [&](const std::string& str) { return s().textWidth(str.c_str(), kFont) <= width; };

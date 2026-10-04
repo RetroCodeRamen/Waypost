@@ -51,6 +51,7 @@ from server.services.corkboard.constants import OP_BOARD_SYNC, OP_OUTPOST_CLAIM
 from server.services.corkboard.service import CorkboardService
 from server.services.dispatch.constants import (
     OP_MSG_ACK,
+    OP_MSG_CONVS,
     OP_MSG_LIST,
     OP_MSG_PUSH,
     OP_MSG_SEND,
@@ -89,7 +90,7 @@ from server.services.noticeboard.constants import (
     OP_NOTICE_LIST,
 )
 from server.services.noticeboard.service import NoticeboardService
-from server.services.profiles.constants import OP_PAIR_REDEEM, OP_UNPAIR, OP_WHOAMI
+from server.services.profiles.constants import OP_PAIR_REDEEM, OP_ROLL_LIST, OP_UNPAIR, OP_WHOAMI
 from server.services.profiles.rollcall import RollcallService
 from server.services.signal.service import (
     OP_SIGNAL_ROUTE,
@@ -176,6 +177,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             set_user_status=db.set_user_status,
             list_users=db.list_users,
             nodes_for_user=db.dispatch.nodes_for_user,
+            get_binding=db.dispatch.get_binding,
+            bindings_for_user=db.dispatch.list_bindings_for_user,
         )
         app.state.db = db
         app.state.settings = settings
@@ -206,6 +209,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_DISPATCH, OP_MSG_ACK, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_SYNC, dispatch.handle_rpc)
         gateway.register(SVC_DISPATCH, OP_MSG_PUSH, dispatch.handle_rpc)
+        gateway.register(SVC_DISPATCH, OP_MSG_CONVS, dispatch.handle_rpc)
         for op in (
             OP_MAIL_STATUS,
             OP_MAIL_LIST,
@@ -249,6 +253,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_WHOAMI, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_UNPAIR, app.state.pairing.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_ROLL_LIST, app.state.rollcall.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
         # PairingService is constructed before Transport exists (it needs

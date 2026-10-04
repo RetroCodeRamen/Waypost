@@ -71,6 +71,10 @@ void footer(const std::string& text, uint16_t color = kMuted);
 // Full-body message, e.g. "Loading..." or an error.
 void message(const std::string& text, uint16_t color = kTextDim);
 
+// The built-in fonts are ASCII only: map common UTF-8 punctuation (… — – ' ' " ")
+// to ASCII and anything else to '?'. Applied by wrap() and body_line().
+std::string to_display(const std::string& text);
+
 // Word-wrap to `width` pixels in kFont. Breaks long words. Never empty
 // for non-empty input; an empty input yields one empty line.
 std::vector<std::string> wrap(const std::string& text, int width = kWidth - 2 * kMargin);

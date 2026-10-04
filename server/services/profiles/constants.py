@@ -9,3 +9,5 @@ OP_WHOAMI = "WHOAMI"
 # A device revoking its own binding (Scout Settings -> Unpair). Only ever
 # affects env.src itself.
 OP_UNPAIR = "UNPAIR"
+# Radio-sized people directory for a paired device (Scout contacts).
+OP_ROLL_LIST = "ROLL_LIST"

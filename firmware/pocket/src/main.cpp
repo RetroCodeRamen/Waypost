@@ -23,6 +23,7 @@
 
 #include "account.h"
 #include "app.h"
+#include "contacts.h"
 #include "input.h"
 #include "station_link.h"
 #include "ui.h"
@@ -110,6 +111,7 @@ void setup() {
   Serial.printf("boot: home after %lu ms\n", static_cast<unsigned long>(millis() - splash_start));
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
   account::load();
+  contacts::load();
   if (!account::paired()) {
     apps::open(apps::pairing_app());  // adopted automatically if Station already knows us
   } else {
@@ -143,6 +145,17 @@ void loop() {
   // Learns/confirms which account this Scout belongs to once Station is in
   // reach (rate-limited inside).
   if (!apps::locked()) apps::check_identity();
+
+  // Each time Station comes (back) into reach: fetch missed messages.
+  static bool station_was_known = false;
+  static uint32_t last_catch_up = 0;
+  bool known = station_link::station_known();
+  if (known && !station_was_known && account::paired() && !apps::locked() &&
+      (last_catch_up == 0 || millis() - last_catch_up > 60000)) {
+    last_catch_up = millis();
+    apps::catch_up_chat();
+  }
+  station_was_known = known;
 
   static uint32_t last_status = 0;
   if (millis() - last_status >= 1000) {

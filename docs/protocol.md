@@ -99,6 +99,7 @@ Attachments: metadata over LoRa; bodies normally Wi-Fi only.
 | `PAIR_REDEEM` | `{code, node_id, transport_dest}` | `{ok, username, node_id, transport_dest, ...}` — binds the device to the account that created the 6-digit code |
 | `WHOAMI` | `{}` | `{username, display_name}` for the sending device's binding, or `not_paired` |
 | `UNPAIR` | `{}` | `{ok}` — the sending device revokes **its own** binding (never another device's); idempotent |
+| `ROLL_LIST` | `{offset?}` | `{people:[{u, n, d}], offset, more}` — the directory minus the caller: username, display name, their Scout's destination hash (`d`, for direct Scout-to-Scout later; `""` if none). **Paired devices only** |
 
 A Scout asks `WHOAMI` once Station is reachable after boot: it adopts the account if it was bound
 elsewhere (portal/API) and drops a stale one if it was unpaired. After a local unpair it sends
@@ -175,6 +176,15 @@ only (`PUT /api/trailhead/pages/{path}`). Paths: `a-z 0-9 - _ /`, max 64; pages 
 | `MSG_SYNC` | Catch-up / upload carried copies after reconnect (to Station or peer) |
 
 Delivery states: `QUEUED` → `SENT` → `ROUTED` → `DELIVERED` → `READ` (or `EXPIRED`).
+
+**Radio-sized forms for Scouts (2026-10-04)** — every reply fits one encrypted packet:
+
+| Operation | Payload | Reply |
+|-----------|---------|-------|
+| `MSG_CONVS` | `{offset?}` | `{conversations:[{id, t, ts, from}], offset, more}` — the bound user's conversations, newest activity first; `t` = the other person, or the room title |
+| `MSG_LIST` | `{conversation_id \| peer, skip?}` | `{conversation_id, messages:[{id, s, b, ts}], more}` — newest first; `skip` = how many newest the device already holds (count paging; a time cursor would skip messages sharing a timestamp). Bodies over 140 bytes are cut with "…"; `ts` is integer ms. **Members only** (bound device's user must be in the conversation) |
+| `MSG_SYNC` | `{username, messages:[]}` | Radio devices (`pocket-`/`radio-`/`rns-`) get as many pending messages as fit, `more: true` until drained; **only messages actually in the reply are marked delivered**. Other callers get the whole queue, full bodies |
+| `MSG_PUSH` | — | To radio devices, a body too long for one packet is cut with "…" (the Wi‑Fi outbox and history keep it whole) |
 
 **Who the sender is (2026-10-03):** over Waylink, `MSG_SEND`'s sender is the account the sending
 device is bound to (`device_bindings`), never the payload. A bound device may include `sender`
