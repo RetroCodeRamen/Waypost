@@ -7,6 +7,8 @@
 #include "station_link.h"
 #include "ui.h"
 
+#include <microReticulum.h>
+
 #ifndef WAYPOST_STATION_DEST_HASH
 #define WAYPOST_STATION_DEST_HASH ""
 #endif
@@ -68,6 +70,13 @@ class SignalApp : public App {
     } else {
       ui::body_line(8, std::string("  PING   failed: ") + station_link::describe(_ping_result),
                     ui::kWarn);
+    }
+    RNS::Bytes last;
+    if (RNS::Utilities::OS::read_file("/waypost_lastboot", last) > 0) {
+      std::string s(reinterpret_cast<const char*>(last.data()), last.size());
+      auto lines = ui::wrap("Last boot " + s.substr(0, s.find('\n')));
+      ui::body_line(9, lines.size() > 0 ? lines[0] : "", ui::kMuted);
+      ui::body_line(10, lines.size() > 1 ? lines[1] : "", ui::kMuted);
     }
     ui::footer("press: PING   roll left: back");
   }

@@ -17,6 +17,8 @@
 
 // <string> before anything pulling in microStore (its headers assume it).
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -29,6 +31,7 @@
 #include "ui.h"
 #include "utilities.h"
 #include "scout_logo.h"
+#include <microReticulum.h>
 
 static void board_power_on() {
   pinMode(BOARD_POWERON, OUTPUT);
@@ -60,7 +63,33 @@ static void draw_splash() {
   ui::present();
 }
 
+// Boot step timing, saved to flash so a slow boot can be diagnosed
+// afterwards (the Signal app shows it; serial output is lost when nobody
+// was reading the port).
+static std::vector<std::pair<std::string, uint32_t>> g_boot_steps;
+
+static void save_boot_timing() {
+  std::string detail, slowest;
+  uint32_t slowest_ms = 0;
+  for (size_t i = 0; i < g_boot_steps.size(); i++) {
+    uint32_t end = i + 1 < g_boot_steps.size() ? g_boot_steps[i + 1].second : millis();
+    uint32_t ms = end - g_boot_steps[i].second;
+    detail += " " + g_boot_steps[i].first + "=" + std::to_string(ms) + "ms";
+    if (ms > slowest_ms && g_boot_steps[i].first != "Logo hold") {
+      slowest_ms = ms;
+      slowest = g_boot_steps[i].first;
+    }
+  }
+  // Line 1 is what the Signal app shows; the rest is the full breakdown.
+  std::string out = std::to_string(millis() / 1000) + " s; slowest: " + slowest + " " +
+                    std::to_string(slowest_ms / 1000) + "." + std::to_string(slowest_ms / 100 % 10) +
+                    " s\n" + detail;
+  Serial.printf("boot timing: %s\n", out.c_str());
+  RNS::Utilities::OS::write_file("/waypost_lastboot", RNS::Bytes(out));
+}
+
 static void draw_boot_progress(const char* step, int percent) {
+  g_boot_steps.push_back({step, millis()});
   auto& t = ui::tft();
   t.fillRect(0, kBarY - 3, ui::kWidth, ui::kHeight - (kBarY - 3), SCOUT_LOGO_BG);
   if (percent < 0) {
@@ -109,7 +138,9 @@ void setup() {
     delay(10);
   }
   Serial.printf("boot: home after %lu ms\n", static_cast<unsigned long>(millis() - splash_start));
+  g_boot_steps.push_back({"Logo hold", millis()});
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
+  save_boot_timing();
   account::load();
   contacts::load();
   if (!account::paired()) {
