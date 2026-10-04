@@ -72,8 +72,9 @@ class HomeApp : public App {
     if (millis() - last < 1000) return;
     last = millis();
     bool known = station_link::station_known();
-    if (known != _known) {
-      _known = known;
+    int radio = station_link::ready() ? 1 : station_link::failed() ? 2 : 0;
+    if (known != _known || radio != _radio) {
+      _radio = radio;
       draw_footer();
     }
   }
@@ -107,12 +108,19 @@ class HomeApp : public App {
   void draw_footer() {
     _known = station_link::station_known();
     std::string who = account::paired() ? account::display_name() : std::string("not paired");
-    ui::footer(who + (_known ? "   Station reachable" : "   looking for Station..."),
-               _known ? ui::kLive : ui::kMuted);
+    if (station_link::failed()) {
+      ui::footer(who + "   radio failed to start - restart the Scout", ui::kError);
+    } else if (!station_link::ready()) {
+      ui::footer(who + "   radio starting...", ui::kMuted);
+    } else {
+      ui::footer(who + (_known ? "   Station reachable" : "   looking for Station..."),
+                 _known ? ui::kLive : ui::kMuted);
+    }
   }
 
   int _sel = 0;
   bool _known = false;
+  int _radio = -1;  // 0 starting, 1 ready, 2 failed
 };
 
 }  // namespace

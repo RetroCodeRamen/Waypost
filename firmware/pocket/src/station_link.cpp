@@ -1,5 +1,6 @@
 #include "station_link.h"
 
+#include <atomic>
 #include <cstring>
 #include <deque>
 
@@ -115,33 +116,43 @@ void set_busy_hooks(void (*tick)(), void (*done)()) {
   g_busy_done = done;
 }
 
-bool setup(Progress progress) {
-  auto step = [&](const char* label, int pct) {
-    Serial.printf("boot: %s\n", label);
-    if (progress) progress(label, pct);
-  };
-  step("Mounting storage", 10);
-  static microStore::FileSystem filesystem{microStore::Adapters::LittleFSFileSystem()};
-  filesystem.init(false);
-  RNS::Utilities::OS::register_filesystem(filesystem);
-  // microReticulum persistence stores — absolute paths, must exist first
-  // (relative paths are silently rejected by ESP32's LittleFS VFS).
-  filesystem.mkdir("/rns");
-  filesystem.mkdir("/cache");
-  filesystem.mkdir("/path_store");
-  filesystem.mkdir("/known_store");
-  filesystem.mkdir("/hashlist_store");
+namespace {
 
-  step("Starting LoRa radio", 30);
+// Radio bring-up runs on its own task (start()). g_state is the hand-off:
+// the task owns Reticulum until it publishes Ready; the main loop owns it
+// after. Boot step times are written only by the task, read only after.
+enum State : int { kStarting = 0, kReady = 1, kFailed = 2 };
+std::atomic<int> g_state{kStarting};
+struct BootStep {
+  const char* label;
+  uint32_t ms;
+};
+BootStep g_steps[8];
+int g_step_count = 0;
+uint32_t g_done_ms = 0;
+
+void step(const char* label) {
+  Serial.printf("boot: %s\n", label);
+  if (g_step_count < 8) g_steps[g_step_count++] = {label, millis()};
+}
+
+void radio_task(void*) {
+  step("Starting LoRa radio");
+#ifdef WAYPOST_TEST_SLOW_RADIO_MS
+  delay(WAYPOST_TEST_SLOW_RADIO_MS);  // test builds only: simulate a slow radio
+#endif
   g_lora_interface = new LoRaInterface();
   g_lora_interface.mode(RNS::Type::Interface::MODE_GATEWAY);
   RNS::Transport::register_interface(g_lora_interface);
   if (!g_lora_interface.start()) {
     Serial.println("link: LoRa init failed");
-    return false;
+    g_done_ms = millis();
+    g_state.store(kFailed, std::memory_order_release);
+    vTaskDelete(nullptr);
+    return;
   }
 
-  step("Starting Reticulum", 50);
+  step("Starting Reticulum");
   g_reticulum = RNS::Reticulum();
   RNS::Reticulum::storagepath("/rns");
   g_reticulum.transport_enabled(true);
@@ -157,7 +168,7 @@ bool setup(Progress progress) {
   RNS::Reticulum::neighbor_probing_enabled(false);
   g_reticulum.start();
 
-  step("Loading identity", 80);
+  step("Loading identity");
   g_identity = RNS::Identity::from_file(kIdentityPath);
   if (!g_identity) {
     Serial.println("No saved identity — generating a new one");
@@ -173,15 +184,61 @@ bool setup(Progress progress) {
 
   g_dest_hex = g_destination.hash().toHex();
   g_node_id = std::string(WAYPOST_POCKET_ID) + "-" + g_dest_hex.substr(0, 4);
-  step("Announcing", 95);
+  step("Announcing");
   g_destination.announce();
 
   Serial.printf("Scout Reticulum destination: %s\n", g_dest_hex.c_str());
   Serial.printf("device_class=pocket node_id=%s\n", g_node_id.c_str());
+  g_done_ms = millis();
+  g_state.store(kReady, std::memory_order_release);
+  vTaskDelete(nullptr);
+}
+
+}  // namespace
+
+bool start() {
+  step("Mounting storage");
+  static microStore::FileSystem filesystem{microStore::Adapters::LittleFSFileSystem()};
+  filesystem.init(false);
+  RNS::Utilities::OS::register_filesystem(filesystem);
+  // microReticulum persistence stores — absolute paths, must exist first
+  // (relative paths are silently rejected by ESP32's LittleFS VFS).
+  filesystem.mkdir("/rns");
+  filesystem.mkdir("/cache");
+  filesystem.mkdir("/path_store");
+  filesystem.mkdir("/known_store");
+  filesystem.mkdir("/hashlist_store");
+
+  // Core 0, so the UI's loop() (core 1) keeps running. The display and the
+  // radio share one SPI bus; both go through the global SPI object, whose
+  // transactions are locked, so they can't interleave mid-transfer.
+  xTaskCreatePinnedToCore(radio_task, "radio_boot", 24576, nullptr, 1, nullptr, 0);
   return true;
 }
 
+bool ready() { return g_state.load(std::memory_order_acquire) == kReady; }
+bool failed() { return g_state.load(std::memory_order_acquire) == kFailed; }
+
+std::string boot_timing() {
+  if (g_state.load(std::memory_order_acquire) == kStarting || g_step_count == 0) return "";
+  std::string detail, slowest = g_steps[0].label;
+  uint32_t slowest_ms = 0;
+  for (int i = 0; i < g_step_count; i++) {
+    uint32_t end = i + 1 < g_step_count ? g_steps[i + 1].ms : g_done_ms;
+    uint32_t ms = end - g_steps[i].ms;
+    detail += std::string(" ") + g_steps[i].label + "=" + std::to_string(ms) + "ms";
+    if (ms > slowest_ms) {
+      slowest_ms = ms;
+      slowest = g_steps[i].label;
+    }
+  }
+  return std::to_string(g_done_ms / 1000) + " s" + (failed() ? " (radio FAILED)" : "") +
+         "; slowest: " + slowest + " " + std::to_string(slowest_ms / 1000) + "." +
+         std::to_string(slowest_ms / 100 % 10) + " s\n" + detail;
+}
+
 void loop() {
+  if (!ready()) return;  // the radio task still owns Reticulum
   g_reticulum.loop();
   static uint32_t last_announce = millis();
   if (millis() - last_announce >= kReannounceMs) {
@@ -190,16 +247,25 @@ void loop() {
   }
 }
 
-const std::string& node_id() { return g_node_id; }
-const std::string& dest_hex() { return g_dest_hex; }
+// Written by the radio task; only read once it has published ready().
+const std::string& node_id() {
+  static const std::string starting = std::string(WAYPOST_POCKET_ID) + " (radio starting)";
+  return ready() ? g_node_id : starting;
+}
+const std::string& dest_hex() {
+  static const std::string none;
+  return ready() ? g_dest_hex : none;
+}
 
 bool station_known() {
+  if (!ready()) return false;
   RNS::Bytes hash;
   return station_hash(hash) && RNS::Transport::has_path(hash) &&
          static_cast<bool>(RNS::Identity::recall(hash));
 }
 
 void seek_station() {
+  if (!ready()) return;
   static uint32_t last = 0;
   static bool asked = false;
   if (station_known()) return;
@@ -217,6 +283,7 @@ const char* describe(Result r) {
     case Result::NoPath: return "no path to Station";
     case Result::Timeout: return "no reply from Station";
     case Result::Error: return "Station returned an error";
+    case Result::NotReady: return failed() ? "the radio failed to start" : "the radio is still starting";
   }
   return "?";
 }
@@ -259,6 +326,7 @@ Result request_impl(const Builder& build, waylink::Reply& out, int attempts,
 }  // namespace
 
 Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t timeout_ms) {
+  if (!ready()) return Result::NotReady;
   busy_tick();
   Result r = request_impl(build, out, attempts, timeout_ms);
   busy_done();
@@ -276,6 +344,7 @@ Result request(const char* svc, const char* op, const std::vector<waylink::Field
 }
 
 bool send(const RNS::Bytes& payload) {
+  if (!ready()) return false;
   RNS::Destination dest({RNS::Type::NONE});
   if (!connect(dest)) return false;
   RNS::Packet pkt(dest, payload);

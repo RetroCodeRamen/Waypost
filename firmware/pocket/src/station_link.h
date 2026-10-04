@@ -14,11 +14,21 @@ namespace station_link {
 
 extern const char* const kStationNodeId;  // "station"
 
-// Brings up LittleFS, the LoRa interface, Reticulum, and Scout's persistent
-// identity/destination, then announces. Returns false if the radio failed.
-// `progress` (optional) is called before each stage with a label and 0-100.
-using Progress = void (*)(const char* step, int percent);
-bool setup(Progress progress = nullptr);
+// Mounts storage (synchronously — the account and contacts live there),
+// then starts the LoRa radio, Reticulum, and the Scout's identity on a
+// background task so the UI can run meanwhile. Returns false only if
+// storage couldn't be mounted.
+//
+// Threading: until ready(), only the background task touches Reticulum;
+// after, only the main loop does. Everything below that needs the radio
+// returns NotReady / false / "" until then.
+bool start();
+bool ready();   // radio, Reticulum, and identity are up
+bool failed();  // radio init failed (ready() stays false)
+
+// One line for a person ("12 s; slowest: Starting LoRa radio 11.2 s") plus a
+// per-step breakdown, once ready() or failed(). Empty before that.
+std::string boot_timing();
 
 // Called repeatedly while waiting on Station (tick) and once when the wait
 // ends (done) — main wires these to the title-bar spinner.
@@ -36,7 +46,7 @@ bool station_known();
 // Station only announces now and then, so a fresh boot must ask.
 void seek_station();
 
-enum class Result { Ok, NoPath, Timeout, Error };
+enum class Result { Ok, NoPath, Timeout, Error, NotReady };
 const char* describe(Result r);
 
 // Builds a request for a fresh (mid, rid) pair.

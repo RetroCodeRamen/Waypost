@@ -39,7 +39,8 @@ class SignalApp : public App {
     if (millis() - last < 1000) return;
     last = millis();
     bool known = station_link::station_known();
-    if (known != _known) draw();
+    bool ready = station_link::ready();
+    if (known != _known || ready != _ready) draw();
   }
 
  private:
@@ -55,10 +56,17 @@ class SignalApp : public App {
 
   void draw() {
     _known = station_link::station_known();
+    _ready = station_link::ready();
     std::string station = WAYPOST_STATION_DEST_HASH;
     ui::body_line(0, "This Scout", ui::kText);
     ui::body_line(1, "  node   " + station_link::node_id());
-    ui::body_line(2, "  dest   " + station_link::dest_hex().substr(0, 16) + "...");
+    if (station_link::failed()) {
+      ui::body_line(2, "  radio  FAILED to start - restart the Scout", ui::kError);
+    } else if (!_ready) {
+      ui::body_line(2, "  radio  starting...", ui::kWarn);
+    } else {
+      ui::body_line(2, "  dest   " + station_link::dest_hex().substr(0, 16) + "...");
+    }
     ui::body_line(4, "Station", ui::kText);
     ui::body_line(5, "  dest   " + (station.size() >= 16 ? station.substr(0, 16) + "..." : "(not set)"));
     ui::body_line(6, std::string("  path   ") + (_known ? "known" : "not yet"),
@@ -82,6 +90,7 @@ class SignalApp : public App {
   }
 
   bool _known = false;
+  bool _ready = false;
   bool _pinged = false;
   station_link::Result _ping_result = station_link::Result::Ok;
   uint32_t _ping_ms = 0;

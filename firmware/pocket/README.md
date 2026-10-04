@@ -86,6 +86,7 @@ the off-screen canvas; framing in `src/ui.cpp`), and **Ctrl-D** prints the curre
 
 ## Known limitations
 
+- The radio starts on a background task (`station_link::start`), so the apps open after the logo even if the radio is slow; the title-bar dot and home footer say "radio starting…" until it's up, and radio-dependent screens say so instead of hanging. Signal shows the last boot's total and slowest step (`/waypost_lastboot`). Test a slow radio with `PLATFORMIO_BUILD_FLAGS=-DWAYPOST_TEST_SLOW_RADIO_MS=30000`.
 - Boot shows the Waypost Scout logo (`src/scout_logo.h`, from `image/waypost-scout-logo.png` via `tools/make_scout_logo.py`) with a progress bar, for at least 5 s. Requests show a spinner in the title bar while waiting.
 - Colors are the night-sky blue-greens of the README header art (`image/logo2.png`) and the logo, defined once as named roles in `src/ui.h`. The panel is **BGR** (`include/tdeck_tft_setup.h`); with RGB, blue-greens show as olive.
 - Changing `include/tdeck_tft_setup.h` needs `pio run -t clean`: it's force-included into TFT_eSPI, and PlatformIO doesn't rebuild the library when it changes.

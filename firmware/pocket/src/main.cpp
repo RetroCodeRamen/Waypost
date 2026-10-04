@@ -63,33 +63,7 @@ static void draw_splash() {
   ui::present();
 }
 
-// Boot step timing, saved to flash so a slow boot can be diagnosed
-// afterwards (the Signal app shows it; serial output is lost when nobody
-// was reading the port).
-static std::vector<std::pair<std::string, uint32_t>> g_boot_steps;
-
-static void save_boot_timing() {
-  std::string detail, slowest;
-  uint32_t slowest_ms = 0;
-  for (size_t i = 0; i < g_boot_steps.size(); i++) {
-    uint32_t end = i + 1 < g_boot_steps.size() ? g_boot_steps[i + 1].second : millis();
-    uint32_t ms = end - g_boot_steps[i].second;
-    detail += " " + g_boot_steps[i].first + "=" + std::to_string(ms) + "ms";
-    if (ms > slowest_ms && g_boot_steps[i].first != "Logo hold") {
-      slowest_ms = ms;
-      slowest = g_boot_steps[i].first;
-    }
-  }
-  // Line 1 is what the Signal app shows; the rest is the full breakdown.
-  std::string out = std::to_string(millis() / 1000) + " s; slowest: " + slowest + " " +
-                    std::to_string(slowest_ms / 1000) + "." + std::to_string(slowest_ms / 100 % 10) +
-                    " s\n" + detail;
-  Serial.printf("boot timing: %s\n", out.c_str());
-  RNS::Utilities::OS::write_file("/waypost_lastboot", RNS::Bytes(out));
-}
-
 static void draw_boot_progress(const char* step, int percent) {
-  g_boot_steps.push_back({step, millis()});
   auto& t = ui::tft();
   t.fillRect(0, kBarY - 3, ui::kWidth, ui::kHeight - (kBarY - 3), SCOUT_LOGO_BG);
   if (percent < 0) {
@@ -122,27 +96,28 @@ void setup() {
   ui::init();
   draw_splash();
   uint32_t splash_start = millis();
-  draw_boot_progress("Starting up", 5);
+  draw_boot_progress("", 2);
   input::init();
 
   Serial.println();
   Serial.println("Waypost Scout");
-  if (!station_link::setup(draw_boot_progress)) {
-    draw_boot_progress("Radio failed to start - check the board", -1);
+  // Storage now; the radio starts on a background task, so the apps don't
+  // wait for it (a cold power-on once took ~3 minutes to bring it up).
+  if (!station_link::start()) {
+    draw_boot_progress("Storage failed to mount - check the board", -1);
     return;
   }
-  draw_boot_progress("Ready", 100);
-  // Let the logo be seen even when boot is quick (~3 s).
-  while (millis() - splash_start < kSplashMinMs) {
-    station_link::loop();
-    delay(10);
-  }
-  Serial.printf("boot: home after %lu ms\n", static_cast<unsigned long>(millis() - splash_start));
-  g_boot_steps.push_back({"Logo hold", millis()});
-  station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
-  save_boot_timing();
   account::load();
   contacts::load();
+  // Show the logo for its minimum time; the bar just marks the time.
+  while (millis() - splash_start < kSplashMinMs) {
+    draw_boot_progress("", static_cast<int>((millis() - splash_start) * 100 / kSplashMinMs));
+    delay(100);
+  }
+  Serial.printf("boot: home after %lu ms (radio %s)\n",
+                static_cast<unsigned long>(millis() - splash_start),
+                station_link::ready() ? "ready" : "still starting");
+  station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
   if (!account::paired()) {
     apps::open(apps::pairing_app());  // adopted automatically if Station already knows us
   } else {
@@ -155,6 +130,16 @@ static const uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;
 
 void loop() {
   station_link::loop();
+
+  // Once the radio task finishes (or fails), keep its timing for the
+  // Signal app — serial output is lost when nobody is reading the port.
+  static bool boot_timing_saved = false;
+  if (!boot_timing_saved && (station_link::ready() || station_link::failed())) {
+    boot_timing_saved = true;
+    std::string t = station_link::boot_timing();
+    Serial.printf("boot timing: %s\n", t.c_str());
+    RNS::Utilities::OS::write_file("/waypost_lastboot", RNS::Bytes(t));
+  }
 
   waylink::IncomingChatMessage msg;
   while (station_link::pop_incoming(msg)) apps::deliver_chat(msg);
