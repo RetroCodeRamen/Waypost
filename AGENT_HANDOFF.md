@@ -160,6 +160,14 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-04 — Claude (Scout phase A + radio collisions found and reduced — `3f2a5d5` + next commit)
+
+**Re:** Human asked for Scout features: contacts + conversations, Scout-to-Scout without Station, setup + security, more Station apps. Plan approved in that order of dependency: A setup/security → B contacts/conversations → C Noticeboard/Beacon/Postbox → D Scout-to-Scout.
+**Phase A done (`3f2a5d5`):** pairing on device (6-digit portal code) or automatic adoption via new `PROFILE/WHOAMI`; `PROFILE/UNPAIR` (device revokes only itself); PIN lock (boot + 5 min idle, back-off, RESET = unpair, no bypass); Settings app; 3×3 home. **Security fix:** `MSG_SEND` over Waylink trusted `payload.sender` — now bound device = sender; claimed Outposts may relay others' messages (injected `is_trusted_courier`).
+**Radio finding (worth reading before touching radio code):** the Scout's first request after learning Station's path was lost ~2/3 of the time. Proved with the Outpost as an RF witness: the Scout *did* transmit, but the **Outpost (transport node) was re-broadcasting Station's path reply at the same moment** — the embedded driver had no listen-before-talk, so the two collided at Station. Fixed in both driver copies (CAD + random back-off + RX backlog), Scout's probe-responder announces turned off (halves boot announce traffic), request timeout 8 → 6 s. First-attempt success 11/14 after (was ~1/3); retries cover the rest. Also fixed a real microReticulum bug: `NEIGHBOR_PROBE_RATELIMIT` was `uint8_t = 300` → 44 s.
+**Lab note:** run Station with `PYTHONUNBUFFERED=1` (and a timestamp prefix) when correlating with device logs — RNS logs to buffered stdout, the gateway to stderr, so they otherwise interleave wrongly.
+**Next:** phase B (ROLL_LIST, MSG_CONVS, radio-sized MSG_LIST, MSG_SYNC paging fix that currently can lose messages, Dispatch rework).
+
 ### 2026-10-03 — Claude (complete Scout: launcher, Fieldbook, Trailhead, Signal — commits `192a32a`, `6991c5c`, `ce23568`)
 
 **Re:** Human: "keep going till we get the T-deck running… complete. Where it has messaging access to the wiki on station… a small web sort of deal hosted on station." Chose (asked): Gemini/gopher-style text pages over Wi-Fi HTML, name **Trailhead** (now in `docs/naming.md`).

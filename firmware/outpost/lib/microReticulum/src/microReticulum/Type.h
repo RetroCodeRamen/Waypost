@@ -519,7 +519,8 @@ namespace RNS { namespace Type {
 		static const uint16_t NEIGHBOR_SUSPICION_WINDOW   = 300;   // seconds in which we expect either no forwarding or some proof return
 		static const uint8_t  NEIGHBOR_SUSPICION_MIN_PKTS = 5;    // min forwarded packets before suspicion fires (avoid triggering on light traffic)
 		//static const uint8_t  NEIGHBOR_PROBE_RATELIMIT    = 60;   // min seconds between probes per neighbor
-		static const uint8_t  NEIGHBOR_PROBE_RATELIMIT    = 300;   // min seconds between probes per neighbor
+		// uint16_t, not uint8_t: 300 in a uint8_t silently wrapped to 44 s (local fix).
+		static const uint16_t NEIGHBOR_PROBE_RATELIMIT    = 300;   // min seconds between probes per neighbor
 		static const uint8_t  NEIGHBOR_PROBE_TIMEOUT      = 15;   // seconds before a probe is considered failed
 		static const uint8_t  NEIGHBOR_PROBE_PAYLOAD_SIZE = 16;   // bytes of random payload in a probe
 #endif

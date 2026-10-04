@@ -4,6 +4,8 @@
 // see firmware/heltec/src/main.cpp for the independently-verified reference.
 #pragma once
 
+#include <vector>
+
 #include <microReticulum/Interface.h>
 #include <microReticulum/Bytes.h>
 #include <microReticulum/Type.h>
@@ -35,6 +37,10 @@ public:
 private:
 	virtual bool send_outgoing(const RNS::Bytes& data);
 	void on_incoming(const RNS::Bytes& data);
+#ifdef ARDUINO
+	bool read_frame(RNS::Bytes& out);
+	void wait_for_clear_channel();
+#endif
 
 public:
 	// Split-packet protocol constants — bit-for-bit matched against real
@@ -55,6 +61,7 @@ private:
 	//uint8_t buffer[Type::Reticulum::MTU] = {0};
 	const uint8_t message_count = 0;
 	RNS::Bytes buffer;
+	std::vector<RNS::Bytes> _rx_backlog;  // heard during CSMA back-off
 
 	uint8_t _rx_seq     = SEQ_UNSET;  // sequence of split RX in progress
 

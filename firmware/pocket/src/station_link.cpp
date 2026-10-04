@@ -145,7 +145,11 @@ bool setup(Progress progress) {
   g_reticulum = RNS::Reticulum();
   RNS::Reticulum::storagepath("/rns");
   g_reticulum.transport_enabled(true);
-  g_reticulum.probe_destination_enabled(true);
+  // No probe-responder destination: nothing probes a Scout (Station doesn't;
+  // neighbor probing is off below), and its announces — plus Station's
+  // rebroadcasts of them — doubled the burst of traffic right after boot,
+  // exactly when the Scout's first request goes out.
+  g_reticulum.probe_destination_enabled(false);
   // Neighbor probing is for relay nodes. Station (Python RNS) never sends
   // proofs for Waylink packets, so after 5 sends microReticulum flags it
   // "suspicious" and retries a probe every jobs() tick (log spam), and a

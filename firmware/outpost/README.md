@@ -30,9 +30,16 @@ independently-verified pins exactly. **Patched (2026-10-03, `3586bfb`):**
 its split-frame header (packets larger than one ~254-byte LoRa frame) now
 matches real RNode firmware bit for bit — the original used different bits,
 so anything needing two frames (e.g. a `BOARD_SYNC` reply) was silently
-lost. `firmware/pocket/lib/lora_interface/` carries the identical patch.
+lost. **Also patched (2026-10-04): listen before talk.** The original
+transmitted immediately; it now uses the SX1262's channel-activity
+detection, backs off 100–400 ms while the channel is busy (still receiving,
+into a backlog delivered after the send), and sends anyway after 8 tries.
+Without it, an Outpost re-broadcasting an announce would talk over a
+Scout's first request, and Station decoded neither.
+`firmware/pocket/lib/lora_interface/` carries the identical patch.
 `lib/microReticulum/` is also a locally patched copy (absolute storage
-paths, `ad57a88`).
+paths, `ad57a88`; `NEIGHBOR_PROBE_RATELIMIT` widened to `uint16_t`, since
+300 in a `uint8_t` wrapped to 44 s and probed neighbors ~7× too often).
 
 ## Protocol
 

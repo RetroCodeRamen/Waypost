@@ -203,53 +203,99 @@ void LoRaInterface::loop() {
 
 	if (_online) {
 #ifdef ARDUINO
+		// Frames heard while a send was backing off for a busy channel
+		// (see wait_for_clear_channel) are delivered here, outside the send.
+		if (!_rx_backlog.empty()) {
+			std::vector<Bytes> backlog;
+			backlog.swap(_rx_backlog);
+			for (auto& pkt : backlog) on_incoming(pkt);
+		}
 		// checkIrq() polls the hardware IRQ register — no ISR required
 		if (_radio->checkIrq(RADIOLIB_IRQ_RX_DONE)) {
-			int len = _radio->getPacketLength();
-
-			uint8_t rxBuf[255];
-			int state = _radio->readData(rxBuf, len);
-
-			if (state == RADIOLIB_ERR_NONE && len > 1) {
-				Serial.println("RSSI: " + String(_radio->getRSSI()));
-				Serial.println("Snr: "  + String(_radio->getSNR()));
-
-				uint8_t hdr = rxBuf[0];
-				uint8_t seq = packetSequence(hdr);
-
-				if (isSplitPacket(hdr)) {
-					if (_rx_seq == SEQ_UNSET || _rx_seq != seq) {
-						// First part of a split (or restart after a lost first part)
-						_rx_seq = seq;
-						buffer.clear();
-						buffer.append(rxBuf + 1, len - 1);
-					} else {
-						// Second part — sequence matches; assemble and deliver
-						buffer.append(rxBuf + 1, len - 1);
-						_rx_seq = SEQ_UNSET;
-						on_incoming(buffer);
-					}
-				} else {
-					// Non-split: discard any stale partial reassembly, deliver immediately
-					if (_rx_seq != SEQ_UNSET) {
-						buffer.clear();
-						_rx_seq = SEQ_UNSET;
-					}
-					buffer.clear();
-					buffer.append(rxBuf + 1, len - 1);
-					on_incoming(buffer);
-				}
-			} else if (state != RADIOLIB_ERR_NONE) {
-				DEBUGF("LoRaInterface: readData failed, code %d", state);
-			}
-
-			// Re-arm receive mode (required after every packet on SX1262;
-			// harmless on SX1276)
-			_radio->startReceive();
+			Bytes pkt;
+			if (read_frame(pkt)) on_incoming(pkt);
 		}
 #endif
 	}
 }
+
+#ifdef ARDUINO
+// Reads one received LoRa frame and runs RNode's split-packet reassembly.
+// Returns true with `out` set when a whole Reticulum packet is complete.
+// Re-arms receive mode either way.
+bool LoRaInterface::read_frame(Bytes& out) {
+	bool complete = false;
+	int len = _radio->getPacketLength();
+
+	uint8_t rxBuf[255];
+	int state = _radio->readData(rxBuf, len);
+
+	if (state == RADIOLIB_ERR_NONE && len > 1) {
+		Serial.println("RSSI: " + String(_radio->getRSSI()));
+		Serial.println("Snr: "  + String(_radio->getSNR()));
+
+		uint8_t hdr = rxBuf[0];
+		uint8_t seq = packetSequence(hdr);
+
+		if (isSplitPacket(hdr)) {
+			if (_rx_seq == SEQ_UNSET || _rx_seq != seq) {
+				// First part of a split (or restart after a lost first part)
+				_rx_seq = seq;
+				buffer.clear();
+				buffer.append(rxBuf + 1, len - 1);
+			} else {
+				// Second part — sequence matches; assemble and deliver
+				buffer.append(rxBuf + 1, len - 1);
+				_rx_seq = SEQ_UNSET;
+				out = buffer;
+				complete = true;
+			}
+		} else {
+			// Non-split: discard any stale partial reassembly, deliver immediately
+			_rx_seq = SEQ_UNSET;
+			buffer.clear();
+			buffer.append(rxBuf + 1, len - 1);
+			out = buffer;
+			complete = true;
+		}
+	} else if (state != RADIOLIB_ERR_NONE) {
+		DEBUGF("LoRaInterface: readData failed, code %d", state);
+	}
+
+	// Re-arm receive mode (required after every packet on SX1262;
+	// harmless on SX1276)
+	_radio->startReceive();
+	return complete;
+}
+
+// Listen before talk, as real RNode firmware does (CSMA): this driver used
+// to transmit immediately, so a send that started while another node was
+// mid-frame (announce rebroadcasts are common right after a node boots)
+// collided and was lost. Uses the radio's channel-activity detection;
+// while the channel is busy, keeps receiving (frames go to _rx_backlog —
+// delivering them from inside a send would re-enter Reticulum) and backs
+// off a random 100-400 ms. Gives up waiting after kCsmaMaxTries and sends
+// anyway rather than stall forever.
+void LoRaInterface::wait_for_clear_channel() {
+	static const int kCsmaMaxTries = 8;
+	for (int attempt = 0; attempt < kCsmaMaxTries; attempt++) {
+		int16_t scan = _radio->scanChannel();
+		_radio->startReceive();
+		if (scan == RADIOLIB_CHANNEL_FREE) return;
+		DEBUGF("LoRaInterface: channel busy (scan=%d), backing off", scan);
+
+		uint32_t until = millis() + 100 + (Cryptography::randomnum(300));
+		while ((int32_t)(until - millis()) > 0) {
+			if (_radio->checkIrq(RADIOLIB_IRQ_RX_DONE)) {
+				Bytes pkt;
+				if (read_frame(pkt)) _rx_backlog.push_back(pkt);
+			}
+			delay(2);
+		}
+	}
+	DEBUG("LoRaInterface: channel still busy after CSMA back-off, sending anyway");
+}
+#endif
 
 /*virtual*/ bool LoRaInterface::send_outgoing(const Bytes& data) {
 	DEBUGF("%s.on_outgoing: data: %s", toString().c_str(), data.toHex().c_str());
@@ -258,6 +304,7 @@ void LoRaInterface::loop() {
 		if (_online) {
 			TRACEF("LoRaInterface: sending %lu bytes...", data.size());
 #ifdef ARDUINO
+			wait_for_clear_channel();
 			uint8_t txBuf[255];
 			uint8_t rand_nibble = (uint8_t)(Cryptography::randomnum(256)) & 0xF0;
 
