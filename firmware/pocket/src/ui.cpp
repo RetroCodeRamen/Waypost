@@ -62,6 +62,37 @@ void draw_spinner() {
 
 TFT_eSPI& tft() { return s(); }
 
+// The T-Deck's backlight driver takes brightness as a count of pulses on its
+// enable pin (16 steps; each low-high pulse steps one level down, wrapping),
+// as in LilyGO's T-Deck examples. Low for a few ms switches it off.
+static uint8_t g_brightness = kBrightnessMax;
+
+void set_brightness(uint8_t level) {
+  if (level > kBrightnessMax) level = kBrightnessMax;
+  if (level == g_brightness) return;
+  if (level == 0) {
+    digitalWrite(BOARD_TFT_BACKLIGHT, LOW);
+    delay(3);
+    g_brightness = 0;
+    return;
+  }
+  if (g_brightness == 0) {
+    digitalWrite(BOARD_TFT_BACKLIGHT, HIGH);
+    g_brightness = kBrightnessMax;
+    delayMicroseconds(30);
+  }
+  int from = kBrightnessMax - g_brightness;
+  int to = kBrightnessMax - level;
+  int pulses = (kBrightnessMax + to - from) % kBrightnessMax;
+  for (int i = 0; i < pulses; i++) {
+    digitalWrite(BOARD_TFT_BACKLIGHT, LOW);
+    digitalWrite(BOARD_TFT_BACKLIGHT, HIGH);
+  }
+  g_brightness = level;
+}
+
+uint8_t brightness() { return g_brightness; }
+
 void init() {
   pinMode(BOARD_TFT_BACKLIGHT, OUTPUT);
   digitalWrite(BOARD_TFT_BACKLIGHT, HIGH);

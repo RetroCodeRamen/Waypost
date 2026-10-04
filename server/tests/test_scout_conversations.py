@@ -239,3 +239,32 @@ def test_beacon_get_and_list_compact_fit(tmp_path: Path):
     assert _fits(r) and r.payload["beacon"]["on"] is True
     r = beacon.handle_rpc(_env("BEACON", "BEACON_LIST", {"compact": True}))
     assert _fits(r) and r.payload["beacons"]
+
+
+# -- MSG_SEND with the device's own message id (Scout outbox) -------------------
+
+
+async def _send(dispatch, payload, src=SCOUT):
+    return await dispatch.handle_rpc(_env(SVC_DISPATCH, "MSG_SEND", payload, src=src))
+
+
+async def test_outbox_resend_with_same_id_is_one_message(world):
+    db, dispatch, _ = world
+    db.ensure_user("bob", "Bob")
+    mid = "0123456789abcdef0123456789abcdef"
+    first = await _send(dispatch, {"peer": "bob", "body": "on my way", "message_id": mid})
+    again = await _send(dispatch, {"peer": "bob", "body": "on my way", "message_id": mid})
+    assert first.payload["ok"] and first.payload["created"] and first.payload["id"] == mid
+    assert again.payload["ok"] and not again.payload["created"] and again.payload["id"] == mid
+    assert len(db.dispatch.list_messages(first.payload["conversation_id"])) == 1
+    assert _fits(again)
+
+
+async def test_message_id_of_someone_elses_message_is_refused(world):
+    db, dispatch, _ = world
+    db.ensure_user("bob", "Bob")
+    dispatch.bind_device("pocket-1-b0b0", "bob", transport_dest="b0b0" * 8)
+    mid = "fedcba9876543210fedcba9876543210"
+    await _send(dispatch, {"peer": "aj", "body": "hi", "message_id": mid}, src="pocket-1-b0b0")
+    r = await _send(dispatch, {"peer": "bob", "body": "hi", "message_id": mid})
+    assert r.flags & Flags.ERROR and r.payload["error"] == "message_id_conflict"

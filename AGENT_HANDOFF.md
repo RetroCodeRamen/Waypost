@@ -162,6 +162,14 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-04 — Claude (D1: the Scout keeps its own messages)
+
+**Re:** Human: "let's continue building this out" → roadmap step **D1**.
+**Built:** `firmware/pocket/src/store.*` — conversations index, one file per conversation (newest 200 kept), outbox; owner-tagged and wiped on account change like contacts; changes wait in RAM until the radio task is done with storage (`files_safe()`), because two tasks on LittleFS stalled the radio before. Dispatch now draws from the store first and merges Station's `MSG_CONVS`/`MSG_LIST` when in reach; compose always goes to the outbox ("(waiting)"), sent immediately when possible, else retried every 30 s from `loop()`; Station refusals show "(not sent: reason)". Outbox uses its own 128-bit `message_id` so retries are idempotent — **Station:** a reused id that belongs to another sender/conversation now gets `message_id_conflict` (+2 tests, 233 passed). Scout learns wall-clock time from Station's envelope `ts` (`station_link::now_ms()`). Beacon alerts saved (`/wp_beacons`): listed offline, an acknowledged one isn't re-raised after reboot. Catch-up now runs while locked (messages are saved, unread badge updates). Screen dims at 1 min, off at 3 min, wakes on key / new message / Beacon (separate from the 5-min PIN-lock timer, which only keys reset).
+**Verified on hardware:** 2 messages pushed while locked → saved; after reset `store: 1 conversation(s)` and unread `msg 2` restored; a message sent while the Scout was rebooting arrived by catch-up while locked (`msg 3`, DELIVERED). Boot to radio ready ~5 s.
+**Not verified (Scout is PIN-locked with the human's PIN):** opening conversations from the store, offline compose → "(waiting)" → auto-send when Station returns, the saved Beacon list offline, screen dim levels on glass. The running Station predates the `message_id_conflict` guard (restart to pick it up; honest ids behave the same).
+**Next:** D2 offline identity (community key + certificates), then D3 signed objects.
+
 ### 2026-10-04 — Claude (architecture correction: no device is strictly necessary — docs only)
 
 **Re:** Human set the network philosophy: Cybiko-like, local-first, offline-first, store-and-forward, eventually synchronized; "the Station enhances the network, it does not create the network". Roles: Station = HQ/archive/sync hub/recovery; Outpost = fixed infrastructure that runs on its own; Scout = complete personal device (two Scouts must work with nothing else); Courier = physical store-and-forward. Asked for a review, a common peer sync model, capability discovery, dedup, offline identity, transport tiers, graceful degradation, and a dependency-ordered roadmap. **Refinement, not a rewrite.**

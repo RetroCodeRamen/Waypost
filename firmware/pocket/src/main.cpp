@@ -28,6 +28,7 @@
 #include "contacts.h"
 #include "input.h"
 #include "station_link.h"
+#include "store.h"
 #include "ui.h"
 #include "utilities.h"
 #include "scout_logo.h"
@@ -44,6 +45,17 @@ static void board_power_on() {
   pinMode(RADIO_CS_PIN, OUTPUT);
   digitalWrite(RADIO_CS_PIN, HIGH);
 }
+
+static const uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;  // PIN lock after no keys
+static const uint32_t kIdleDimMs = 60UL * 1000UL;          // dim the screen
+static const uint32_t kIdleOffMs = 3UL * 60UL * 1000UL;    // then switch it off
+static const uint8_t kDimLevel = 3;
+static uint32_t g_last_input = 0;     // last key (the lock timer)
+static uint32_t g_last_activity = 0;  // last key, or something worth showing (the screen)
+
+// Something arrived that the person should see: light the screen. Doesn't
+// postpone the PIN lock.
+static void wake() { g_last_activity = millis(); }
 
 // Boot screen: the Waypost Scout logo (src/scout_logo.h, 320x240) with a
 // slim progress bar under the tagline, so a slow step never looks frozen.
@@ -110,6 +122,9 @@ void setup() {
   // Files first, radio after: storage isn't safe for two tasks at once.
   account::load();
   contacts::load();
+  store::load();
+  apps::beacon_load();
+  ui::set_unread(store::unread_total());
   station_link::start_radio();
   // Show the logo for its minimum time; the bar just marks the time.
   while (millis() - splash_start < kSplashMinMs) {
@@ -120,6 +135,7 @@ void setup() {
                 static_cast<unsigned long>(millis() - splash_start),
                 station_link::ready() ? "ready" : "still starting");
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
+  g_last_input = g_last_activity = millis();
   if (!account::paired()) {
     apps::open(apps::pairing_app());  // adopted automatically if Station already knows us
   } else {
@@ -128,10 +144,10 @@ void setup() {
   }
 }
 
-static const uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;
 
 void loop() {
   station_link::loop();
+  store::loop();  // writes saved-message changes once storage is free
 
   // Once the radio task finishes (or fails), keep its timing for the
   // Signal app — serial output is lost when nobody is reading the port.
@@ -144,26 +160,35 @@ void loop() {
   }
 
   waylink::IncomingChatMessage msg;
-  while (station_link::pop_incoming(msg)) apps::deliver_chat(msg);
+  while (station_link::pop_incoming(msg)) {
+    apps::deliver_chat(msg);
+    wake();
+  }
   waylink::Reply event;
   while (station_link::pop_event(event)) {
     if (event.envelope.text("op") == "BEACON_ALERT") apps::beacon_event(event.payload());
   }
+  if (apps::beacon_showing()) wake();  // an alert keeps the screen lit
+  apps::beacon_save();                  // saved alerts, once storage is free
 
   App* app = apps::current();
   if (app) {
-    static uint32_t last_input = millis();
     input::Event e = input::poll();
     if (e.kind != input::Kind::None) {
-      last_input = millis();
-      app->on_event(e);
-    } else if (millis() - last_input >= kIdleLockMs && account::has_pin() && !apps::locked() &&
+      bool was_dark = ui::brightness() == 0;
+      g_last_input = g_last_activity = millis();
+      // The key that wakes a dark screen only wakes it.
+      if (!was_dark) app->on_event(e);
+    } else if (millis() - g_last_input >= kIdleLockMs && account::has_pin() && !apps::locked() &&
                !apps::beacon_showing()) {
       apps::lock();
     }
     // on_event may have switched apps.
     apps::current()->tick();
   }
+
+  uint32_t idle = millis() - g_last_activity;
+  ui::set_brightness(idle >= kIdleOffMs ? 0 : idle >= kIdleDimMs ? kDimLevel : ui::kBrightnessMax);
 
   // Learns/confirms which account this Scout belongs to once Station is in
   // reach (rate-limited inside).
@@ -182,11 +207,14 @@ void loop() {
   bool periodic = known && last_catch_up != 0 && millis() - last_catch_up > kCatchUpEveryMs;
   if ((came_back || periodic) && account::paired()) {
     last_catch_up = millis();
-    if (!apps::locked()) apps::catch_up_chat();
+    apps::catch_up_chat();  // saved on the Scout, so fine while locked too
     // A Beacon raised while we were off or away — shown even when locked.
     apps::check_beacon();
   }
   station_was_known = known;
+
+  // Queued messages go out as soon as Station is in reach (one per loop).
+  if (known && account::paired()) apps::flush_outbox();
 
   static uint32_t last_status = 0;
   if (millis() - last_status >= 1000) {

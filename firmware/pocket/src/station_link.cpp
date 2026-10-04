@@ -48,6 +48,11 @@ waylink::Reply g_reply;
 std::deque<waylink::IncomingChatMessage> g_incoming;
 std::deque<waylink::Reply> g_events;  // unsolicited requests (not chat)
 
+// Wall clock learned from Station's envelope ts (seconds); the Scout has no
+// RTC. 0 until the first reply.
+uint64_t g_epoch_s = 0;
+uint32_t g_epoch_at_ms = 0;
+
 void (*g_busy_tick)() = nullptr;
 void (*g_busy_done)() = nullptr;
 
@@ -70,6 +75,11 @@ void on_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
   if (!waylink::parse_reply(data.data(), data.size(), reply)) {
     Serial.println("link: undecodable packet dropped");
     return;
+  }
+  uint64_t ts = reply.envelope.uint("ts");
+  if (ts > 1600000000ULL) {
+    g_epoch_s = ts;
+    g_epoch_at_ms = millis();
   }
   // A REQUEST that isn't a RESPONSE is Station telling us something
   // unprompted (Flags.REQUEST = 1, RESPONSE = 2).
@@ -360,6 +370,11 @@ bool send(const RNS::Bytes& payload) {
   RNS::Packet pkt(dest, payload);
   pkt.send();
   return true;
+}
+
+uint64_t now_ms() {
+  if (g_epoch_s == 0) return 0;
+  return g_epoch_s * 1000ULL + static_cast<uint32_t>(millis() - g_epoch_at_ms);
 }
 
 bool pop_event(waylink::Reply& out) {

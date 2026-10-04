@@ -216,6 +216,14 @@ class DispatchService:
             transport=transport,
             delivery_state=DELIVERY_SENT,
         )
+        # A device may pick its own message id so a resend after a lost
+        # reply is recognised (the Scout's outbox does this). A repeat must be
+        # the same message, not someone else's id.
+        if not created and (
+            str(msg["sender"]).lower() != sender.lower()
+            or msg["conversation_id"] != conversation_id
+        ):
+            raise ValueError("message_id_conflict")
         if created:
             offline_any, pushed_any = self._fanout_push(msg, exclude_username=sender)
             if offline_any:

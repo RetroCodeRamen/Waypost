@@ -12,10 +12,12 @@
 #include <vector>
 
 #include <Arduino.h>
+#include <microReticulum.h>
 
 #include "app.h"
 #include "prompt.h"
 #include "station_link.h"
+#include "store.h"
 #include "ui.h"
 
 namespace {
@@ -51,10 +53,53 @@ std::string upper(std::string s) {
   return s;
 }
 
-std::vector<std::string> g_acknowledged;  // ids acknowledged this boot
+// Alerts saved on the Scout, newest first: shown when Station is out of
+// reach, and an acknowledged one isn't raised again after a reboot.
+//   /wp_beacons   id \t sev \t ts \t active \t acked \t author \t title \t body
+const char* const kSavedPath = "/wp_beacons";
+const size_t kMaxSaved = 12;
+
+struct Saved {
+  BeaconInfo b;
+  bool acked;
+};
+std::vector<Saved> g_saved;
+bool g_saved_dirty = false;
+
+Saved* saved(const std::string& id) {
+  for (auto& s : g_saved)
+    if (s.b.id == id) return &s;
+  return nullptr;
+}
+
+// Latest word on a Beacon (from a push, BEACON_GET or BEACON_LIST).
+void remember(const BeaconInfo& b) {
+  if (b.id.empty()) return;
+  Saved* s = saved(b.id);
+  if (s) {
+    if (s->b.active != b.active || s->b.title != b.title) g_saved_dirty = true;
+    s->b = b;
+    return;
+  }
+  g_saved.insert(g_saved.begin(), {b, false});
+  if (g_saved.size() > kMaxSaved) g_saved.pop_back();
+  std::stable_sort(g_saved.begin(), g_saved.end(),
+                   [](const Saved& x, const Saved& y) { return x.b.ts > y.b.ts; });
+  g_saved_dirty = true;
+}
 
 bool acknowledged(const std::string& id) {
-  return std::find(g_acknowledged.begin(), g_acknowledged.end(), id) != g_acknowledged.end();
+  const Saved* s = saved(id);
+  return s && s->acked;
+}
+
+void acknowledge(const BeaconInfo& b) {
+  remember(b);
+  Saved* s = saved(b.id);
+  if (s && !s->acked) {
+    s->acked = true;
+    g_saved_dirty = true;
+  }
 }
 
 // -- the full-screen alert ------------------------------------------------------
@@ -85,7 +130,7 @@ class AlertApp : public App {
 
   void on_event(const input::Event& e) override {
     if (e.kind != input::Kind::Select && e.kind != input::Kind::Enter) return;
-    g_acknowledged.push_back(_beacon.id);
+    acknowledge(_beacon);
     App* back = _return_to ? _return_to : &apps::home_app();
     _return_to = nullptr;
     apps::open(*back);
@@ -195,19 +240,29 @@ class BeaconApp : public App {
     waylink::Reply reply;
     auto r = station_link::request("BEACON", "BEACON_GET", {Field::boolean("compact", true)}, reply);
     _current = BeaconInfo();
+    _history.clear();
     if (r == station_link::Result::Ok) {
       const waylink::Value* b = reply.payload().get("beacon");
-      if (b && b->type == waylink::Value::Map) _current = from_value(*b);
+      if (b && b->type == waylink::Value::Map) {
+        _current = from_value(*b);
+        remember(_current);
+      }
+      if (station_link::request("BEACON", "BEACON_LIST", {Field::boolean("compact", true)}, reply) ==
+          station_link::Result::Ok) {
+        const waylink::Value* list = reply.payload().get("beacons");
+        if (list && list->type == waylink::Value::Array)
+          for (const auto& v : list->items) {
+            _history.push_back(from_value(v));
+            remember(_history.back());
+          }
+      }
     } else {
-      _note = std::string("Couldn't reach Station: ") + station_link::describe(r);
-    }
-    _history.clear();
-    if (r == station_link::Result::Ok &&
-        station_link::request("BEACON", "BEACON_LIST", {Field::boolean("compact", true)}, reply) ==
-            station_link::Result::Ok) {
-      const waylink::Value* list = reply.payload().get("beacons");
-      if (list && list->type == waylink::Value::Array)
-        for (const auto& v : list->items) _history.push_back(from_value(v));
+      // Station out of reach: what this Scout has seen.
+      _note = std::string("Station: ") + station_link::describe(r) + " - saved alerts";
+      for (const auto& sv : g_saved) {
+        _history.push_back(sv.b);
+        if (sv.b.active && _current.id.empty()) _current = sv.b;
+      }
     }
     draw_list();
   }
@@ -310,6 +365,7 @@ App& apps::beacon_app() {
 void apps::beacon_event(const waylink::Value& compact) {
   BeaconInfo b = from_value(compact);
   if (b.id.empty()) return;
+  remember(b);
   if (!b.active) {
     alert().cleared(b.id);
     return;
@@ -328,4 +384,35 @@ void apps::check_beacon() {
     return;
   const waylink::Value* b = reply.payload().get("beacon");
   if (b && b->type == waylink::Value::Map) apps::beacon_event(*b);
+}
+
+void apps::beacon_load() {
+  g_saved.clear();
+  auto lines = store::read_lines(kSavedPath);
+  for (const auto& line : lines) {
+    auto f = store::split_tabs(line);
+    if (f.size() < 8) continue;
+    BeaconInfo b;
+    b.id = f[0];
+    b.severity = f[1];
+    b.ts = strtoull(f[2].c_str(), nullptr, 10);
+    b.active = f[3] == "1";
+    b.author = store::unescape(f[5]);
+    b.title = store::unescape(f[6]);
+    b.body = store::unescape(f[7]);
+    g_saved.push_back({b, f[4] == "1"});
+  }
+}
+
+void apps::beacon_save() {
+  if (!g_saved_dirty || !store::files_safe()) return;
+  g_saved_dirty = false;
+  std::string out;
+  for (const auto& s : g_saved) {
+    const BeaconInfo& b = s.b;
+    out += b.id + "\t" + b.severity + "\t" + std::to_string(b.ts) + "\t" + (b.active ? "1" : "0") +
+           "\t" + (s.acked ? "1" : "0") + "\t" + store::escape(b.author) + "\t" +
+           store::escape(b.title) + "\t" + store::escape(b.body) + "\n";
+  }
+  RNS::Utilities::OS::write_file(kSavedPath, RNS::Bytes(out));
 }

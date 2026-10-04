@@ -67,6 +67,9 @@ Result request(const char* svc, const char* op, const std::vector<waylink::Field
 // Fire-and-forget (acks). False if Station isn't reachable.
 bool send(const RNS::Bytes& payload);
 
+// Wall-clock milliseconds, learned from Station's replies; 0 if never heard.
+uint64_t now_ms();
+
 // Unsolicited DISPATCH/MSG_PUSH messages, queued from the packet callback.
 bool pop_incoming(waylink::IncomingChatMessage& out);
 // Other unsolicited requests from Station (e.g. BEACON/BEACON_ALERT).

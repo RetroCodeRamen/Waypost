@@ -199,6 +199,11 @@ Anything else gets `unauthorized_device`. From a radio device, a `peer` Station 
 for gets `unknown_user` (rather than a dead-end conversation; the portal's HTTP path still creates
 users on send).
 
+**Device-chosen message id (2026-10-04):** `MSG_SEND` takes an optional `message_id`. The Scout's
+outbox sets its own (32 hex characters, random) so a resend after a lost reply is the **same**
+message: Station stores it once, replies `ok` with `created: false`, and pushes nothing again. A
+`message_id` that already belongs to a different sender or conversation gets `message_id_conflict`.
+
 **Offline / no-Station path:**
 - `MSG_SEND` may target another Pocket directly over Waylink; destination **delivers locally** when it is the recipient.  
 - Couriers (other Pockets, Outposts) may store and forward the same `mid` toward Station or the recipient.  

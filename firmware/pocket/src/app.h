@@ -47,6 +47,9 @@ void check_identity();
 void deliver_chat(const waylink::IncomingChatMessage& msg);
 // Fetch messages missed while out of range (DISPATCH/MSG_SYNC, paged).
 void catch_up_chat();
+// Send the oldest queued Dispatch message if Station is in reach (one per
+// call; waits between failed tries unless `force`).
+void flush_outbox(bool force = false);
 
 // A Beacon from Station (BEACON_ALERT push or BEACON_GET, compact form):
 // shows the full-screen alert over any app, or closes it when cleared.
@@ -54,5 +57,10 @@ void beacon_event(const waylink::Value& compact);
 bool beacon_showing();
 // Ask Station for the active Beacon (an alert sent while we were away).
 void check_beacon();
+// Alerts are saved on the Scout (shown with Station out of reach; an
+// acknowledged one isn't raised again after a reboot). load() before the
+// radio starts; save() every loop (writes only when changed and safe).
+void beacon_load();
+void beacon_save();
 
 }  // namespace apps

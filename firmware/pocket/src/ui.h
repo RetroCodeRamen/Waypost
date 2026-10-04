@@ -52,6 +52,11 @@ void mark_dirty();  // whole screen
 // busy_tick() calls it during blocking waits.
 void present();
 
+// Backlight, 0 (off) .. kBrightnessMax.
+constexpr uint8_t kBrightnessMax = 16;
+void set_brightness(uint8_t level);
+uint8_t brightness();
+
 // Title bar: app name left; Station status + unread chat count right.
 void title_bar(const char* title);
 void set_station_ok(bool ok);

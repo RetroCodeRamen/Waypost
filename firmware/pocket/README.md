@@ -13,14 +13,16 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Pairing** | First boot: type the 6-digit code from the portal's Devices page (or the Scout adopts its account automatically if Station already has it bound) | `PAIR_REDEEM`, `WHOAMI` |
 | **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
 | **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
-| **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). Missed messages (or ones whose delivery ack was lost) arrive by catch-up when Station comes into reach and every 3 minutes while it is | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
-| **Beacon** | Emergency alerts: full-screen alarm in the severity's colour over any app (lock screen too) until acknowledged; shows "CLEARED" if cancelled. The app lists the current and recent Beacons and can raise one (severity → headline → details → type SEND) | `BEACON_ALERT` (pushed), `BEACON_GET`, `BEACON_LIST`, `BEACON_PUSH` |
+| **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). **Messages are kept on the Scout** (`store.*`): history reads and compose work with Station out of reach; a message written offline shows "(waiting)" and goes out by itself when Station is back (outbox, retried every 30 s, one copy on Station however often it's retried); one Station refuses shows "(not sent: reason)". Unread counts survive reboots. Missed messages (or ones whose delivery ack was lost) arrive by catch-up when Station comes into reach and every 3 minutes while it is | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
+| **Beacon** | Emergency alerts: full-screen alarm in the severity's colour over any app (lock screen too) until acknowledged; shows "CLEARED" if cancelled. The app lists the current and recent Beacons and can raise one (severity → headline → details → type SEND). Alerts are saved on the Scout: shown with Station out of reach, and one you've acknowledged isn't raised again after a reboot | `BEACON_ALERT` (pushed), `BEACON_GET`, `BEACON_LIST`, `BEACON_PUSH` |
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
 | **Settings** | Who the Scout belongs to; set / change / remove the PIN; unpair | `UNPAIR` |
 
 Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply) as you scroll — see `docs/protocol.md` "Trailhead" and the radio-sized Fieldbook forms.
+
+**Screen:** dims after 1 minute without a key and switches off after 3; any key or the trackball wakes it (that first key only wakes it). A new message or a Beacon lights it. The PIN lock still follows the 5-minute no-key timer.
 
 **Controls:** roll the trackball to move, press it to open/select, roll left to go back. Keyboard types; Enter sends/searches; Backspace on an empty line goes back.
 
@@ -29,7 +31,8 @@ Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply)
 | File | Role |
 |------|------|
 | `main.cpp` | Bring-up and the event loop |
-| `station_link.*` | Reticulum, identity, request/reply (rid-matched, retries for reads) |
+| `station_link.*` | Reticulum, identity, request/reply (rid-matched, retries for reads); wall clock learned from Station's replies |
+| `store.*` | The Scout's own messages: conversations index, one file per conversation, outbox (roadmap D1) |
 | `waylink_cbor.*` | CBOR envelopes: generic `encode_request` / `parse_reply`, plus older hand-written codecs |
 | `input.*`, `keyboard.*` | Keyboard + trackball → one event stream; USB-serial remote control |
 | `ui.*` | Title bar, lists, word wrap, screen text mirror |
