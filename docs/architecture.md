@@ -132,6 +132,8 @@ Rules:
 
 Reticulum/LXMF (or successor transport) should provide the hop/carry primitives; Waypost apps speak logical `MSG_*` only.
 
+**Hardware design (2026-10-04): [mesh-delivery.md](mesh-delivery.md)** — hop-by-hop delivery (Reticulum encrypts each packet for its addressee, so relays can't "overhear" a Station-bound message; each hop receives it addressed to itself), signed messages, Outposts as Dispatch couriers that deliver to Scouts in range *and* to people signed in on their Wi-Fi, replies taking the short way back, Station as the memory.
+
 **Implemented in sim (M3):** `server/services/dispatch/peer.py` (`PeerDispatchNode`) proves this exact flow — direct delivery, courier carry, `MSG_SYNC` merge by `mid` — in the mock mesh. Real Pocket firmware now exists (M7, `firmware/pocket/`), but it does Station-relayed chat only so far; this peer↔peer/courier flow still runs only in sim.
 
 **Implemented in sim, first hardware attempt (M6):** `server/services/dispatch/outpost.py` (`OutpostNode`) is the always-on-courier half — uncapped relay hops (Pockets cap at 3 device-to-device hops; Outposts don't), preferred-route caching toward Station, direct hand-off when two Pockets are both in range of the same Outpost. Both node types share transport/request-response plumbing via `server/services/dispatch/waylink_node.py` (`WaylinkPeerNode`) rather than duplicating it.

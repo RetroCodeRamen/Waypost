@@ -126,6 +126,7 @@ tools/          Simulators, radio helpers, screenshots
 - [Deployment](docs/deployment.md)
 - [Pi Station setup](docs/pi-setup.md)
 - [Fieldbook (wiki)](docs/fieldbook.md)
+- [Mesh delivery (design)](docs/mesh-delivery.md)
 - [Groups & permissions](docs/groups-and-permissions.md)
 - [Hardware](docs/hardware/)
 - [Scout firmware (T-Deck)](firmware/pocket/README.md)

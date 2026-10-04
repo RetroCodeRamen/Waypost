@@ -379,6 +379,7 @@ Claiming is also done: `OUTPOST_CLAIM` (`docs/protocol.md`) reuses the M4 pairin
 | Pocket location cadence ~10–15 min | Default report interval | LoRa duty cycle + battery; not live tracking |
 | Pocket↔Pocket works without Station | Direct + Outpost + Pocket-as-courier | Camp life must not depend on the Pi being reachable |
 | Recipient reads now, still syncs to Station | Local delivery + durable `mid` sync later | Portal/history converge without blocking the human conversation |
+| Mesh delivery on hardware (2026-10-04) | Hop-by-hop courier; relays (Outposts, Scouts) may read what they carry; messages signed; Outposts serve nearby Scouts **and** people signed in on their Wi-Fi | Human's direction; design in [mesh-delivery.md](mesh-delivery.md). End-to-end encryption offered, not chosen for now |
 | **Next build = N2 username/password auth** | One account for portal + Pocket | Overdue; passwordless Station is not community-safe |
 | Production LoRa must be encrypted | M2e Reticulum (Heltec = lab only) | Cleartext CBOR on air is unacceptable for real camps |
 | Scout replies fit one packet | Radio-sized ops (`compact`/`limit`/`offset`), chunked text, a test guard at 383 bytes | microReticulum on the device can't receive anything larger; Resource transfer is a later speed-up |
