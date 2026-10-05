@@ -59,7 +59,10 @@ constexpr int kBarX = 60, kBarY = 229, kBarW = ui::kWidth - 120, kBarH = 5;
 void draw_splash(int percent) {
   auto& t = ui::tft();
   if (percent == 0) {
-    t.pushImage(0, 0, SCOUT_LOGO_WIDTH, SCOUT_LOGO_HEIGHT, SCOUT_LOGO);
+    // The logo is plain RGB565 (R in the top bits); LovyanGFX takes a bare
+    // uint16_t* as byte-swapped, which scrambled its colours.
+    t.pushImage(0, 0, SCOUT_LOGO_WIDTH, SCOUT_LOGO_HEIGHT,
+                reinterpret_cast<const lgfx::rgb565_t*>(SCOUT_LOGO));
     ui::mark_dirty();
   }
   t.fillRoundRect(kBarX, kBarY, kBarW, kBarH, 2, ui::rgb(0xdf, 0xe5, 0xe0));
