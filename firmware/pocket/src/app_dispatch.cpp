@@ -438,6 +438,9 @@ class DispatchApp : public App {
       if (m.state == 'q') {
         text += "  (waiting)";
         color = ui::kMuted;
+      } else if (m.state == 'p') {
+        text += "  (passed on)";
+        color = ui::kMuted;
       } else if (m.state == 'f') {
         text += "  (not sent: " + m.note + ")";
         color = ui::kWarn;
@@ -546,6 +549,7 @@ class DispatchApp : public App {
       o.signed_t = 0;
     }
     store::queue(o);
+    peersync::hurry();  // an Outpost or Scout in range can take it now
     reload();
     _scroll = 0;
     draw_chat();

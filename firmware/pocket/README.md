@@ -10,7 +10,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 
 | App | What it does | Waylink ops |
 |-----|--------------|-------------|
-| **Pairing** | First boot: type the 6-digit code from the portal's Devices page (or the Scout adopts its account automatically if Station already has it bound) | `PAIR_REDEEM`, `WHOAMI` |
+| **Sign in** | Username + password (the same as the portal). The Scout works out the identity key (~4–5 s) and proves it to Station with a signed challenge — the password never goes over the radio. With Station out of reach it signs in anyway and finishes when Station is back | `LOGIN_NONCE`, `LOGIN`, `WHOAMI` |
 | **Lock** | PIN entry at boot and after 5 min idle, when a PIN is set | — |
 | **Home** | 3×3 tile launcher; first letter of an app name opens it | — |
 | **Dispatch** | Conversations list (unread dots) → conversation (history, older pages as you scroll up, live messages) → reply, 140 bytes max. "+ New message" picks from contacts (cached in flash). **Messages are kept on the Scout** (`store.*`): history reads and compose work with Station out of reach; a message written offline shows "(waiting)" and goes out by itself when Station is back (outbox, retried every 30 s, one copy on Station however often it's retried); one Station refuses shows "(not sent: reason)". Unread counts survive reboots. Signed messages also move by **peer sync** — from Station, or straight from another Scout in range with no Station at all — and the Scout passes on what it holds. Once the Scout has its device certificate, every message is **signed** on the Scout when written (D3) — the compose counter then shows the room left after the signature. Missed messages (or ones whose delivery ack was lost) arrive by catch-up when Station comes into reach and every 3 minutes while it is | `MSG_CONVS`, `MSG_LIST`, `MSG_SEND`, `MSG_PUSH` + ack, `MSG_SYNC`, `ROLL_LIST` |
@@ -18,7 +18,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
-| **Settings** | Who the Scout belongs to; whether people can be verified offline ("ID: verified offline, 3/3 contacts"); set / change / remove the PIN; unpair | `UNPAIR`, `CERT_*` (background) |
+| **Settings** | Who the Scout belongs to; whether Station vouches for this key and how many contacts can be checked offline; set / change / remove the PIN (it seals the identity key); sign out | `UNPAIR`, `CERT_*` (background) |
 
 Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply) as you scroll — see `docs/protocol.md` "Trailhead" and the radio-sized Fieldbook forms.
 
@@ -33,7 +33,8 @@ Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply)
 | `main.cpp` | Bring-up and the event loop |
 | `station_link.*` | Reticulum, identity, request/reply (rid-matched, retries for reads); wall clock learned from Station's replies |
 | `certs.*` | Offline identity: pinned community key, certificates for itself and contacts, the PIN-sealed signing key (roadmap D2) |
-| `sync.*` | Peer sync (D4): reconciles signed messages with Station every 3 min and with contacts' Scouts in range; answers other devices' `SYNC` requests |
+| `kdf.*` | scrypt: the identity key from username + password (4 MiB from PSRAM) |
+| `sync.*` | Peer sync (D4): reconciles signed messages with Station every 3 min, with Outposts it hears and contacts' Scouts in range every minute (at once after writing); answers other devices' `SYNC` requests. Engine shared with the Outpost: `firmware/common/waypost_core` |
 | `store.*` | The Scout's own messages: conversations index, one file per conversation, outbox (roadmap D1) |
 | `waylink_cbor.*` | CBOR envelopes: generic `encode_request` / `parse_reply`, plus older hand-written codecs |
 | `input.*`, `keyboard.*` | Keyboard + trackball → one event stream; USB-serial remote control |
@@ -62,7 +63,7 @@ pio device monitor -p /dev/ttyACM0 -b 115200
 
 Station hash: log in to the dev Station and read `GET /api/signal` → `waylink.rns_hash`, or use the hash printed at Station startup.
 
-**Pairing:** a new Scout opens on the Pairing screen. On the portal, open Devices → Pair a device and type the 6-digit code on the Scout; it sends its own destination hash, so Station can push to it. A Scout already bound via the API is recognized automatically (`WHOAMI`) once Station is in reach. Lab shortcut, equivalent to pairing:
+**Signing in:** a new Scout opens on the Sign in screen: username, then password. An account made before 2026-10-05 needs one sign-in on the Station portal first (that's when Station learns its identity key). The Scout is then bound to the account and Station can push to it. A Scout bound via the API is still recognized (`WHOAMI`), but can't sign messages until someone signs in on it. Lab shortcut for binding without signing in:
 
 ```bash
 curl -X POST http://localhost:8000/api/dispatch/devices/bind -H 'Content-Type: application/json' \

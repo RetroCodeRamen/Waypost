@@ -20,20 +20,11 @@
 #include <string>
 #include <vector>
 
+#include "wp_objects.h"
+
 namespace certs {
 
-struct Cert {
-  std::string kind;  // "id" | "rev"
-  uint64_t n = 0;    // serial
-  std::string i;     // identity id (16 raw bytes)        id
-  std::string u;     // username                           id
-  std::string dn;    // display name                       id
-  std::string p;     // identity public key (32 bytes)     id
-  uint64_t t = 0;    // issued (s)
-  uint64_t x = 0;    // expires (s)                        id
-  uint64_t r = 0;    // serial revoked                     rev
-  std::string s;     // community signature (64 raw bytes)
-};
+using Cert = wp::Cert;  // firmware/common/waypost_core/src/wp_objects.h
 
 void load();       // after mount_storage + account::load, before start_radio
 bool self_test();  // canonical bytes + Ed25519 against the pinned vectors

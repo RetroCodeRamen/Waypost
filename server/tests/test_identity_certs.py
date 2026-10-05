@@ -18,7 +18,7 @@ from server.services.dispatch.service import DispatchService
 from server.services.identity import certs as C
 from server.services.identity import keys as K
 from server.services.identity.service import IdentityService
-from server.services.profiles.constants import OP_CERT_GET, OP_CERT_REVOKED, OP_CERT_ROOT
+from server.services.profiles.constants import OP_CERT_GET, OP_CERT_LIST, OP_CERT_REVOKED, OP_CERT_ROOT
 from shared.protocol.envelope import SVC_PROFILE, Envelope, Flags, encode_cbor
 from shared.protocol.radio import RADIO_MDU
 
@@ -120,6 +120,25 @@ async def test_certificates_renew_near_expiry(world):
     clock.t += 24 * 24 * 3600  # 6 days left
     renewed = (await ident.handle_rpc(_env(OP_CERT_GET, {}))).payload["cert"]
     assert renewed["n"] != first["n"] and renewed["i"] == first["i"] and renewed["p"] == first["p"]
+
+
+async def test_outposts_page_through_everyone(world):
+    db, _d, ident, key, _c = world
+    for i in range(12):
+        db.ensure_user(f"camper{i:02d}", f"Camper {i:02d}")
+        ident.record_password(f"camper{i:02d}", "camper long passphrase")
+    ident._is_claimed_outpost = lambda node: node == "outpost-1-00a1"
+    seen, offset = [], 0
+    while True:
+        r = await ident.handle_rpc(_env(OP_CERT_LIST, {"offset": offset}, src="outpost-1-00a1"))
+        assert _fits(r)
+        seen += r.payload["certs"]
+        offset += len(r.payload["certs"])
+        if not r.payload["more"]:
+            break
+    assert len(seen) == 14 and all(C.verify(c, key.public_bytes) for c in seen)
+    r = await ident.handle_rpc(_env(OP_CERT_LIST, {}, src="outpost-9-unclaimed"))
+    assert r.payload["error"] == "unauthorized_device"
 
 
 def test_tampered_certificate_fails():

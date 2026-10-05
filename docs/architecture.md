@@ -208,8 +208,9 @@ One Waypost account → username, `user@waypost` (or configured domain), profile
 Preferred: Stalwart as account authority + OIDC for apps that support it. Pocket radio identity is separate and **linked** via pairing codes.
 
 Target (📋): identities verifiable **offline** — the Station's community key signs identity and
-device certificates that every node caches; a Scout's PIN unlocks its device key locally; Station
-handles issuing, revocation and recovery but is not asked at login. See
+Target (✅ built 2026-10-05): a person's identity is a key **derived from username + password**
+on whatever device they sign in on (Scout, Outpost Wi-Fi page, portal); Station's community key
+vouches for it in a certificate every node caches, so anyone can check a message offline. See
 [identity.md](identity.md#offline-identity-target).
 
 Registration modes: `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.

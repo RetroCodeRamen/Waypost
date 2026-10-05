@@ -15,15 +15,15 @@ Station: it adds range, storage, and a place to take part for people with no Sco
 | Persistent device identity, OLED role label, button-toggled auto-claim | ✅ hardware |
 | Wi-Fi AP `WAYPOST-OUTPOST` with captive portal; Corkboard read/post; walk-up Beacon report | ✅ hardware |
 | Corkboard sync to Station (`BOARD_SYNC`), Beacon reports to Station (`BEACON_SYNC`), claim | ✅ hardware |
-| Notes and queues survive power loss | 🔧 notes are RAM-only today → flash object store |
-| **Object store** (flash, bounded): messages, receipts, notices, Beacon events, identity certs, revocations, cached Fieldbook pages | 📋 |
-| **Peer sync** (`SYNC_*`) with Scouts, other Outposts, Station — same protocol for all | 📋 (sim precursor: `OutpostNode`) |
-| **Local delivery:** a message for someone whose Scout is in range or who is signed in on Wi-Fi is delivered at once, and still synced onward | 📋 ([mesh-delivery.md](mesh-delivery.md)) |
-| **Capability announce** (services, Station reachability, "has objects for") | 📋 (precedent: auto-claim marker ✅) |
-| **Offline identity checks** with cached certificates and revocations | 📋 |
-| Local **Noticeboard** for its area, cached **Fieldbook** pages (read on Wi-Fi) | 📋 |
-| Wi-Fi **Dispatch page** for signed-in people (inbox, reply) | 📋 |
-| **Beacon spread:** raises a walk-up Beacon *locally* (alerts Scouts in range) as well as toward Station | 📋 (🔧 today only sends to Station) |
+| **Object store** in flash (`/wp_objs`): signed messages, newest 300 kept | ✅ 2026-10-05 |
+| **Certificates:** pins the community key, caches everyone's (`CERT_LIST`), revocations, looks up unknown authors | ✅ 2026-10-05 |
+| **Peer sync** (`SYNC`, shared engine `firmware/common/waypost_core`) with Scouts, Outposts, Station; takes everything (`*`) | ✅ hardware |
+| **Local delivery:** a new message for someone whose Scout synced here in the last 30 min is pushed to it at once | ✅ hardware (Station off) |
+| **Announces itself** as an Outpost (`WPOST-OUTPOST:<id>`) so Scouts sync with it | ✅ hardware |
+| **Wi-Fi Dispatch page** (`/msg`): sign in with username + password (key worked out in the browser), conversations, compose — one session per browser | ✅ built, page crypto verified against Python under Node; **real-phone test pending** |
+| Corkboard notes survive power loss | 🔧 notes are still RAM-only |
+| Local Noticeboard, cached Fieldbook pages | 📋 |
+| **Beacon spread:** a walk-up Beacon alerts Scouts nearby directly as well as Station | 📋 (today only sends to Station) |
 
 ## Store and retention
 
@@ -40,29 +40,21 @@ or **none for weeks** — a Courier walking by is the uplink. The Outpost never 
 
 ## Signing in without a Scout
 
-Someone on the Outpost's Wi-Fi with a phone wants to read and send Dispatch messages as themselves.
-The Outpost holds no passwords and Station may be unreachable. Options:
+**Decided 2026-10-05 (the human):** people sign in on the Outpost's Wi-Fi page with their **username
+and password**, per browser session (several people at once). The page works out the identity key
+in the browser (`web/wpcrypto.js`: scrypt-js + tweetnacl, vendored in `web/vendor/`), signs the
+Outpost's one-time challenge, and keeps the key only in that tab's session — **the password never
+reaches the Outpost**. Every message is signed in the browser with the person's own key, so it's
+theirs, not "via Outpost". The Outpost refuses a sign-in whose key differs from the one Station
+vouches for under that name (`wrong_password`); a name it has no certificate for signs in as "not
+vouched for yet" (Station checks when the messages reach it).
 
-1. **Sign-in code from Station, cached session** (from [mesh-delivery.md](mesh-delivery.md)):
-   the person gets a one-time code on the portal or their Scout, the Outpost checks it with Station
-   once, and Station returns a signed session good for some hours. Needs Station *at sign-in*.
-2. **Scout vouches:** the person's own Scout, in range, signs "let this browser act for me at
-   Outpost X for N hours". Works with no Station. Needs the Scout present.
-3. **Outpost-local passcode, offline-verifiable:** at pairing time the person can set an *Outpost
-   passcode*; Station puts a slow salted hash of it (or a passcode-wrapped key) in the identity
-   certificate, which every Outpost caches. The Outpost verifies locally. Works with no Station and
-   no Scout. Risk: a stolen Outpost allows offline guessing against cached hashes — mitigated by a
-   strong KDF, a separate passcode (never the account password), and certificate expiry.
-
-**Recommendation:** ship (2) and (1) first; offer (3) as an opt-in per person. The browser session
-the Outpost issues is local to that Outpost and expires. Messages sent from it are signed by the
-**Outpost's** key on the person's behalf, with a "via Outpost X" marker. That's weaker than a Scout's
-own signature and is shown as such.
+Earlier options (sign-in codes, Scout vouching, an Outpost passcode) are superseded.
 
 ## Firmware structure (incremental)
 
-`firmware/outpost/src/main.cpp` is a single file today. Split as features land:
-`store.*` (flash object store), `sync.*` (`SYNC_*` engine; the same C++ shared with the Scout via a
-common lib), `caps.*` (announce record), `web_*.cpp` (Wi-Fi pages), keeping the current handlers.
-The sync engine and the object codec go into a library shared by Outpost and Scout
-(`firmware/common/` 📋) so the two devices can't drift.
+`main.cpp` (AP, Corkboard, Beacon, claim, OLED) plus `outpost_net.*` (requests to any peer, queued
+incoming SYNC, clock from Station), `outpost_objects.*` (store, certificates, sync scheduling,
+pushes), `outpost_web.*` (the `/msg` page and its JSON API; assets gzipped into `src/web_assets.h` by
+`tools/make_web_assets.py`). Shared with the Scout: `firmware/common/waypost_core` (Waylink codec,
+certificates, signed objects, sync engine) ✅.

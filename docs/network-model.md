@@ -216,9 +216,8 @@ Four separate things:
   device at pairing/claiming and cached everywhere.
 - **Identity certificate** (object `identity.cert`): username, display name, identity id, issued,
   expiry, serial — signed by the community key.
-- **Device certificate:** "signing key K on device D acts for identity I until T" — signed by the
-  community key; issued by `CERT_ISSUE` to the paired device, which proves itself with its Reticulum
-  key. ✅ D2.
+- **Identity key:** derived from username + password on the sign-in device (2026-10-05, replaced
+  per-device keys); Station's `id` certificate vouches for it. ✅ D2.
 - **Verifying offline:** any node with the community public key checks object signature → device
   cert → identity cert → not revoked. No Station contact.
 - **Revocation** (object `identity.revoke`, signed by the community key) spreads at high priority.

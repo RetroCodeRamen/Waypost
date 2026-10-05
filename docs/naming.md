@@ -56,7 +56,7 @@ Do **not** rename third-party software internally merely for branding (Stalwart 
 | **Outpost** | Short form for Waypost Outpost when unambiguous |
 | **Courier** | A **role**, not a product: any device that physically carries objects between places that can't otherwise reach each other (a Scout in a pocket, a laptop, a moved Outpost). "The Scout acted as courier." |
 | **Object** | Anything the network syncs — a message, receipt, notice, Beacon event, wiki revision, identity certificate. Internal/design term ([network-model.md](network-model.md)). |
-| **Community key** | The Station-held key that signs identity and device certificates and revocations. Design term; not an app. Identity has no app name — people see it through Rollcall and Settings. |
+| **Community key** | The Station-held key that signs identity certificates (username ↔ identity key, the key derived from username + password) and revocations. Design term; not an app. Identity has no app name — people see it through Rollcall and Settings. |
 | **Pocket** | **Internal only** — device class in protocol, code, and DB (`pocket-*` node IDs, `PeerDispatchNode`, courier). Not the user-facing product name; the T-Deck product is **Waypost Scout**. |
 
 Former name **Relay** is retired — use **Outpost** in all user-facing and plan docs. Internal verbs (“relays a packet”) are fine; the product/node type is Outpost.

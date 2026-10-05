@@ -11,11 +11,22 @@ else in M4's original acceptance shape (pairing, revocation, registration-mode U
 
 ## Account model (required)
 
-Every person who uses Waypost has **one account**:
+Every person who uses Waypost has **one account**: a **username + password**. Since 2026-10-05 the
+pair is also their **identity**: a key derived from username + password, the same on every device.
 
-1. **Register / sign in on the Station** (portal or Waygate) with **username + password**.  
-2. **Same username + password** signs into **Waypost Pocket** (over Station Wi‑Fi HTTP/HTTPS).  
-3. Pocket **radio identity** stays separate; after account login, the Pocket **pairs/binds** its radio node to that account via a short-lived, single-use **pairing code** (`POST /api/auth/pairing/create` while signed in on the portal; `POST /api/auth/pairing/redeem` or the Waylink `PAIR_REDEEM` op — no session needed to redeem, since a radio-only device has none). Passwords are **never** sent over LoRa; the pairing code is deliberately the thing that can cross an unencrypted or radio-only path instead.
+1. **Register / sign in on the Station** portal with username + password (**10+ characters**).
+   Station records the person's identity key whenever it sees the password (registration,
+   portal sign-in) and vouches for it.
+2. **Scout:** sign in on the device with the same username + password. The Scout works out the key
+   (~4–5 s), proves it to Station by signing a one-time challenge (`PROFILE/LOGIN_NONCE`, `LOGIN`),
+   and is bound to the account. No pairing code; the password never crosses the radio. With
+   Station out of reach the person can still sign in — the key needs only the password — and the
+   Scout finishes with Station later. The PIN keeps the derived key sealed between sessions.
+3. **Outpost Wi-Fi page** (`http://out.post/msg`): sign in with the same username + password; the
+   browser works out the key, so the password never reaches the Outpost. One session per browser —
+   several people can be signed in on one Outpost.
+
+Pairing codes (`PAIR_REDEEM`) still work and still claim Outposts; Scouts no longer use them.
 
 Registration modes (Station setting): `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.
 
@@ -23,93 +34,66 @@ Registration modes (Station setting): `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.
 
 ## Offline identity (target)
 
-**Status:** 🟡 **built 2026-10-04 (roadmap D2)** — Station side complete and tested; the Scout pins
-the community key, fetches and verifies certificates for itself and its contacts, and keeps them in
-flash (verified on hardware). Still to verify by hand: the Scout's own device certificate, which needs
-one unlock to create its signing key. Outposts: later (D5). Code: `server/services/identity/`,
-`firmware/pocket/src/certs.*`; ops in [protocol.md](protocol.md#offline-identity-profile-cert-ops-2026-10-04).
+**Status:** ✅ **built 2026-10-05**, on Station, Scout and Outpost (roadmap D2, reworked the same
+day to the human's design: identity = username + password). Verified on hardware: Scout and
+Outpost self-tests match Python byte for byte; a phone page's crypto (run under Node) matches
+Python's pinned vectors; signed messages moved Outpost → Scout and Scout → Station over LoRa.
+Code: `server/services/identity/{keys,certs,objects,service}.py`, `firmware/common/waypost_core`,
+`firmware/pocket/src/{kdf,certs}.*`, `firmware/outpost/web/wpcrypto.js`. Ops in
+[protocol.md](protocol.md#offline-identity-profile-cert-ops-2026-10-04).
 
-Extends the account model above. Nothing here replaces passwords on Station or pairing codes. It adds
-a way for **any** node to check who someone is **without asking Station**.
+### The key
+
+```text
+seed = scrypt(password, salt = "waypost-identity-v1\n" + lower(username), N=4096, r=8, p=4, 32 bytes)
+key  = Ed25519 key from that seed
+id   = SHA-256(public key)[:16]
+```
+
+The same username + password give the same key on any device. **A different password is a
+different identity**, so reusing someone's username can't intercept their friends' messages:
+Station vouches for one key per username, and devices check messages against it. Measured cost:
+~4.4 s on a Scout (4 MiB of PSRAM), ~150 ms in Node, 25 ms in Python.
+
+**Honest costs** (told to the human when they chose this):
+- Anyone holding one of a person's signed messages can try password guesses offline against their
+  public key. That's why scrypt (slow, memory-hard) and a 10-character minimum for new accounts.
+  Accounts older than the rule keep their passwords until changed — they're weaker.
+- **A new password is a new identity.** Station records the new key and revokes the old one;
+  messages signed with the old key are refused once a device has the revocation.
+- Station only learns a person's key when it sees their password. Accounts from before 2026-10-05
+  need **one portal sign-in** before a Scout login works (`no_identity_yet`).
 
 ### Separate things
 
-| | What | Status |
-|---|---|---|
-| **Username** (`aj`) | human-readable, on Station | ✅ |
-| **Identity id** | 16 random bytes per person, issued once (`identities` table), in every certificate | ✅ |
-| **Credentials** | password (Station only, never on the radio); Scout PIN (local only) | ✅ |
-| **Network identity** | each device's Reticulum keypair: addressing, encryption, forwarding. Must work while a Scout is locked (receiving, Beacon alerts), so it is **not** PIN-protected | ✅ |
-| **Signing key** | a separate Ed25519 key per device that *authors* this person's messages (D3). PIN-sealed on a Scout | ✅ Scout |
-
-Why two device keys: if the PIN sealed the network identity, a locked Scout couldn't receive
-anything. Authorship is what needs protecting; reception isn't.
+| | What |
+|---|---|
+| **Username** | human-readable, on Station |
+| **Identity key / id** | derived from username + password; signs the person's messages |
+| **Password** | Station keeps a PBKDF2 hash for portal sign-in; never sent over the radio, never to an Outpost |
+| **Scout PIN** | local only: seals the derived key on the Scout between unlocks |
+| **Network identity** | each device's Reticulum keypair: addressing, encryption, forwarding. Never sealed, so a locked Scout still receives |
 
 ### Certificates
 
 Signed by Station's **community key** (Ed25519, `community.key` in Station's data directory, created
-on first start, mode 0600 — back it up with the data). Kinds (`server/services/identity/certs.py`):
+on first start, mode 0600 — back it up with the data):
 
 ```text
-id    { n serial, i identity id, u username, dn display name (≤40 bytes), t issued, x expires }
-dev   { n, i, u, p signing public key (32), d Reticulum identity hash (16), t, x }
+id    { n serial, i identity id, u username, dn display name (≤40 bytes), p identity public key, t, x }
 rev   { n, r serial revoked, t }
 ```
 
-The signature covers canonical bytes (`WAYPOST-CERT-1\n` + `name:len:value` per field in fixed order),
-not CBOR, so Python and C++ can't disagree. A pinned test vector is checked by pytest **and** by the
-Scout at every boot (`certs: self-test ok`). Each certificate is one LoRa packet (≤313 of 383 bytes).
-Lifetime 30 days; Station serves a fresh one inside the last 7.
+Canonical signed bytes (`WAYPOST-CERT-1\n` + `name:len:value`), pinned vectors checked by pytest, the
+Scout and the Outpost at boot. 30-day lifetime, renewed in the last 7. Devices pin the community key
+the first time they hear it and never replace it silently.
 
-**Issuing a device certificate** (`CERT_ISSUE`): the device sends its Reticulum public key, its
-signing public key, and a signature by its Reticulum identity over
-`WAYPOST-CERT-REQUEST-1\n<node_id>\n<signing key>`. Station checks the Reticulum key hashes to the
-**paired** address (`device_bindings.transport_dest`) and the signature is valid — so a packet that
-merely *claims* a paired node id gets nothing (`device_key_mismatch` / `bad_signature`).
+**Who caches what:** a Scout keeps its own person's certificate, its contacts', and anyone whose
+message arrives (looked up by identity id, `CERT_GET {i}`). An Outpost caches everyone's
+(`CERT_LIST`, claimed Outposts only), since it checks everyone's messages.
 
-**Pinning the community key:** a Scout takes the first key Station offers after pairing and never
-replaces it silently. A different key later shows "Station key CHANGED - re-pair" in Settings. Unpair
-wipes the pin, so pairing with another Station starts fresh.
-
-**Revocation:** Station revokes a device certificate when that device is no longer paired to that
-person (unpair, portal revoke, re-paired to someone else) or gets a new signing key. Checked lazily
-before certificates are served; devices fetch revocations every 6 hours.
-
-**Verifying offline (any node):** message signature valid for a signing key → a `dev` certificate for
-that key, signed by the community key, unexpired, not revoked → the person's `id` certificate. No
-round trip.
-
-**Logging in on a Scout:** the signing key is stored sealed with a key derived from the PIN
-(PBKDF2-HMAC-SHA256, 10 000 iterations, random salt; AES-256-CBC + HMAC token). A correct PIN opens it
-into memory; locking wipes it. A Scout with a PIN but no key yet makes one at the next unlock. With no
-PIN, the key is stored unsealed. **Honest limit:** a 4–8 digit PIN can be brute-forced by anyone who
-reads the flash, whatever the KDF. Sealing stops casual reading, not a lab — revoke a lost Scout.
-
-**Station's role:** issues certificates, revokes, recovers (lost Scout → revoke its device cert, pair a
-new one; forgotten PIN → re-pair), rotates keys, and keeps the canonical directory. **None of these
-are needed for an ordinary login or message.**
-
-**Revocation latency:** a revoked device can still be believed by nodes that haven't synced the
-revocation. Bounded by certificate expiry (default 30 days, reissued silently while the device keeps
-syncing). Revocations sync at high priority.
-
-**Outposts** cache certificates for everyone (a few hundred bytes per person), so they can deliver to
-and accept from people offline. People without a Scout at an Outpost: see
-[outpost.md](outpost.md#signing-in-without-a-scout).
-
-**Community key loss/compromise:** Station backup includes the key. Compromise needs a new key and
-re-pairing every device. Acceptable for v1, and stated plainly in [security.md](security.md).
-
-### Migration from today
-
-1. Station creates the community key (one-time, on upgrade) and issues certificates for existing
-   bindings. Devices pick them up at their next sync.
-2. Station accepts **both** signed objects and today's unsigned binding-checked requests for a while.
-   Unsigned is refused once every bound device has a certificate.
-3. The `is_trusted_courier` exception (claimed Outposts may relay as anyone) goes away: the signature
-   proves the sender, so it doesn't matter who carried the object.
-
----
+**Verifying offline (any node):** message signature valid for the key in the author's `id`
+certificate, signed by the community key, unexpired, not revoked. No round trip.
 
 ## Rollcall / presence
 
@@ -149,7 +133,9 @@ Rollcall answers: **who exists, and who can I reach?**
 - Guest browse on Waygate before login? (likely: Waygate splash → register/login only)  
 - Password reset without Internet (admin unlock)?  
 - ~~Cryptographic device identity format before Reticulum destinations exist?~~ Answered 2026-10-04: device identity = Reticulum identity; certificates above.
-- Certificate lifetime (30 days proposed) and how loudly a Scout warns as expiry nears without a Station sync.
+- Certificate lifetime (30 days) and how loudly a Scout warns as expiry nears without a Station sync.
+- Password change: there is no portal "change password" yet; when there is, it must record the new key (new identity) and revoke the old.
+- Linking an old identity to the new one after a password change, so friends' devices follow along without Station.
 - Whether a person may hold several identities (e.g. a shared camp role account) — v1: no.
 - Pairing-code rate limiting — short TTL + single-use bounds guessing today, but no explicit rate limit on `/api/auth/pairing/redeem` yet ([security.md](security.md) still lists this as a general gap, not M4-specific)
 

@@ -78,6 +78,8 @@ RNS::Bytes encode(const char* svc, const char* op, const std::vector<waylink::Fi
 // -- any peer (roadmap D4): Scouts, Outposts, Station alike --
 RNS::Bytes station_dest();  // Station's destination hash (16 bytes)
 bool has_path(const RNS::Bytes& dest);
+// Destination hashes (hex) of Outposts heard announcing since boot.
+std::vector<std::string> outposts_heard();
 // A request with any payload tree to the peer at `dest` (node id `dst_node`).
 Result request_peer(const RNS::Bytes& dest, const char* dst_node, const char* svc, const char* op,
                     const waylink::Value& payload, waylink::Reply& out, int attempts = 2,

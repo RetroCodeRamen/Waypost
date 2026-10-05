@@ -12,6 +12,7 @@
 #include <microReticulum/Cryptography/Token.h>
 
 #include "account.h"
+#include "wp_objects.h"
 #include "contacts.h"
 #include "station_link.h"
 #include "store.h"
@@ -33,28 +34,13 @@ const uint64_t kRenewBeforeS = 7ULL * 24 * 3600;  // matches Station's RENEW_BEF
 const uint32_t kRefreshMs = 6UL * 3600UL * 1000UL;  // revocations
 const uint32_t kPinIterations = 10000;
 
-// -- bytes helpers ----------------------------------------------------------------
+// -- helpers (shared code: firmware/common/waypost_core) ------------------------------
 
-std::string raw(const RNS::Bytes& b) { return std::string(reinterpret_cast<const char*>(b.data()), b.size()); }
-RNS::Bytes bytes(const std::string& s) {
-  return RNS::Bytes(reinterpret_cast<const uint8_t*>(s.data()), s.size());
-}
-
-std::string hex(const std::string& s) {
-  static const char* d = "0123456789abcdef";
-  std::string out;
-  for (unsigned char c : s) {
-    out += d[c >> 4];
-    out += d[c & 15];
-  }
-  return out;
-}
-
-std::string unhex(const std::string& h) {
-  std::string out;
-  for (size_t i = 0; i + 1 < h.size(); i += 2) out += static_cast<char>(strtoul(h.substr(i, 2).c_str(), nullptr, 16));
-  return out;
-}
+using wp::bytes;
+using wp::hex;
+using wp::lower;
+using wp::raw;
+using wp::unhex;
 
 std::string u64be(uint64_t v) {
   std::string s(8, '\0');
@@ -62,77 +48,10 @@ std::string u64be(uint64_t v) {
   return s;
 }
 
-void put(std::string& out, const char* name, const std::string& v) {
-  out += name;
-  out += ':';
-  out += static_cast<char>((v.size() >> 8) & 0xFF);
-  out += static_cast<char>(v.size() & 0xFF);
-  out += v;
-}
-
-// Same bytes as server/services/identity/certs.py canonical_bytes().
-bool canonical(const Cert& c, std::string& out) {
-  out = kMagic;
-  if (c.kind == "id") {
-    if (c.i.size() != 16 || c.p.size() != 32) return false;
-    put(out, "k", c.kind), put(out, "n", u64be(c.n)), put(out, "i", c.i), put(out, "u", c.u);
-    put(out, "dn", c.dn), put(out, "p", c.p), put(out, "t", u64be(c.t)), put(out, "x", u64be(c.x));
-  } else if (c.kind == "rev") {
-    put(out, "k", c.kind), put(out, "n", u64be(c.n)), put(out, "r", u64be(c.r)), put(out, "t", u64be(c.t));
-  } else {
-    return false;
-  }
-  return true;
-}
-
-// Same bytes as server/services/identity/objects.py canonical_bytes() for
-// kind dispatch.msg.
-std::string dispatch_bytes(const std::string& oid, const std::string& user, const std::string& author_id,
-                           const std::string& conv, const std::string& body, uint64_t t) {
-  std::string out = "WAYPOST-OBJ-1\n";
-  put(out, "k", "dispatch.msg"), put(out, "o", oid), put(out, "u", user), put(out, "a", author_id);
-  put(out, "v", conv), put(out, "b", body), put(out, "t", u64be(t));
-  return out;
-}
-
-bool ed25519_ok(const std::string& pub, const std::string& sig, const std::string& msg) {
-  if (pub.size() != 32 || sig.size() != 64) return false;
-  return RNS::Cryptography::Ed25519PublicKey::from_public_bytes(bytes(pub))->verify(bytes(sig), bytes(msg));
-}
-
-bool verify_with(const std::string& root, const Cert& c) {
-  std::string msg;
-  if (root.size() != 32 || !canonical(c, msg)) return false;
-  if (!ed25519_ok(root, c.s, msg)) return false;
-  // An id certificate's id must be its key's: SHA-256(p)[:16].
-  return c.kind != "id" || identity_id_of(c.p) == c.i;
-}
-
-bool from_value(const waylink::Value& v, Cert& c) {
-  if (v.type != waylink::Value::Map) return false;
-  c.kind = v.text("k");
-  c.n = v.uint("n");
-  c.i = v.bytes("i");
-  c.u = v.text("u");
-  c.dn = v.text("dn");
-  c.p = v.bytes("p");
-  c.t = v.uint("t");
-  c.x = v.uint("x");
-  c.r = v.uint("r");
-  c.s = v.bytes("s");
-  return !c.kind.empty();
-}
-
-std::string lower(std::string s) {
-  for (auto& ch : s) ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
-  return s;
-}
-
 // -- state ------------------------------------------------------------------------
 
-std::string g_root;          // community public key (32 bytes), pinned
-bool g_root_conflict = false;
-std::vector<Cert> g_certs;   // verified id/rev certificates
+uint64_t now_s();
+wp::CertCache g_cache(&now_s);  // community key + verified certificates
 bool g_dirty = false;
 
 std::string g_pub;           // identity public key
@@ -148,49 +67,15 @@ bool g_idle = false;
 
 uint64_t now_s() { return station_link::now_ms() / 1000ULL; }
 
-bool current(const Cert& c) {
-  if (revoked(c.n)) return false;
-  uint64_t now = now_s();
-  return now == 0 || now < c.x;  // clock unknown: trust until we know better
-}
+bool fresh(const Cert* c) { return g_cache.fresh(c, kRenewBeforeS); }
 
-bool fresh(const Cert* c) {
-  if (!c) return false;
-  uint64_t now = now_s();
-  return now == 0 || c->x > now + kRenewBeforeS;
-}
+void save() { RNS::Utilities::OS::write_file(kCertsPath, RNS::Bytes(g_cache.serialize(account::username()))); }
 
-void save() {
-  std::string out = "#owner\t" + account::username() + "\n";
-  if (!g_root.empty()) out += "root\t" + hex(g_root) + "\n";
-  for (const auto& c : g_certs) {
-    out += "c\t" + c.kind + "\t" + std::to_string(c.n) + "\t" + hex(c.i) + "\t" + store::escape(c.u) + "\t" +
-           store::escape(c.dn) + "\t" + hex(c.p) + "\t" + std::to_string(c.t) + "\t" + std::to_string(c.x) +
-           "\t" + std::to_string(c.r) + "\t" + hex(c.s) + "\n";
-  }
-  RNS::Utilities::OS::write_file(kCertsPath, RNS::Bytes(out));
-}
-
-// Keep the newest identity certificate per person and every revocation;
-// drop what's been revoked.
 void add(const Cert& c) {
-  if (!verify_with(g_root, c)) {
+  if (!g_cache.add(c)) {
     Serial.printf("certs: %s #%llu does not verify, ignored\n", c.kind.c_str(),
                   static_cast<unsigned long long>(c.n));
     return;
-  }
-  if (c.kind == "rev") {
-    if (std::any_of(g_certs.begin(), g_certs.end(), [&](const Cert& x) { return x.kind == "rev" && x.n == c.n; }))
-      return;
-    g_certs.push_back(c);
-    g_certs.erase(std::remove_if(g_certs.begin(), g_certs.end(),
-                                 [&](const Cert& x) { return x.kind != "rev" && x.n == c.r; }),
-                  g_certs.end());
-  } else {
-    g_certs.erase(std::remove_if(g_certs.begin(), g_certs.end(),
-                                 [&](const Cert& x) { return x.kind == "id" && lower(x.u) == lower(c.u); }),
-                  g_certs.end());
-    g_certs.push_back(c);
   }
   Serial.printf("certs: verified %s %s #%llu\n", c.kind.c_str(), c.kind == "rev" ? "" : c.u.c_str(),
                 static_cast<unsigned long long>(c.n));
@@ -249,6 +134,8 @@ std::string public_of(const std::string& seed) {
   return raw(key.public_key()->public_bytes());
 }
 
+std::string my_id() { return g_pub.empty() ? "" : wp::identity_id_of(g_pub); }
+
 // -- talking to Station -----------------------------------------------------------
 
 using Res = station_link::Result;
@@ -259,15 +146,12 @@ Res fetch_root() {
   if (r != Res::Ok) return r;
   std::string pk = reply.payload().bytes("pk");
   if (pk.size() != 32) return Res::Error;
-  if (g_root.empty()) {
-    g_root = pk;
+  bool first = g_cache.root.empty();
+  if (!g_cache.offer_root(pk)) {
+    Serial.println("certs: Station offered a DIFFERENT community key - kept the pinned one");
+  } else if (first) {
     g_dirty = true;
     Serial.printf("certs: community key pinned %s\n", hex(pk).substr(0, 16).c_str());
-  } else if (pk != g_root) {
-    // Never silently trust a new root: that would let any Station vouch
-    // for anyone. Sign out + in again to accept a new Station.
-    g_root_conflict = true;
-    Serial.println("certs: Station offered a DIFFERENT community key - kept the pinned one");
   }
   return Res::Ok;
 }
@@ -324,7 +208,7 @@ bool try_now(const std::string& key) {
 
 // One request's worth of work. Returns false when there was nothing to do.
 bool step(Res& r) {
-  if (g_root.empty()) return r = fetch_root(), true;
+  if (g_cache.root.empty()) return r = fetch_root(), true;
   const std::string& me = account::username();
   if (!fresh(identity(me)) && try_now(lower(me))) {
     g_tried[lower(me)] = millis();
@@ -370,37 +254,14 @@ void flush_files() {
 
 // -- public ---------------------------------------------------------------------
 
-std::string identity_id_of(const std::string& public_key) {
-  return raw(RNS::Identity::full_hash(bytes(public_key))).substr(0, 16);
-}
+std::string identity_id_of(const std::string& public_key) { return wp::identity_id_of(public_key); }
 
 void load() {
-  g_root.clear();
-  g_certs.clear();
   // The per-device signing key of 2026-10-04 is replaced by the identity key.
   RNS::Utilities::OS::remove_file(kOldKeyPath);
   RNS::Utilities::OS::remove_file(kOldPubPath);
-  auto lines = store::read_lines(kCertsPath);
-  bool mine = account::paired() && !lines.empty() && lines[0] == "#owner\t" + account::username();
-  if (mine) {
-    for (size_t k = 1; k < lines.size(); k++) {
-      auto f = store::split_tabs(lines[k]);
-      if (f.size() == 2 && f[0] == "root") g_root = unhex(f[1]);
-      if (f.size() < 11 || f[0] != "c") continue;
-      Cert c;
-      c.kind = f[1];
-      c.n = strtoull(f[2].c_str(), nullptr, 10);
-      c.i = unhex(f[3]);
-      c.u = store::unescape(f[4]);
-      c.dn = store::unescape(f[5]);
-      c.p = unhex(f[6]);
-      c.t = strtoull(f[7].c_str(), nullptr, 10);
-      c.x = strtoull(f[8].c_str(), nullptr, 10);
-      c.r = strtoull(f[9].c_str(), nullptr, 10);
-      c.s = unhex(f[10]);
-      if (verify_with(g_root, c)) g_certs.push_back(c);  // old formats simply don't verify
-    }
-  }
+  g_cache.load(account::paired() ? store::read_lines(kCertsPath) : std::vector<std::string>{},
+               account::username());
   RNS::Bytes pub, key;
   if (account::paired()) {
     RNS::Utilities::OS::read_file(kPubPath, pub);
@@ -412,43 +273,12 @@ void load() {
   if (!g_pub.empty() && g_key_file.size() == 33 && g_key_file[0] == 'P') g_seed = g_key_file.substr(1);
   if (g_pub.empty()) g_key_file.clear();
   Serial.printf("certs: %u certificate(s), community key %s, identity key %s\n",
-                static_cast<unsigned>(g_certs.size()), g_root.empty() ? "not yet" : "pinned",
+                static_cast<unsigned>(g_cache.certs.size()), g_cache.root.empty() ? "not yet" : "pinned",
                 g_pub.empty() ? "none" : !g_seed.empty() ? "ready" : "locked");
 }
 
 bool self_test() {
-  // server/tests/test_identity_certs.py test_pinned_vector
-  std::string seed;
-  for (int k = 0; k < 32; k++) seed += static_cast<char>(k);
-  RNS::Cryptography::Ed25519PrivateKey key(bytes(seed));
-  Cert c;
-  c.kind = "id";
-  c.n = 7;
-  for (int k = 0; k < 16; k++) c.i += static_cast<char>(k);
-  c.u = "aj";
-  c.dn = "AJ";
-  for (int k = 32; k < 64; k++) c.p += static_cast<char>(k);
-  c.t = 1790000000;
-  c.x = 1792592000;
-  c.s = unhex(
-      "324aa31e6a2464e5564dbd9104bd140eaeb306dc52badaf0adfcd3152407f402"
-      "b2546d77e98676476409d3d5d3c49511a744e8a65564b0978e14ab10885b1804");
-  std::string pub = raw(key.public_key()->public_bytes());
-  std::string msg;
-  canonical(c, msg);
-  bool ok = hex(pub) == "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8" &&
-            raw(key.sign(bytes(msg))) == c.s && ed25519_ok(pub, c.s, msg);
-  Cert bad = c;
-  bad.u = "bob";
-  canonical(bad, msg);
-  ok = ok && !ed25519_ok(pub, c.s, msg);
-  // test_signed_messages.py test_pinned_object_vector
-  std::string oid, author;
-  for (int k = 0; k < 16; k++) oid += static_cast<char>(k);
-  for (int k = 16; k < 32; k++) author += static_cast<char>(k);
-  ok = ok && hex(raw(key.sign(bytes(dispatch_bytes(oid, "aj", author, "dm:aj:bob", "hello", 1790000000))))) ==
-                 "05619c34b899c57d550f7faa3676f1b35bd12a2e9bb089d2c4e791624747f433"
-                 "7b714cb9caf2e1ad73583e7ba1d33e70dc0d1831835e29a5118777965795c40f";
+  bool ok = wp::self_test();
   Serial.printf("certs: self-test %s\n", ok ? "ok" : "FAILED");
   return ok;
 }
@@ -478,7 +308,7 @@ void set_identity(const std::string& seed, const std::string& pin) {
   g_seed = seed;
   g_pub = public_of(seed);
   seal(pin);
-  Serial.printf("certs: identity %s\n", hex(identity_id_of(g_pub)).c_str());
+  Serial.printf("certs: identity %s\n", hex(my_id()).c_str());
 }
 
 bool have_key() { return !g_pub.empty(); }
@@ -526,62 +356,41 @@ bool can_sign() { return !g_seed.empty(); }
 bool sign_dispatch(const std::string& oid, const std::string& conv, const std::string& body,
                    uint64_t t, std::string& sig, std::string& author_id) {
   if (g_seed.empty() || oid.size() != 16) return false;
-  author_id = identity_id_of(g_pub);
-  sig = sign(dispatch_bytes(oid, account::username(), author_id, conv, body, t));
+  author_id = my_id();
+  sig = sign(wp::dispatch_bytes(oid, account::username(), author_id, conv, body, t));
   return sig.size() == 64;
 }
 
-const Cert* identity(const std::string& username) {
-  for (const auto& c : g_certs)
-    if (c.kind == "id" && lower(c.u) == lower(username) && current(c)) return &c;
-  return nullptr;
-}
+const Cert* identity(const std::string& username) { return g_cache.identity(username); }
 
-const Cert* identity_by_id(const std::string& id) {
-  for (const auto& c : g_certs)
-    if (c.kind == "id" && c.i == id && current(c)) return &c;
-  return nullptr;
-}
+const Cert* identity_by_id(const std::string& id) { return g_cache.identity_by_id(id); }
 
-bool revoked(uint64_t serial) {
-  return std::any_of(g_certs.begin(), g_certs.end(),
-                     [&](const Cert& c) { return c.kind == "rev" && c.r == serial; });
-}
+bool revoked(uint64_t serial) { return g_cache.revoked(serial); }
 
 std::string owner_of(const std::string& id) {
   if (id.size() != 16) return "";
-  if (!g_pub.empty() && identity_id_of(g_pub) == id) return account::username();
-  if (const Cert* c = identity_by_id(id)) return c->u;
-  if (std::find(g_unknown_ids.begin(), g_unknown_ids.end(), id) == g_unknown_ids.end() &&
+  if (!g_pub.empty() && my_id() == id) return account::username();
+  std::string who = g_cache.owner_of(id);
+  if (who.empty() && std::find(g_unknown_ids.begin(), g_unknown_ids.end(), id) == g_unknown_ids.end() &&
       g_unknown_ids.size() < 16)
     g_unknown_ids.push_back(id);  // look it up next time Station is in reach
-  return "";
+  return who;
 }
 
 std::string verify_dispatch(const std::string& oid, const std::string& author, const std::string& id,
                             const std::string& conv, const std::string& body, uint64_t t,
                             const std::string& sig) {
-  std::string pub;
-  if (!g_pub.empty() && identity_id_of(g_pub) == id) {
-    pub = g_pub;  // our own messages coming back to us
-  } else {
-    const Cert* c = nullptr;
-    for (const auto& x : g_certs)
-      if (x.kind == "id" && x.i == id) c = &x;
-    if (!c) return "unknown_identity";
-    if (revoked(c->n)) return "identity_revoked";
-    if (!current(*c)) return "certificate_expired";
-    if (lower(c->u) != lower(author)) return "bad_signature";
-    pub = c->p;
+  if (!g_pub.empty() && my_id() == id) {  // our own messages coming back to us
+    if (oid.size() != 16) return "bad_signature";
+    return wp::ed25519_ok(g_pub, sig, wp::dispatch_bytes(oid, author, id, conv, body, t)) ? "" : "bad_signature";
   }
-  if (oid.size() != 16) return "bad_signature";
-  return ed25519_ok(pub, sig, dispatch_bytes(oid, author, id, conv, body, t)) ? "" : "bad_signature";
+  return g_cache.verify_dispatch(oid, author, id, conv, body, t, sig);
 }
 
 Status status() {
   Status s;
-  s.root = !g_root.empty();
-  s.root_conflict = g_root_conflict;
+  s.root = !g_cache.root.empty();
+  s.root_conflict = g_cache.root_conflict;
   const Cert* id = identity(account::username());
   s.mine = id && !g_pub.empty() && id->p == g_pub;
   s.key_differs = id && !g_pub.empty() && id->p != g_pub;
@@ -594,9 +403,9 @@ Status status() {
 }
 
 void clear() {
-  g_root.clear();
-  g_root_conflict = false;
-  g_certs.clear();
+  g_cache.root.clear();
+  g_cache.root_conflict = false;
+  g_cache.certs.clear();
   std::fill(g_seed.begin(), g_seed.end(), '\0');
   g_seed.clear();
   g_pub.clear();

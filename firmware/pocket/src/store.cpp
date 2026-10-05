@@ -239,7 +239,7 @@ void save_outbox() {
   for (const auto& o : g_outbox)
     out += o.id + "\t" + esc(o.conv) + "\t" + esc(o.peer) + "\t" + std::to_string(o.ts) + "\t" +
            esc(o.body) + "\t" + hex_of(o.sig) + "\t" + hex_of(o.author_id) + "\t" +
-           std::to_string(o.signed_t) + "\n";
+           std::to_string(o.signed_t) + "\t" + (o.passed_on ? "1" : "0") + "\n";
   RNS::Utilities::OS::write_file(kOutboxPath, RNS::Bytes(out));
 }
 
@@ -289,7 +289,7 @@ void load() {
     for (size_t i = 1; i < outbox.size(); i++) {
       auto f = split(outbox[i]);
       if (f.size() < 5) continue;
-      Outgoing o{f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3]), "", "", 0};
+      Outgoing o{f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3]), "", "", 0, f.size() >= 9 && f[8] == "1"};
       if (f.size() >= 8 && f[6].size() == 32) {  // signed; older lines aren't (or by a device key)
         o.sig = bytes_of(f[5]);
         o.author_id = bytes_of(f[6]);
@@ -362,7 +362,7 @@ std::vector<Message> messages(const std::string& conv) {
     m.sender = account::username();
     m.body = o.body;
     m.ts = 0;  // shown last, in the order written
-    m.state = 'q';
+    m.state = o.passed_on ? 'p' : 'q';
     msgs.push_back(m);
   }
   return msgs;
@@ -441,6 +441,15 @@ const Outgoing& queue(Outgoing o) {
 }
 
 const std::vector<Outgoing>& outbox() { return g_outbox; }
+
+void outbox_passed_on(const std::string& id) {
+  for (auto& o : g_outbox) {
+    if (o.id == id && !o.passed_on) {
+      o.passed_on = true;
+      g_outbox_dirty = true;
+    }
+  }
+}
 
 namespace {
 

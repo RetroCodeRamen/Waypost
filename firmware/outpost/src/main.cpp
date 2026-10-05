@@ -35,6 +35,9 @@
 #include <LoRaInterface.h>
 #include <microReticulum.h>
 
+#include "outpost_net.h"
+#include "outpost_objects.h"
+#include "outpost_web.h"
 #include "waylink_cbor.h"
 #include "waypost_mark.h"
 
@@ -209,6 +212,8 @@ static void note_claimed_from_reply(const RNS::Bytes& data) {
 }
 
 static void on_destination_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
+  // Peer sync first: a peer's SYNC request, or the reply it's waiting for.
+  if (onet::on_packet(data)) return;
   // Handles both BOARD_SYNC round-trip replies and the proactive claim ack
   // Station may push right after auto-claim (no matching rid required).
   note_claimed_from_reply(data);
@@ -251,12 +256,16 @@ static String html_escape(const std::string& s) {
 // regardless of g_auto_claim_enabled — claimed-ness doesn't get undone by
 // this firmware (see docs/architecture.md's auto-claim section for why
 // re-claiming/unclaiming is explicitly a separate, unbuilt feature).
+// Scouts recognise Outposts by this (firmware/pocket station_link
+// OutpostWatcher) and sync with them when in range.
+static const char* OUTPOST_MARKER = "WPOST-OUTPOST:";
+
 static void announce_now() {
   if (!g_claimed && g_auto_claim_enabled) {
     std::string marker = std::string(AUTO_CLAIM_MARKER) + g_outpost_id;
     g_destination.announce(RNS::Bytes(marker));
   } else {
-    g_destination.announce();
+    g_destination.announce(RNS::Bytes(std::string(OUTPOST_MARKER) + g_outpost_id));
   }
 }
 
@@ -342,6 +351,11 @@ static void reticulum_setup() {
   // Collision-proof id — see the g_outpost_id declaration comment above.
   g_outpost_id = std::string(WAYPOST_OUTPOST_ID) + "-" +
                  g_destination.hash().toHex().substr(0, 4);
+
+  // Peer sync and the message store (roadmap D5).
+  onet::attach(&g_reticulum, &g_destination, &g_outpost_id);
+  oobj::set_self_node(g_outpost_id);
+  oobj::load();
 
   announce_now();
 
@@ -620,7 +634,9 @@ static String gate_page_html() {
           "Station over LoRa when a path exists. Your messages stay on this mesh.</div>";
   body += "<ul><li>Leave public trail notes for others nearby.</li>"
           "<li>Notes sync to Station when radio links up.</li>"
-          "<li>No account needed to read or post here.</li></ul>";
+          "<li>No account needed to read or post here.</li>"
+          "<li>Have a Waypost account? <a href='/msg'>Sign in for messages</a> &mdash; "
+          "talk with Scouts nearby and anyone else, even when Station is out of reach.</li></ul>";
   body += "<a class='continue' href='/continue'>Continue to the board</a>";
   body += "<p class='foot'>Open <code>http://" + String(WAYPOST_AP_DOMAIN) +
           "/</code> or <code>http://192.168.4.1/</code> (not https).</p>";
@@ -658,7 +674,8 @@ static void handle_board() {
   body += "<p>Leave a public note here. It stays on this Outpost and gets backed up "
           "to Station when a radio path exists. Anyone can read what's posted.</p>";
   body += "<p class='status'>" + g_status + "</p>";
-  body += "<p><a href='/refresh'>Refresh / sync with Station</a> &middot; "
+  body += "<p><a href='/msg'><strong>Messages</strong> (sign in)</a> &middot; "
+          "<a href='/refresh'>Refresh / sync with Station</a> &middot; "
           "<a href='/claim'>Pair with Station</a> &middot; "
           "<a href='/beacon' style='color:#b3261e;font-weight:600'>Report an emergency</a></p>";
   body += "<form method='POST' action='/post'>";
@@ -915,6 +932,7 @@ static void web_setup() {
   g_server.on("/success.txt", HTTP_GET, handle_captive_probe);
   g_server.on("/canonical.html", HTTP_GET, handle_captive_probe);
   g_server.on("/redirect", HTTP_GET, handle_captive_probe);
+  oweb::setup(g_server, &g_outpost_id);  // /msg — Dispatch with a username + password
   g_server.onNotFound([]() { send_redirect("/"); });
   g_server.begin();
 }
@@ -969,6 +987,12 @@ void loop() {
     refresh_board();
     sync_beacon();  // retries any report that couldn't send immediately on submit
   }
+
+  // Peer sync: answer peers, then one step of our own (certificates,
+  // Station, pushing new messages to Scouts nearby).
+  waylink::Reply req;
+  while (onet::pop_request(req)) oobj::handle_request(req);
+  oobj::loop();
 
   g_reticulum.loop();
 }

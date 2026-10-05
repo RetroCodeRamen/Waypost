@@ -33,6 +33,10 @@ void handle(const waylink::Reply& request);
 // takes in peer sync (PUT, or a WANT reply) — the compose limit checks it.
 size_t largest_packet(const std::string& conv, const std::string& peer, size_t body_len);
 
+// Something was just written: sync with peers in range at the next loop
+// rather than waiting (Station gets it through the outbox).
+void hurry();
+
 // Call every loop(): syncs with Station while it's in reach (every few
 // minutes) and with contacts whose Scouts are in range.
 void loop();

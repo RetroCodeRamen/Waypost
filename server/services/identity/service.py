@@ -16,7 +16,7 @@ from server.services.identity import certs as C
 from server.services.identity import keys as K
 from server.services.identity import objects as O
 from server.services.identity.store import IdentityStore
-from server.services.profiles.constants import OP_CERT_GET, OP_CERT_REVOKED, OP_CERT_ROOT
+from server.services.profiles.constants import OP_CERT_GET, OP_CERT_LIST, OP_CERT_REVOKED, OP_CERT_ROOT
 from shared.protocol.envelope import Envelope
 from shared.protocol.radio import fit_list_reply
 
@@ -32,12 +32,14 @@ class IdentityService:
         *,
         get_binding: Callable[[str], Optional[dict[str, Any]]],
         get_user: Callable[[str], Optional[dict[str, Any]]],
+        is_claimed_outpost: Callable[[str], bool] = lambda _node: False,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.store = store
         self.key = key
         self._get_binding = get_binding
         self._get_user = get_user
+        self._is_claimed_outpost = is_claimed_outpost
         self._clock = clock
 
     def now(self) -> int:
@@ -145,8 +147,21 @@ class IdentityService:
             return env.make_response(op=env.op, payload={"pk": self.key.public_bytes})
 
         binding = self._get_binding(env.src)
-        if not binding:
+        outpost = not binding and self._is_claimed_outpost(str(env.src))
+        if not binding and not outpost:
             return err("unauthorized_device")
+
+        if env.op == OP_CERT_LIST:
+            # Outposts check everyone's messages, so they cache everyone.
+            offset = max(0, int(payload.get("offset") or 0))
+            items = [c for c in (self.identity_cert(u) for u in self.store.usernames_with_keys()[offset:]) if c]
+            reply, _ = fit_list_reply(
+                lambda part, more: env.make_response(
+                    op=env.op, payload={"certs": part, "offset": offset, "more": more}
+                ),
+                items,
+            )
+            return reply
 
         if env.op == OP_CERT_GET:
             ident = payload.get("i")
@@ -155,7 +170,7 @@ class IdentityService:
                 if not cert:
                     return err("unknown_identity")
             else:
-                who = str(payload.get("u") or binding["username"])
+                who = str(payload.get("u") or (binding or {}).get("username") or "")
                 if not self._get_user(who):
                     return err("unknown_user")
                 cert = self.identity_cert(who)

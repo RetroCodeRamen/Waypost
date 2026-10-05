@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dispatch — The Outpost</title>
+<style>
+  :root { --bg:#faf7f0; --card:#fffdf7; --line:#d8cfae; --ink:#222; --dim:#666; --green:#2f6b4f; --warn:#b3261e; }
+  * { box-sizing: border-box; }
+  body { font-family: sans-serif; max-width: 640px; margin: 0 auto; padding: 1rem; background: var(--bg); color: var(--ink); }
+  h1 { font-size: 1.3rem; margin: .2rem 0 .6rem; }
+  .eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; background: var(--card); margin: .8rem 0; }
+  label { display: block; font-size: .9rem; color: var(--dim); margin-top: .6rem; }
+  input, textarea { width: 100%; font: inherit; font-size: 1rem; padding: .55rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  button { font: inherit; font-size: 1rem; padding: .6rem 1rem; border: none; border-radius: 8px; background: var(--green); color: #fff; font-weight: 600; margin-top: .8rem; }
+  button.quiet { background: none; color: var(--green); padding: .3rem 0; font-weight: 500; }
+  button:disabled { opacity: .5; }
+  .status { font-size: .9rem; color: var(--dim); min-height: 1.2em; margin-top: .6rem; }
+  .status.err { color: var(--warn); }
+  .who { font-size: .85rem; color: var(--dim); display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  .conv { padding: .7rem .2rem; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; justify-content: space-between; }
+  .conv:last-child { border-bottom: none; }
+  .msgs { max-height: 55vh; overflow-y: auto; }
+  .msg { margin: .45rem 0; padding: .5rem .7rem; border-radius: 8px; background: #f1ede1; max-width: 85%; overflow-wrap: anywhere; }
+  .msg.mine { background: #e3efe7; margin-left: auto; }
+  .msg .meta { font-size: .75rem; color: var(--dim); margin-top: .2rem; }
+  .row { display: flex; gap: .5rem; align-items: center; justify-content: space-between; }
+  .hidden { display: none; }
+  .note { font-size: .82rem; color: var(--dim); }
+</style>
+</head>
+<body>
+<p class="eyebrow">The Outpost</p>
+<h1>Dispatch</h1>
+
+<section id="login" class="card hidden">
+  <p class="note">Sign in with your Waypost username and password. Your password never leaves
+    this phone: it's used here to work out your key, and the key signs your messages.</p>
+  <label for="u">Username</label>
+  <input id="u" autocomplete="username" autocapitalize="none" spellcheck="false">
+  <label for="pw">Password</label>
+  <input id="pw" type="password" autocomplete="current-password">
+  <button id="signin">Sign in</button>
+  <div id="login-status" class="status"></div>
+</section>
+
+<section id="app" class="hidden">
+  <div class="who"><span id="me"></span><button class="quiet" id="signout">Sign out</button></div>
+
+  <div id="list" class="card">
+    <div class="row"><strong>Conversations</strong><button class="quiet" id="new">+ New message</button></div>
+    <div id="new-form" class="hidden">
+      <label for="to">To (username)</label>
+      <input id="to" autocapitalize="none" spellcheck="false">
+      <button id="open">Open</button>
+    </div>
+    <ul id="convs"></ul>
+    <p id="empty" class="note hidden">No messages here yet.</p>
+  </div>
+
+  <div id="chat" class="card hidden">
+    <div class="row"><strong id="chat-with"></strong><button class="quiet" id="back">Back</button></div>
+    <div id="msgs" class="msgs"></div>
+    <textarea id="body" rows="2" placeholder="Message"></textarea>
+    <div class="row"><span id="count" class="note"></span><button id="send">Send</button></div>
+    <div id="chat-status" class="status"></div>
+  </div>
+</section>
+
+<script src="/js/nacl.js"></script>
+<script src="/js/scrypt.js"></script>
+<script src="/js/wpcrypto.js"></script>
+<script src="/js/msg.js"></script>
+</body>
+</html>

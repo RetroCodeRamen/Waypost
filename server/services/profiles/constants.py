@@ -16,6 +16,7 @@ OP_ROLL_LIST = "ROLL_LIST"
 OP_CERT_ROOT = "CERT_ROOT"  # the community public key (public)
 OP_CERT_GET = "CERT_GET"  # a person's identity certificate, by username or identity id
 OP_CERT_REVOKED = "CERT_REVOKED"  # revocation certificates, paged
+OP_CERT_LIST = "CERT_LIST"  # every person's identity certificate, paged (Outposts cache them all)
 # Scout login with username + password (2026-10-05): the Scout derives the
 # identity key, signs a one-time challenge; Station binds the Scout.
 OP_LOGIN_NONCE = "LOGIN_NONCE"

@@ -199,17 +199,17 @@ Anything else gets `unauthorized_device`. From a radio device, a `peer` Station 
 for gets `unknown_user` (rather than a dead-end conversation; the portal's HTTP path still creates
 users on send).
 
-**Signed `MSG_SEND` (2026-10-04, roadmap D3):** a device holding a current device certificate
-signs each message with its signing key and sends
-`{p (peer) | v (conversation id), b (body), o (16-byte object id), c (device certificate serial),
+**Signed `MSG_SEND` (2026-10-04, roadmap D3; identity keys 2026-10-05):** a signed-in device signs
+each message with the person's identity key and sends
+`{p (peer) | v (conversation id), b (body), o (16-byte object id), a (author's identity id),
 s (64-byte signature)}`, with the **signed time in the envelope `ts`** (1 = the device didn't know the
-time). Signed bytes: `WAYPOST-OBJ-1\n` + `k o u c v b t` as `name:len:value`
+time). Signed bytes: `WAYPOST-OBJ-1\n` + `k o u a v b t` as `name:len:value`
 (`server/services/identity/objects.py`; for a direct message `v` is `dm:<a>:<b>`). Station takes the
-author from the certificate, so **any** node may deliver it (a courier, an Outpost); errors
-`bad_signature`, `unknown_certificate`, `certificate_revoked`, `certificate_expired`,
-`unknown_user`. The message id is `o` in hex; the body is stored exactly as signed; the reply adds
-`signed: true`. A 64-byte signature leaves less room: ~133 bytes of body to a short username, less to
-long names or rooms — the Scout measures the encoded request and limits typing to what fits.
+author from the identity id, so **any** node may deliver it (a courier, an Outpost); errors
+`bad_signature`, `unknown_identity`, `identity_revoked`, `unknown_user`. The message id is `o` in hex; the body is stored exactly as signed; the reply adds
+`signed: true`. A 64-byte signature leaves less room: 127 bytes of body to a short username, 102 to a
+32-character one — every compose screen (Scout, Outpost page) limits typing to what fits signed
+`MSG_SEND` *and* peer sync (`max_signed_body`).
 
 **Device-chosen message id (2026-10-04):** `MSG_SEND` takes an optional `message_id`. The Scout's
 outbox sets its own (32 hex characters, random) so a resend after a lost reply is the **same**
@@ -403,20 +403,22 @@ Portal Atlas (Wi‑Fi) uses HTTP against the same logical model; distance / rang
 
 ## Offline identity (PROFILE CERT ops, 2026-10-04)
 
-Certificates signed by Station's community key so any node can check a person offline
-([identity.md](identity.md#offline-identity-target)). Certificates and keys travel as CBOR **byte
-strings**. Every reply fits one packet (tested).
+Certificates signed by Station's community key vouch for each person's **identity key** (derived from
+username + password, [identity.md](identity.md#offline-identity-target)), so any node can check a
+person offline. Keys and signatures travel as CBOR **byte strings**. Every reply fits one packet
+(tested). Reworked 2026-10-05: device certificates (`CERT_ISSUE`, `CERT_DEV`) are gone.
 
 | Op | Who may ask | Payload | Reply |
 |---|---|---|---|
 | `CERT_ROOT` | anyone | `{}` | `{pk}` — community public key (32 bytes) |
-| `CERT_ISSUE` | paired device | `{pk (64, Reticulum public key), spk (32, signing key), sig (64)}` — `sig` by the Reticulum identity over `WAYPOST-CERT-REQUEST-1\n<node_id>\n<spk>` | `{cert}` (device); errors `device_key_mismatch`, `bad_signature`, `invalid_payload` |
-| `CERT_GET` | paired device | `{u?}` (default: self) | `{cert, devs}` — identity certificate + how many device certificates; `unknown_user` |
-| `CERT_DEV` | paired device | `{u?, i}` | `{cert, more}` — the i-th live device certificate (`cert: null` past the end) |
-| `CERT_REVOKED` | paired device | `{offset}` | `{revs, offset, more}` — revocation certificates still worth spreading |
+| `CERT_GET` | paired device, claimed Outpost | `{u?}` (default: self) or `{i}` (identity id) | `{cert}`; errors `unknown_user`, `no_identity_yet` (Station hasn't seen their password since keys came in), `unknown_identity` |
+| `CERT_LIST` | paired device, claimed Outpost | `{offset}` | `{certs, offset, more}` — everyone's, paged (Outposts cache them all) |
+| `CERT_REVOKED` | paired device, claimed Outpost | `{offset}` | `{revs, offset, more}` — revocations still worth spreading |
+| `LOGIN_NONCE` | anyone | `{transport_dest?}` | `{nonce}` (16 bytes, 2 minutes, one per node) |
+| `LOGIN` | anyone | `{u, rd (16-byte destination), sig}` — `sig` by the identity key over `WAYPOST-LOGIN-1\n<node_id>\n<rd>\n<nonce>` | `{ok, username, display_name}` and the node is bound to the account; errors `wrong_password`, `unknown_user`, `no_identity_yet`, `login_expired` |
 
-Certificate map keys: `k` kind (`id`/`dev`/`rev`), `n` serial, `i` identity id, `u`, `dn`, `p`
-signing key, `d` Reticulum identity hash, `t` issued, `x` expires, `r` revoked serial, `s` signature.
+Certificate map keys: `k` kind (`id`/`rev`), `n` serial, `i` identity id, `u`, `dn`, `p` identity
+public key, `t` issued, `x` expires, `r` revoked serial, `s` signature.
 
 ---
 
@@ -439,20 +441,42 @@ for others, so a take-everything peer can find a courier's cargo. The initiator 
 of each scope either side wants or holds, pulls what it wants and lacks, pushes what the peer wants
 and lacks. In sync: **2 requests** (HELLO + one SUM). 300 shared + 2 different each side: 13.
 
-**Object on the wire** (`dispatch.msg`, fields directly in the payload): `o` (16 bytes), `c`
-(device certificate serial), `b`, `t` (signed time, s), `s` (signature), and `p` (the other person,
-direct) or `v` (conversation id). The author comes back from the certificate. Every node verifies
+**Object on the wire** (`dispatch.msg`, fields directly in the payload): `o` (16 bytes), `a`
+(author's identity id), `b`, `t` (signed time, s), `s` (signature), and `p` (the other person,
+direct) or `v` (conversation id). The author comes back from their identity certificate. Every node verifies
 on arrival with cached certificates, whoever carried it.
 
 **Replying to a peer:** a Reticulum packet doesn't say who sent it, so `HELLO` carries the
 initiator's destination (`rd`); the responder keeps it for that node's following requests. Station
 replies to paired devices by their binding as for every other op.
 
-**Size:** the Scout's compose limit is the body that fits signed `MSG_SEND`, `PUT` *and* a `WANT`
-reply between devices with the longest node ids (`max_signed_body`: 139 bytes to a short name).
+**Size:** compose limits are the body that fits signed `MSG_SEND`, `PUT` *and* a `WANT` reply
+between devices with the longest node ids (`max_signed_body`, Python and `firmware/common`: 127 bytes
+to a short name).
+
+**Who syncs with whom:** Scouts with Station (3 min), with Outposts they hear announcing
+(`WPOST-OUTPOST:<id>` / `WPOST-CLAIM:<id>` in the announce) and contacts' Scouts in range (1 min,
+or at once after writing). Outposts take everything (`*`): Station every 2 min (and right after
+something new), and **push** a new message straight to the Scout of anyone it concerns who synced
+with that Outpost in the last 30 minutes.
 
 **Not yet:** delivery receipts as objects (a message pulled by sync is still `SENT` on Station),
-capability announces (D6), courier policy (D7), Tier 2 (D8).
+full capability announces (D6), courier policy (D7), Tier 2 (D8), rooms on the Outpost page.
+
+## Outpost Wi-Fi page API (`http://out.post/msg`, 2026-10-05)
+
+JSON over the Outpost's own Wi-Fi (`firmware/outpost/src/outpost_web.cpp`; page in
+`firmware/outpost/web/`). Session cookie `wps` per browser.
+
+| Endpoint | Body | Reply |
+|---|---|---|
+| `GET /api/hello` | — | `{node, nonce}` |
+| `POST /api/login` | `{u, p (public key hex), n (nonce), s (signature hex)}` — `s` over `WAYPOST-WEB-LOGIN-1\n<node>\n<nonce bytes>` | `{ok, u, id, vouched}`; `wrong_password` when Station vouches for a different key under that name |
+| `GET /api/convs` | — | `{convs: [{id, with, t, n}]}` |
+| `GET /api/msgs?c=<conv>` | — | `{msgs: [{o, u, b, t}], max}` |
+| `POST /api/send` | `{o, v, b, t, s}` — signed in the browser | `{ok}`; `bad_signature`, `too_long`, `not_a_member` |
+| `POST /api/logout`, `GET /api/me` | | |
+
 
 **Announce `app_data`** (Tier 1): compact capability record (`r` roles, `s` services bitmap,
 `t` transports, `st` Station reachability + age, `h` Bloom filter of identity ids it holds objects

@@ -81,9 +81,9 @@ own, and every conversation they have is with Station.
 | Scout apps | Read from the local store; network fills the store in the background. UI status line from capabilities | 🔧 (incremental per app) |
 | Dispatch messages | Become signed `dispatch.msg` objects with 128-bit ids; receipts become objects | 🔧 (wire-compatible: `MSG_SEND` keeps working) |
 | `MSG_SYNC` | Generalized into `SYNC_HELLO/DIFF/WANT/PUT` for every object kind; `MSG_SYNC` kept as a shim | 🔧 |
-| Station sender rule (S4) | Accept a message whose signature verifies against a valid device cert, regardless of which node delivered it (replaces `is_trusted_courier`) | 🔧 |
-| Pairing (`PAIR_REDEEM`) | Also issues a device certificate signed by the community key | 🔧 additive |
-| Rollcall `ROLL_LIST` | Also carries identity/device certificates (or their hashes) so contacts can verify offline | 🔧 additive |
+| Station sender rule (S4) | Accept a message whose signature verifies against the author's identity key, regardless of which node delivered it (replaces `is_trusted_courier`) — ✅ for signed messages 2026-10-04/05 | 🔧 |
+| Pairing (`PAIR_REDEEM`) | Scouts now sign in with username + password (identity key) instead — ✅ 2026-10-05 | 🔧 done |
+| Rollcall `ROLL_LIST` | Contacts' identity certificates fetched separately (`CERT_GET`) and cached — ✅ 2026-10-05 | 🔧 done |
 | Beacon | `beacon.event` objects spread by sync from any node; Station's push becomes one source among many | 🔧 |
 | Outpost firmware | Object store in flash; runs the sync protocol with Scouts, Outposts, and Station; delivers locally; capability announce; Wi-Fi Dispatch/Noticeboard pages | 🔧 (largest piece) |
 | Announces | Capability record in `app_data` (generalizes the auto-claim marker) | 🔧 additive |

@@ -25,7 +25,8 @@ struct Message {
   std::string id, sender, body;
   uint64_t ts = 0;  // wall-clock ms; 0 = not known yet
   // 'r' received (or history from Station), 's' sent (Station has it),
-  // 'q' queued in the outbox, 'f' failed for good (note says why).
+  // 'q' queued in the outbox, 'p' queued but a peer already has it,
+  // 'f' failed for good (note says why).
   char state = 'r';
   std::string note;
   // Signed with its author's identity key: what lets this Scout hand the
@@ -56,6 +57,7 @@ struct Outgoing {
   std::string sig;        // 64 raw bytes
   std::string author_id;  // this person's identity id (16 raw bytes)
   uint64_t signed_t;      // signed time (s), sent as the envelope ts
+  bool passed_on;         // a peer (Outpost, Scout) has it; Station not yet
 };
 
 void load();  // after mount_storage + account::load, before start_radio
@@ -94,6 +96,8 @@ const std::vector<Outgoing>& outbox();
 // Station has it: moves it into the conversation (Station's conversation
 // id, in case it differs) as sent.
 void outbox_sent(const std::string& id, const std::string& station_conv);
+// A peer took it (peer sync): still waiting for Station, shown as passed on.
+void outbox_passed_on(const std::string& id);
 // Station refused it for good: kept in the conversation, marked failed.
 void outbox_failed(const std::string& id, const std::string& reason);
 

@@ -100,6 +100,7 @@ from server.services.sync.engine import SVC_SYNC, SyncResponder
 from server.services.sync.sets import StationObjectSet
 from server.services.profiles.constants import (
     OP_CERT_GET,
+    OP_CERT_LIST,
     OP_CERT_REVOKED,
     OP_CERT_ROOT,
     OP_LOGIN,
@@ -225,6 +226,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             CommunityKey.load_or_create(settings.waypost_data_dir / "community.key"),
             get_binding=db.dispatch.get_binding,
             get_user=db.get_user_by_username,
+            is_claimed_outpost=lambda n: db.corkboard.is_claimed(n),
         )
         app.state.auth.on_password = app.state.identity.record_password
         app.state.pairing.identity = app.state.identity
@@ -289,7 +291,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_LOGIN_NONCE, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_LOGIN, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_ROLL_LIST, app.state.rollcall.handle_rpc)
-        for op in (OP_CERT_ROOT, OP_CERT_GET, OP_CERT_REVOKED):
+        for op in (OP_CERT_ROOT, OP_CERT_GET, OP_CERT_LIST, OP_CERT_REVOKED):
             gateway.register(SVC_PROFILE, op, app.state.identity.handle_rpc)
         # Peer sync (roadmap D4): Station is one peer among many — the one
         # that wants everything and keeps it.

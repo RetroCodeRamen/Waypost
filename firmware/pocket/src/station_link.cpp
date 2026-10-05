@@ -1,5 +1,6 @@
 #include "station_link.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <deque>
@@ -60,6 +61,26 @@ bool station_quiet() {
   return g_station_quiet_until && static_cast<int32_t>(millis() - g_station_quiet_until) < 0;
 }
 uint32_t g_epoch_at_ms = 0;
+
+// Outposts heard announcing (their announce app_data starts with
+// WPOST-OUTPOST: or, before they're claimed, WPOST-CLAIM:) — peers to sync
+// with when they're in range.
+std::vector<std::string> g_outposts;
+
+class OutpostWatcher : public RNS::AnnounceHandler {
+ public:
+  OutpostWatcher() : RNS::AnnounceHandler("waypost.waylink") {}
+  void received_announce(const RNS::Bytes& destination_hash, const RNS::Identity& /*identity*/,
+                         const RNS::Bytes& app_data) override {
+    std::string ad(reinterpret_cast<const char*>(app_data.data()), app_data.size());
+    if (ad.compare(0, 14, "WPOST-OUTPOST:") != 0 && ad.compare(0, 12, "WPOST-CLAIM:") != 0) return;
+    std::string hex = destination_hash.toHex();
+    if (std::find(g_outposts.begin(), g_outposts.end(), hex) != g_outposts.end()) return;
+    if (g_outposts.size() >= 8) g_outposts.erase(g_outposts.begin());
+    g_outposts.push_back(hex);
+    Serial.printf("link: Outpost heard %s (%s)\n", hex.c_str(), ad.c_str());
+  }
+};
 
 void (*g_busy_tick)() = nullptr;
 void (*g_busy_done)() = nullptr;
@@ -200,6 +221,7 @@ void radio_task(void*) {
   // probe that did time out would demote Station's paths to UNRESPONSIVE.
   RNS::Reticulum::neighbor_probing_enabled(false);
   g_reticulum.start();
+  RNS::Transport::register_announce_handler(RNS::HAnnounceHandler(new OutpostWatcher()));
 
   step("Loading identity");
   g_identity = RNS::Identity::from_file(kIdentityPath);
@@ -418,6 +440,8 @@ bool send_to(const RNS::Bytes& dest, const RNS::Bytes& payload) {
   pkt.send();
   return true;
 }
+
+std::vector<std::string> outposts_heard() { return g_outposts; }
 
 bool has_path(const RNS::Bytes& dest) { return ready() && RNS::Transport::has_path(dest); }
 

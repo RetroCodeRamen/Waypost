@@ -119,6 +119,26 @@ ser.setDTR(False); ser.setRTS(True); time.sleep(0.3); ser.setRTS(False)
 # then read ser for a few seconds
 ```
 
+## Messages and peer sync (2026-10-05)
+
+The Outpost is a full Waypost node now (roadmap D5): it keeps signed messages in flash, caches
+everyone's identity certificates from Station, and syncs with Station, Scouts and other Outposts
+using the engine shared with the Scout (`../common/waypost_core`). When a message arrives for
+someone whose Scout synced here in the last 30 minutes, it's **pushed to that Scout at once** —
+Station or not.
+
+**Wi-Fi page `/msg`** (linked from the Waygate splash and the board): sign in with a Waypost
+username + password. The key is worked out in the browser (`web/wpcrypto.js`, vendored
+tweetnacl + scrypt-js in `web/vendor/`), so the password never reaches the Outpost; one session per
+browser, several people at once. After editing anything in `web/`, run
+`python tools/make_web_assets.py` (regenerates `src/web_assets.h`, gzipped, served from flash —
+uploading a file-system image would wipe the Outpost's identity and claim).
+
+Testing the page without the Outpost: `python -m tools.outpost_web_mock` (repo root) serves the
+same page with a Python API that checks every signature with Station's code;
+`node tools/outpost_web_check.mjs` runs the page's crypto against it (key vector, sign-in,
+signed message, wrong password).
+
 ## Scope (this slice)
 
 **In:** Wi-Fi AP (open network, SSID `WAYPOST-OUTPOST`) + Corkboard web UI

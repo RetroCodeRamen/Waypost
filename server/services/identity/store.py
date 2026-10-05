@@ -145,6 +145,12 @@ class IdentityStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def usernames_with_keys(self) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT username FROM identities WHERE public_key IS NOT NULL ORDER BY username"
+        ).fetchall()
+        return [str(r[0]) for r in rows]
+
     def owner_of(self, identity_id: bytes) -> Optional[str]:
         row = self.by_identity_id(identity_id)
         return str(row["username"]) if row else None
