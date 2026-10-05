@@ -85,7 +85,23 @@ struct Value {
   uint64_t uint(const char* key, uint64_t fallback = 0) const;
   bool flag(const char* key, bool fallback = false) const;
   std::string bytes(const char* key) const;  // raw bytes, "" if absent / not bytes
+
+  // Building values (nested payloads: peer sync, roadmap D4).
+  static Value of_text(const std::string& v);
+  static Value of_uint(uint64_t v);
+  static Value of_bool(bool v);
+  static Value of_bytes(const std::string& raw);
+  static Value make_map();
+  static Value make_array();
+  Value& set(const char* key, Value v);  // Map: add or replace
+  void push(Value v);                    // Array: append
 };
+
+// A whole envelope with any payload tree (requests and replies).
+// flags: 1 = REQUEST, 2 = RESPONSE, 4 = ERROR.
+RNS::Bytes encode_envelope(const char* src, const char* dst, const std::string& mid,
+                           const std::string& rid, const char* svc, const char* op, uint64_t flags,
+                           uint32_t ttl, uint64_t ts, const Value& payload);
 
 // Top level must be a map. Unsupported CBOR types (negative ints, floats,
 // tags) decode as Null rather than failing.

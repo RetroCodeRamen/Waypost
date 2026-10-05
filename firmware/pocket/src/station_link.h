@@ -75,6 +75,16 @@ Result request(const char* svc, const char* op, const std::vector<waylink::Field
 RNS::Bytes encode(const char* svc, const char* op, const std::vector<waylink::Field>& payload,
                   uint64_t ts = 0);
 
+// -- any peer (roadmap D4): Scouts, Outposts, Station alike --
+RNS::Bytes station_dest();  // Station's destination hash (16 bytes)
+bool has_path(const RNS::Bytes& dest);
+// A request with any payload tree to the peer at `dest` (node id `dst_node`).
+Result request_peer(const RNS::Bytes& dest, const char* dst_node, const char* svc, const char* op,
+                    const waylink::Value& payload, waylink::Reply& out, int attempts = 2,
+                    uint32_t timeout_ms = 6000);
+// Fire-and-forget to any destination (replies to a peer's request).
+bool send_to(const RNS::Bytes& dest, const RNS::Bytes& payload);
+
 // Fire-and-forget (acks). False if Station isn't reachable.
 bool send(const RNS::Bytes& payload);
 

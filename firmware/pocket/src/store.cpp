@@ -134,6 +134,11 @@ std::vector<Message> read_conv(const std::string& conv) {
     m.state = f[3].empty() ? 'r' : f[3][0];
     m.note = unesc(f[4]);
     m.body = unesc(f[5]);
+    if (f.size() >= 9) {  // signed copy (D4); older lines have 6 fields
+      m.sig = bytes_of(f[6]);
+      m.serial = to_u64(f[7]);
+      m.signed_t = to_u64(f[8]);
+    }
     out.push_back(std::move(m));
   }
   return out;
@@ -145,23 +150,52 @@ void write_conv(const std::string& conv, const std::vector<Message>& msgs) {
   for (size_t i = first; i < msgs.size(); i++) {
     const auto& m = msgs[i];
     out += m.id + "\t" + esc(m.sender) + "\t" + std::to_string(m.ts) + "\t" + std::string(1, m.state) +
-           "\t" + esc(m.note) + "\t" + esc(m.body) + "\n";
+           "\t" + esc(m.note) + "\t" + esc(m.body) + "\t" + hex_of(m.sig) + "\t" +
+           std::to_string(m.serial) + "\t" + std::to_string(m.signed_t) + "\n";
   }
   RNS::Utilities::OS::write_file(conv_path(conv).c_str(), RNS::Bytes(out));
 }
 
-bool insert(std::vector<Message>& msgs, const Message& m) {
+enum class Insert { New, Upgraded, Duplicate };
+
+Insert insert_ex(std::vector<Message>& msgs, const Message& m) {
   for (auto& x : msgs) {
     if (x.id != m.id) continue;
-    // Same message again. A queued/failed copy of ours being confirmed by
-    // Station's history is an upgrade; anything else is a duplicate.
-    if (x.state == 'f' && m.state != 'f') x = m;
-    return false;
+    // Same message again. A failed copy of ours confirmed by Station is an
+    // upgrade; so is a signed copy of one we only had unsigned (a push may
+    // also have cut a long body) — keep the signed one so it can be passed on.
+    if (x.state == 'f' && m.state != 'f') {
+      x = m;
+      return Insert::Upgraded;
+    }
+    if (x.sig.empty() && !m.sig.empty()) {
+      x.body = m.body;
+      x.sig = m.sig;
+      x.serial = m.serial;
+      x.signed_t = m.signed_t;
+      return Insert::Upgraded;
+    }
+    return Insert::Duplicate;
   }
   msgs.push_back(m);
   std::stable_sort(msgs.begin(), msgs.end(),
                    [](const Message& a, const Message& b) { return sort_key(a) < sort_key(b); });
-  return true;
+  return Insert::New;
+}
+
+bool insert(std::vector<Message>& msgs, const Message& m) { return insert_ex(msgs, m) == Insert::New; }
+
+// Signed messages held, for peer sync: built on first use, then kept up
+// to date by add().
+std::vector<SignedRef> g_signed;
+bool g_signed_built = false;
+
+void note_signed(const std::string& conv, const Message& m) {
+  if (!g_signed_built || m.sig.empty() || m.id.size() != 32) return;
+  std::string oid = bytes_of(m.id);
+  for (const auto& r : g_signed)
+    if (r.oid == oid) return;
+  g_signed.push_back({oid, conv, m.sender});
 }
 
 // -- index + outbox -------------------------------------------------------------
@@ -210,7 +244,10 @@ void save_outbox() {
 
 void apply(const Pending& p) {
   auto msgs = read_conv(p.conv);
-  if (insert(msgs, p.msg)) write_conv(p.conv, msgs);
+  if (insert_ex(msgs, p.msg) != Insert::Duplicate) {
+    write_conv(p.conv, msgs);
+    note_signed(p.conv, p.msg);
+  }
 }
 
 }  // namespace
@@ -341,8 +378,12 @@ bool add(const std::string& conv, const Message& m, bool unread) {
   bool fresh;
   if (files_safe()) {
     auto msgs = read_conv(conv);
-    fresh = insert(msgs, m);
-    if (fresh) write_conv(conv, msgs);
+    Insert r = insert_ex(msgs, m);
+    fresh = r == Insert::New;
+    if (r != Insert::Duplicate) {
+      write_conv(conv, msgs);
+      note_signed(conv, m);
+    }
   } else {
     fresh = std::none_of(g_pending.begin(), g_pending.end(),
                          [&](const Pending& p) { return p.msg.id == m.id; });
@@ -355,6 +396,32 @@ bool add(const std::string& conv, const Message& m, bool unread) {
     g_index_dirty = true;
   }
   return true;
+}
+
+const std::vector<SignedRef>& signed_refs() {
+  if (!g_signed_built && files_safe()) {
+    g_signed.clear();
+    for (const auto& c : g_convs)
+      for (const auto& m : read_conv(c.id))
+        if (!m.sig.empty() && m.id.size() == 32) g_signed.push_back({bytes_of(m.id), c.id, m.sender});
+    g_signed_built = true;
+  }
+  return g_signed;
+}
+
+bool find_signed(const std::string& oid, std::string& conv, Message& out) {
+  for (const auto& r : signed_refs()) {
+    if (r.oid != oid) continue;
+    std::string id = hex_of(oid);
+    for (const auto& m : read_conv(r.conv)) {
+      if (m.id == id && !m.sig.empty()) {
+        conv = r.conv;
+        out = m;
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 std::string new_id() {
@@ -395,6 +462,11 @@ void settle(const std::string& id, const std::string& conv_override, char state,
   m.ts = station_link::now_ms();
   m.state = state;
   m.note = note;
+  if (state == 's') {  // a signed message we wrote can be passed on too
+    m.sig = o.sig;
+    m.serial = o.serial;
+    m.signed_t = o.signed_t;
+  }
   add(conv, m, false);
 }
 
@@ -413,6 +485,8 @@ void clear() {
   g_convs.clear();
   g_outbox.clear();
   g_pending.clear();
+  g_signed.clear();
+  g_signed_built = false;
   g_index_dirty = g_outbox_dirty = false;
   loop();  // now, if storage is free
 }

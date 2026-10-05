@@ -420,22 +420,39 @@ signing key, `d` Reticulum identity hash, `t` issued, `x` expires, `r` revoked s
 
 ---
 
-## Peer sync and capabilities (`SYNC`, `CAPS`) — 📋 planned (2026-10-04)
+## Peer sync (`SYNC`) — 2026-10-05 (roadmap D4)
 
-Design: [network-model.md](network-model.md) §5–6. The same ops run between **any** two nodes —
-Scout, Outpost, Station, Courier — over any transport. Nothing here needs Station.
+The same four ops between **any** two nodes — Scout, Outpost, Station, a courier — over any transport;
+nothing here needs Station. Code: `server/services/sync/engine.py` (Python, also the reference),
+`firmware/pocket/src/sync.cpp` (Scout). Design: [network-model.md](network-model.md) §5.
 
-| Op | Direction | Payload (sketch) | Reply |
-|---|---|---|---|
-| `SYNC_HELLO` | either | `{caps, interests:[scope…], sum:{scope: {n, x}}}` — per-scope count + XOR of oids | peer's own HELLO |
-| `SYNC_DIFF` | either | `{scope, prefix, buckets:[{n, x}×16]}` for differing prefixes | same shape, or `{oids:[…]}` once a bucket is small |
-| `SYNC_WANT` | either | `{oids:[…]}` (≤ 20 per packet) | `SYNC_PUT` stream |
-| `SYNC_PUT` | either | `{obj}` (one per packet on Tier 1; batches on Tier 2) | `ACK` |
-| `CAPS_GET` | either | `{}` | full capability record (storage, counts, Station path age, area) |
+| Op | Payload | Reply |
+|---|---|---|
+| `HELLO` | `{r role, i [interests], h [held scopes], rd? (16-byte reply destination)}` | `{r, i, h}` |
+| `SUM` | `{q scope, p hex prefix}` | `{n, x (8-byte XOR), oids [16-byte ids]}` when ≤10, else `{n, x, sub [[n, x] ×16]}` |
+| `WANT` | `{o}` | the object's fields, or `{missing: true}` |
+| `PUT` | the object's fields | `{ok, new}` or an error (`bad_signature`, `unknown_certificate`, `certificate_revoked`, …) |
 
-**Object on the wire:** CBOR map `{oid, k (kind), a (identity id), d (device hash), c (created ms),
-s (scope), r (refs), e (expires?), b (body), sig}`. Signature = Ed25519 by the device key over the
-canonical CBOR of all other fields. A test pins the canonical bytes in Python and C++.
+**Interests:** `*` (everything: Station, Outposts), `u:<name>` (a person: author, or party to a
+direct conversation), `c:<conversation id>` (a room). `h` lists the scopes of what a node carries
+for others, so a take-everything peer can find a courier's cargo. The initiator walks the prefix tree
+of each scope either side wants or holds, pulls what it wants and lacks, pushes what the peer wants
+and lacks. In sync: **2 requests** (HELLO + one SUM). 300 shared + 2 different each side: 13.
+
+**Object on the wire** (`dispatch.msg`, fields directly in the payload): `o` (16 bytes), `c`
+(device certificate serial), `b`, `t` (signed time, s), `s` (signature), and `p` (the other person,
+direct) or `v` (conversation id). The author comes back from the certificate. Every node verifies
+on arrival with cached certificates, whoever carried it.
+
+**Replying to a peer:** a Reticulum packet doesn't say who sent it, so `HELLO` carries the
+initiator's destination (`rd`); the responder keeps it for that node's following requests. Station
+replies to paired devices by their binding as for every other op.
+
+**Size:** the Scout's compose limit is the body that fits signed `MSG_SEND`, `PUT` *and* a `WANT`
+reply between devices with the longest node ids (`max_signed_body`: 139 bytes to a short name).
+
+**Not yet:** delivery receipts as objects (a message pulled by sync is still `SENT` on Station),
+capability announces (D6), courier policy (D7), Tier 2 (D8).
 
 **Announce `app_data`** (Tier 1): compact capability record (`r` roles, `s` services bitmap,
 `t` transports, `st` Station reachability + age, `h` Bloom filter of identity ids it holds objects

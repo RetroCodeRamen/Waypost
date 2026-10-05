@@ -141,6 +141,7 @@ bool g_wipe = false;
 std::map<std::string, uint32_t> g_devs_at;  // username -> millis of last CERT_DEV round
 uint32_t g_revs_at = 0;
 uint32_t g_next_ms = 0;
+bool g_idle = false;
 
 uint64_t now_s() { return station_link::now_ms() / 1000ULL; }
 
@@ -483,7 +484,9 @@ void loop() {
   if (!station_link::station_known()) return;
   if (g_next_ms && static_cast<int32_t>(millis() - g_next_ms) < 0) return;
   Res r = Res::Ok;
+  g_idle = false;
   if (!step(r)) {
+    g_idle = true;
     g_next_ms = millis() + 60000;  // nothing to do; look again in a minute
   } else if (r == Res::Ok) {
     g_next_ms = millis() + 1500;  // keep going, without hogging the radio
@@ -493,6 +496,9 @@ void loop() {
   }
   if (!g_next_ms) g_next_ms = 1;
 }
+
+// Without Station there's nothing to wait for: work with what's cached.
+bool idle() { return g_idle || !station_link::station_known(); }
 
 bool have_key() { return !g_pub.empty(); }
 bool key_unlocked() { return !g_priv.empty(); }
@@ -572,6 +578,27 @@ std::vector<const Cert*> devices(const std::string& username) {
 bool revoked(uint64_t serial) {
   return std::any_of(g_certs.begin(), g_certs.end(),
                      [&](const Cert& c) { return c.kind == "rev" && c.r == serial; });
+}
+
+std::string device_owner(uint64_t serial) {
+  for (const auto& c : g_certs)
+    if (c.kind == "dev" && c.n == serial && current(c)) return c.u;
+  return "";
+}
+
+std::string verify_dispatch(const std::string& oid, const std::string& author, uint64_t serial,
+                            const std::string& conv, const std::string& body, uint64_t t,
+                            const std::string& sig) {
+  const Cert* dev = nullptr;
+  for (const auto& c : g_certs)
+    if (c.kind == "dev" && c.n == serial) dev = &c;
+  if (!dev) return revoked(serial) ? "certificate_revoked" : "unknown_certificate";
+  if (revoked(serial)) return "certificate_revoked";
+  if (!current(*dev)) return "certificate_expired";
+  if (lower(dev->u) != lower(author) || oid.size() != 16 || sig.size() != 64) return "bad_signature";
+  std::string msg = dispatch_bytes(oid, dev->u, serial, conv, body, t);
+  bool ok = RNS::Cryptography::Ed25519PublicKey::from_public_bytes(bytes(dev->p))->verify(bytes(sig), bytes(msg));
+  return ok ? "" : "bad_signature";
 }
 
 Status status() {

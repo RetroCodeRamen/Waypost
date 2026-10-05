@@ -42,6 +42,9 @@ bool self_test();  // canonical bytes + Ed25519 against the pinned vector
 // Call every loop(): fetches one missing/stale certificate at a time while
 // Station is in reach; writes changes once storage is free.
 void loop();
+// True once nothing is left to fetch (sync waits for this, so messages from
+// contacts aren't refused for a certificate that's still on its way).
+bool idle();
 
 // -- the signing key --
 bool have_key();       // exists (maybe locked)
@@ -67,6 +70,14 @@ bool sign_dispatch(const std::string& oid, const std::string& conv, const std::s
 const Cert* identity(const std::string& username);
 std::vector<const Cert*> devices(const std::string& username);
 bool revoked(uint64_t serial);
+// Whose device certificate `serial` is ("" when unknown here / not valid).
+std::string device_owner(uint64_t serial);
+// Checks a signed Dispatch message with cached certificates only (offline,
+// whoever carried it). "" when genuine, else an error code (same codes as
+// Station: unknown_certificate, certificate_revoked, bad_signature...).
+std::string verify_dispatch(const std::string& oid, const std::string& author, uint64_t serial,
+                            const std::string& conv, const std::string& body, uint64_t t,
+                            const std::string& sig);
 
 struct Status {
   bool root = false;            // community key pinned

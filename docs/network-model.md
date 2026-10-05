@@ -129,7 +129,7 @@ The same object legitimately arrives by several routes. Duplicates must collapse
 
 ---
 
-## 5. Peer synchronization — one protocol, every node  📋 (🟡 `MSG_SYNC`)
+## 5. Peer synchronization — one protocol, every node  🟡 built 2026-10-05 (D4; ops in [protocol.md](protocol.md#peer-sync-sync--2026-10-05-roadmap-d4))
 
 Not "messages waiting to reach Station" but **"objects this node knows that the other may not."**
 Same protocol whether the peer is a Scout, Outpost, Courier, or Station; what differs is

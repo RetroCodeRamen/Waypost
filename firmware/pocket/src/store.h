@@ -28,6 +28,18 @@ struct Message {
   // 'q' queued in the outbox, 'f' failed for good (note says why).
   char state = 'r';
   std::string note;
+  // Signed by its author's device (D3): what lets this Scout hand the
+  // message on to others (peer sync, D4). Empty sig = unsigned copy.
+  std::string sig;        // 64 raw bytes
+  uint64_t serial = 0;    // author's device certificate
+  uint64_t signed_t = 0;  // signed time (s)
+};
+
+// A signed message this Scout holds, for peer sync.
+struct SignedRef {
+  std::string oid;     // 16 raw bytes (the message id is its hex)
+  std::string conv;
+  std::string author;
 };
 
 // Plain aggregates (brace-initialised): no default member values.
@@ -68,6 +80,11 @@ size_t synced_count(const std::string& conv);
 // Adds unless a message with this id is already stored. True if new.
 // `unread` bumps the conversation's unread count when new.
 bool add(const std::string& conv, const Message& m, bool unread);
+
+// Every signed message held (built from the files on first use; needs
+// files_safe()), and one by id.
+const std::vector<SignedRef>& signed_refs();
+bool find_signed(const std::string& oid, std::string& conv, Message& out);
 
 // -- outbox --
 std::string new_id();  // 128 random bits, 32 hex chars

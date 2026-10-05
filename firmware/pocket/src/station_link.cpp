@@ -51,6 +51,14 @@ std::deque<waylink::Reply> g_events;  // unsolicited requests (not chat)
 // Wall clock learned from Station's envelope ts (seconds); the Scout has no
 // RTC. 0 until the first reply.
 uint64_t g_epoch_s = 0;
+// Station had a path but stopped answering (switched off, out of range):
+// treat it as out of reach for a while instead of spending tens of seconds
+// per request on timeouts — time in which the Scout can't answer peers.
+const uint32_t kQuietMs = 2UL * 60UL * 1000UL;
+uint32_t g_station_quiet_until = 0;
+bool station_quiet() {
+  return g_station_quiet_until && static_cast<int32_t>(millis() - g_station_quiet_until) < 0;
+}
 uint32_t g_epoch_at_ms = 0;
 
 void (*g_busy_tick)() = nullptr;
@@ -76,7 +84,10 @@ void on_packet(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
     Serial.println("link: undecodable packet dropped");
     return;
   }
-  uint64_t ts = reply.envelope.uint("ts");
+  // Wall clock from Station only: a peer's clock may be wrong, and a sync
+  // reply's time is the object's, not now.
+  if (reply.envelope.text("src") == kStationNodeId) g_station_quiet_until = 0;  // it's back
+  uint64_t ts = reply.envelope.text("src") == kStationNodeId ? reply.envelope.uint("ts") : 0;
   if (ts > 1600000000ULL) {
     g_epoch_s = ts;
     g_epoch_at_ms = millis();
@@ -102,13 +113,9 @@ bool station_hash(RNS::Bytes& out) {
   return out.size() == 16;
 }
 
-// Resolves Station's path + identity, requesting a path if needed.
-bool connect(RNS::Destination& out) {
-  RNS::Bytes hash;
-  if (!station_hash(hash)) {
-    Serial.println("link: WAYPOST_STATION_DEST_HASH not set");
-    return false;
-  }
+// Resolves a destination's path + identity, requesting a path if needed.
+bool connect_to(const RNS::Bytes& hash, RNS::Destination& out) {
+  if (hash.size() != 16) return false;
   if (!RNS::Transport::has_path(hash)) {
     RNS::Transport::request_path(hash);
     uint32_t start = millis();
@@ -124,6 +131,15 @@ bool connect(RNS::Destination& out) {
   out = RNS::Destination(identity, RNS::Type::Destination::OUT,
                          RNS::Type::Destination::SINGLE, kAppName, kAspect);
   return true;
+}
+
+bool connect(RNS::Destination& out) {
+  RNS::Bytes hash;
+  if (!station_hash(hash)) {
+    Serial.println("link: WAYPOST_STATION_DEST_HASH not set");
+    return false;
+  }
+  return connect_to(hash, out);
 }
 
 }  // namespace
@@ -278,7 +294,7 @@ const std::string& dest_hex() {
 }
 
 bool station_known() {
-  if (!ready()) return false;
+  if (!ready() || station_quiet()) return false;
   RNS::Bytes hash;
   return station_hash(hash) && RNS::Transport::has_path(hash) &&
          static_cast<bool>(RNS::Identity::recall(hash));
@@ -309,10 +325,10 @@ const char* describe(Result r) {
 }
 
 namespace {
-Result request_impl(const Builder& build, waylink::Reply& out, int attempts,
+Result request_impl(const RNS::Bytes& to, const Builder& build, waylink::Reply& out, int attempts,
                     uint32_t timeout_ms) {
   RNS::Destination dest({RNS::Type::NONE});
-  if (!connect(dest)) return Result::NoPath;
+  if (!(to.size() == 16 ? connect_to(to, dest) : connect(dest))) return Result::NoPath;
 
   for (int attempt = 1; attempt <= attempts; attempt++) {
     std::string mid = waylink::new_hex_id();
@@ -341,6 +357,11 @@ Result request_impl(const Builder& build, waylink::Reply& out, int attempts,
     Serial.printf("link: attempt %d/%d timed out\n", attempt, attempts);
   }
   g_waiting_rid.clear();
+  RNS::Bytes station;
+  if (to.size() != 16 || (station_hash(station) && to == station)) {
+    g_station_quiet_until = (millis() + kQuietMs) | 1;
+    Serial.println("link: Station isn't answering - treating it as out of reach for 2 min");
+  }
   return Result::Timeout;
 }
 }  // namespace
@@ -348,7 +369,7 @@ Result request_impl(const Builder& build, waylink::Reply& out, int attempts,
 Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t timeout_ms) {
   if (!ready()) return Result::NotReady;
   busy_tick();
-  Result r = request_impl(build, out, attempts, timeout_ms);
+  Result r = request_impl(RNS::Bytes(), build, out, attempts, timeout_ms);
   busy_done();
   return r;
 }
@@ -369,6 +390,36 @@ RNS::Bytes encode(const char* svc, const char* op, const std::vector<waylink::Fi
   return waylink::encode_request(node_id().c_str(), kStationNodeId, "0123456789abcdef",
                                  "0123456789abcdef", svc, op, 120, payload, ts);
 }
+
+RNS::Bytes station_dest() {
+  RNS::Bytes hash;
+  station_hash(hash);
+  return hash;
+}
+
+Result request_peer(const RNS::Bytes& dest, const char* dst_node, const char* svc, const char* op,
+                    const waylink::Value& payload, waylink::Reply& out, int attempts,
+                    uint32_t timeout_ms) {
+  if (!ready()) return Result::NotReady;
+  return request_impl(
+      dest,
+      [&](const std::string& mid, const std::string& rid) {
+        return waylink::encode_envelope(node_id().c_str(), dst_node, mid, rid, svc, op, 1, 120, 0,
+                                        payload);
+      },
+      out, attempts, timeout_ms);
+}
+
+bool send_to(const RNS::Bytes& dest, const RNS::Bytes& payload) {
+  if (!ready()) return false;
+  RNS::Destination d({RNS::Type::NONE});
+  if (!connect_to(dest, d)) return false;
+  RNS::Packet pkt(d, payload);
+  pkt.send();
+  return true;
+}
+
+bool has_path(const RNS::Bytes& dest) { return ready() && RNS::Transport::has_path(dest); }
 
 bool send(const RNS::Bytes& payload) {
   if (!ready()) return false;

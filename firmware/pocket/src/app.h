@@ -2,6 +2,7 @@
 #pragma once
 
 #include "input.h"
+#include "store.h"
 #include "waylink_cbor.h"
 
 class App {
@@ -47,6 +48,10 @@ void check_identity();
 void deliver_chat(const waylink::IncomingChatMessage& msg);
 // Fetch messages missed while out of range (DISPATCH/MSG_SYNC, paged).
 void catch_up_chat();
+// A message for this Scout's store from any source (push, catch-up, peer
+// sync): saved, counted unread, shown if its conversation is open. True
+// when it's new here.
+bool deliver_message(const std::string& conv, const store::Message& m);
 // Send the oldest queued Dispatch message if Station is in reach (one per
 // call; waits between failed tries unless `force`).
 void flush_outbox(bool force = false);

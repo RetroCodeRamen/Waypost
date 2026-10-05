@@ -110,15 +110,26 @@ class DispatchApp : public App {
   // A live push (ack sent) or a catch-up message (already confirmed).
   void receive(const std::string& id, const std::string& conv, const std::string& sender,
                const std::string& body) {
-    bool viewing = _mode == Mode::Chat && apps::current() == this && conv == _conv_id;
-    if (!store::conversation(conv)) store::note_conversation(conv, title_for(conv), 0);
     store::Message m;
     m.id = id;
     m.sender = sender;
     m.body = body;
     m.ts = station_link::now_ms();
     m.state = is_me(sender) ? 's' : 'r';
-    if (!store::add(conv, m, !viewing && !is_me(sender))) return;  // seen it already
+    receive(conv, m);
+  }
+
+  // Any message for the store (signed copies from peer sync included).
+  bool receive(const std::string& conv, const store::Message& m) {
+    bool viewing = _mode == Mode::Chat && apps::current() == this && conv == _conv_id;
+    if (!store::conversation(conv)) store::note_conversation(conv, title_for(conv), 0);
+    if (!store::add(conv, m, !viewing && !is_me(m.sender))) {
+      if (viewing) {  // maybe a signed copy replaced a cut-short push
+        reload();
+        draw_chat();
+      }
+      return false;  // seen it already
+    }
     ui::set_unread(store::unread_total());
     if (viewing) {
       reload();
@@ -127,6 +138,7 @@ class DispatchApp : public App {
     } else if (apps::current() == this && _mode == Mode::List) {
       draw_list();
     }
+    return true;
   }
 
   void catch_up() {
@@ -605,5 +617,9 @@ void apps::deliver_chat(const waylink::IncomingChatMessage& msg) {
 }
 
 void apps::catch_up_chat() { instance().catch_up(); }
+
+bool apps::deliver_message(const std::string& conv, const store::Message& m) {
+  return instance().receive(conv, m);
+}
 
 void apps::flush_outbox(bool force) { instance().flush_outbox(force); }

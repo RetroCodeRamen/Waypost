@@ -30,6 +30,7 @@
 #include "input.h"
 #include "station_link.h"
 #include "store.h"
+#include "sync.h"
 #include "ui.h"
 #include "utilities.h"
 #include "scout_logo.h"
@@ -171,6 +172,7 @@ void loop() {
   waylink::Reply event;
   while (station_link::pop_event(event)) {
     if (event.envelope.text("op") == "BEACON_ALERT") apps::beacon_event(event.payload());
+    else if (event.envelope.text("svc") == "SYNC") peersync::handle(event);  // a peer syncing with us
   }
   if (apps::beacon_showing()) wake();  // an alert keeps the screen lit
   apps::beacon_save();                  // saved alerts, once storage is free
@@ -223,6 +225,8 @@ void loop() {
 
   // Queued messages go out as soon as Station is in reach (one per loop).
   if (known && account::paired()) apps::flush_outbox();
+  // Peer sync (D4): Station every few minutes, contacts' Scouts in range.
+  peersync::loop();
 
   static uint32_t last_status = 0;
   if (millis() - last_status >= 1000) {

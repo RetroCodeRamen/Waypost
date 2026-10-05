@@ -784,6 +784,102 @@ RNS::Bytes encode_request(
   return out;
 }
 
+Value Value::of_text(const std::string& v) {
+  Value x;
+  x.type = Text;
+  x.s = v;
+  return x;
+}
+Value Value::of_uint(uint64_t v) {
+  Value x;
+  x.type = Uint;
+  x.u = v;
+  return x;
+}
+Value Value::of_bool(bool v) {
+  Value x;
+  x.type = Bool;
+  x.b = v;
+  return x;
+}
+Value Value::of_bytes(const std::string& raw) {
+  Value x;
+  x.type = Bytes;
+  x.s = raw;
+  return x;
+}
+Value Value::make_map() {
+  Value x;
+  x.type = Map;
+  return x;
+}
+Value Value::make_array() {
+  Value x;
+  x.type = Array;
+  return x;
+}
+Value& Value::set(const char* key, Value v) {
+  for (auto& e : entries)
+    if (e.first == key) return e.second = std::move(v);
+  entries.emplace_back(key, std::move(v));
+  return entries.back().second;
+}
+void Value::push(Value v) { items.push_back(std::move(v)); }
+
+namespace {
+void write_value(CborWriter& w, const Value& v) {
+  switch (v.type) {
+    case Value::Null: w.write_null(); break;
+    case Value::Bool: w.write_bool(v.b); break;
+    case Value::Uint: w.write_uint(v.u); break;
+    case Value::Text: w.write_text(v.s); break;
+    case Value::Bytes: w.write_bytes(v.s); break;
+    case Value::Array:
+      w.write_array_header(v.items.size());
+      for (const auto& i : v.items) write_value(w, i);
+      break;
+    case Value::Map:
+      w.write_map_header(v.entries.size());
+      for (const auto& e : v.entries) {
+        w.write_text(e.first);
+        write_value(w, e.second);
+      }
+      break;
+  }
+}
+}  // namespace
+
+RNS::Bytes encode_envelope(const char* src, const char* dst, const std::string& mid,
+                           const std::string& rid, const char* svc, const char* op, uint64_t flags,
+                           uint32_t ttl, uint64_t ts, const Value& payload) {
+  RNS::Bytes out;
+  CborWriter w(out);
+  w.write_map_header(11);
+  w.write_text("v");
+  w.write_uint(1);
+  w.write_text("mid");
+  w.write_text(mid);
+  w.write_text("rid");
+  w.write_text(rid);
+  w.write_text("src");
+  w.write_text(src);
+  w.write_text("dst");
+  w.write_text(dst);
+  w.write_text("svc");
+  w.write_text(svc);
+  w.write_text("op");
+  w.write_text(op);
+  w.write_text("flags");
+  w.write_uint(flags);
+  w.write_text("ts");
+  w.write_uint(ts);
+  w.write_text("ttl");
+  w.write_uint(ttl);
+  w.write_text("payload");
+  write_value(w, payload);
+  return out;
+}
+
 const Value* Value::get(const char* key) const {
   if (type != Map) return nullptr;
   for (const auto& e : entries)
