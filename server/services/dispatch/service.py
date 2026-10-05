@@ -503,6 +503,7 @@ class DispatchService:
         (conversation id), c (device certificate serial), s (signature);
         the signed time is the envelope's ts (1 = the device didn't know the
         time; 0 can't be sent, the envelope reader replaces it with now)."""
+        from server.services.dispatch.store import direct_conversation_id
         from server.services.identity import objects as O
 
         def err(code: str) -> Envelope:
@@ -520,29 +521,16 @@ class DispatchService:
                "t": int(env.ts or 0)}
         if conv:
             obj["v"] = str(conv)
-            author, code = self._verify_object(obj, sig)
         else:
-            author, code = self._verify_dm(obj, str(peer), sig)
-        if not author:
+            owner = self._cert_owner(obj.get("c"))
+            if not owner:
+                return err("unknown_certificate")
+            obj["v"] = direct_conversation_id(owner, str(peer))
+        obj["u"], obj["s"] = self._cert_owner(obj.get("c")) or "", sig
+        transport = str(payload.get("transport") or TRANSPORT_LORA)
+        result, code = self._ingest(obj, transport)
+        if code:
             return err(code)
-        sender = author
-        conversation_id = obj["v"]
-        if peer:
-            if self._user_exists is not None and not self._user_exists(str(peer)):
-                return err("unknown_user")
-            self.store.ensure_direct(sender, str(peer))
-        signature = {"sig": bytes(sig).hex(), "cert_serial": int(obj["c"]), "signed_at": obj["t"]}
-        try:
-            result = self.send_to_conversation(
-                conversation_id=conversation_id,
-                sender=sender,
-                body=body,
-                message_id=oid.hex(),
-                transport=str(payload.get("transport") or TRANSPORT_LORA),
-                signature=signature,
-            )
-        except ValueError as exc:
-            return err(str(exc))
         return env.make_response(
             op=OP_MSG_SEND,
             payload={
@@ -556,16 +544,45 @@ class DispatchService:
             flags=Flags.RESPONSE | Flags.ACK,
         )
 
-    def _verify_dm(self, obj: dict[str, Any], peer: str, sig: Any) -> tuple[Optional[str], str]:
-        """Direct message: its conversation id (dm:<author>:<peer>) is part of
-        what was signed, and the author is whoever the certificate names."""
-        from server.services.dispatch.store import direct_conversation_id
+    def ingest_signed(self, obj: dict[str, Any]) -> tuple[bool, str]:
+        """A signed message arriving by peer sync (SYNC PUT / WANT): verify,
+        store, push to whoever is online. (created, "") or (False, error)."""
+        result, code = self._ingest(obj, TRANSPORT_LORA)
+        return (bool(result and result["created"]), code)
 
-        owner = self._cert_owner(obj.get("c"))
-        if not owner:
-            return None, "unknown_certificate"
-        obj["v"] = direct_conversation_id(owner, peer)
-        return self._verify_object(obj, sig)
+    def _ingest(self, obj: dict[str, Any], transport: str) -> tuple[Optional[dict[str, Any]], str]:
+        if self._verify_object is None:
+            return None, "signatures_not_supported"
+        body = obj.get("b")
+        if not isinstance(body, str) or not body.strip():
+            return None, "sender_and_body_required"
+        unsigned = {k: v for k, v in obj.items() if k not in ("s", "u")}
+        author, code = self._verify_object(unsigned, obj.get("s"))
+        if not author:
+            return None, code
+        conversation_id = str(obj["v"])
+        if conversation_id.startswith("dm:"):
+            a, b = conversation_id[3:].split(":", 1)
+            if author.lower() not in (a, b):
+                return None, "bad_signature"
+            peer = b if a == author.lower() else a
+            if self._user_exists is not None and not self._user_exists(peer):
+                return None, "unknown_user"
+            self.store.ensure_direct(author, peer)
+        signature = {"sig": bytes(obj["s"]).hex(), "cert_serial": int(obj["c"]),
+                     "signed_at": int(obj["t"])}
+        try:
+            result = self.send_to_conversation(
+                conversation_id=conversation_id,
+                sender=author,
+                body=body,
+                message_id=bytes(obj["o"]).hex(),
+                transport=transport,
+                signature=signature,
+            )
+        except ValueError as exc:
+            return None, str(exc)
+        return result, ""
 
     def set_cert_owner(self, lookup) -> None:
         """``lookup(serial) -> username | None`` (IdentityStore)."""

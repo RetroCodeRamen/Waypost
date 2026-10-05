@@ -197,6 +197,7 @@ def test_every_scout_op_is_registered_with_the_gateway(tmp_path: Path):
             ("TRAILHEAD", "TRAIL_GET"), ("CORE", "PING"),
             ("PROFILE", "CERT_ROOT"), ("PROFILE", "CERT_ISSUE"), ("PROFILE", "CERT_GET"),
             ("PROFILE", "CERT_DEV"), ("PROFILE", "CERT_REVOKED"),
+            ("SYNC", "HELLO"), ("SYNC", "SUM"), ("SYNC", "WANT"), ("SYNC", "PUT"),
         ]:
             assert key in handlers, key
 

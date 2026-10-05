@@ -92,6 +92,12 @@ from server.services.noticeboard.constants import (
 from server.services.noticeboard.service import NoticeboardService
 from server.services.identity.certs import CommunityKey
 from server.services.identity.service import IdentityService
+from server.services.sync.engine import OP_HELLO as OP_SYNC_HELLO
+from server.services.sync.engine import OP_PUT as OP_SYNC_PUT
+from server.services.sync.engine import OP_SUM as OP_SYNC_SUM
+from server.services.sync.engine import OP_WANT as OP_SYNC_WANT
+from server.services.sync.engine import SVC_SYNC, SyncResponder
+from server.services.sync.sets import StationObjectSet
 from server.services.profiles.constants import (
     OP_CERT_DEV,
     OP_CERT_GET,
@@ -281,6 +287,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_ROLL_LIST, app.state.rollcall.handle_rpc)
         for op in (OP_CERT_ROOT, OP_CERT_ISSUE, OP_CERT_GET, OP_CERT_DEV, OP_CERT_REVOKED):
             gateway.register(SVC_PROFILE, op, app.state.identity.handle_rpc)
+        # Peer sync (roadmap D4): Station is one peer among many — the one
+        # that wants everything and keeps it.
+        app.state.sync = SyncResponder(
+            StationObjectSet(dispatch, db.identity), role="station", interests=lambda: ["*"]
+        )
+        for op in (OP_SYNC_HELLO, OP_SYNC_SUM, OP_SYNC_WANT, OP_SYNC_PUT):
+            gateway.register(SVC_SYNC, op, app.state.sync.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
         # PairingService is constructed before Transport exists (it needs

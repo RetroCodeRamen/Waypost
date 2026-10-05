@@ -67,3 +67,52 @@ def canonical_bytes(obj: dict[str, Any]) -> bytes:
             raise CertError(f"field {name} too long")
         out += name.encode("ascii") + b":" + len(raw).to_bytes(2, "big") + raw
     return bytes(out)
+
+
+class OfflineVerifier:
+    """Checks a signed object with nothing but cached certificates — what an
+    Outpost or Scout does with Station out of reach (docs/identity.md)."""
+
+    def __init__(self, community_public: bytes, *, clock=None) -> None:
+        import time
+
+        self.community_public = bytes(community_public)
+        self.devices: dict[int, dict[str, Any]] = {}
+        self.revoked: set[int] = set()
+        self._clock = clock or time.time
+
+    def add_cert(self, cert: dict[str, Any]) -> bool:
+        from server.services.identity import certs as C
+
+        if not C.verify(cert, self.community_public):
+            return False
+        if cert["k"] == C.KIND_DEVICE:
+            self.devices[int(cert["n"])] = cert
+        elif cert["k"] == C.KIND_REVOCATION:
+            self.revoked.add(int(cert["r"]))
+        return True
+
+    def owner_of(self, serial: int) -> str | None:
+        cert = self.devices.get(int(serial))
+        return str(cert["u"]) if cert else None
+
+    def verify(self, obj: dict[str, Any]) -> str:
+        """Empty string when the object is genuine, else an error code."""
+        from server.services.identity import certs as C
+
+        cert = self.devices.get(int(obj.get("c", -1)))
+        if not cert:
+            return "unknown_certificate"
+        if int(cert["n"]) in self.revoked:
+            return "certificate_revoked"
+        if int(cert["x"]) <= int(self._clock()):
+            return "certificate_expired"
+        if str(obj.get("u", "")).lower() != str(cert["u"]).lower():
+            return "bad_signature"
+        try:
+            message = canonical_bytes({k: v for k, v in obj.items() if k != "s"})
+        except CertError:
+            return "invalid_payload"
+        if not C.verify_signing_key(cert["p"], bytes(obj.get("s") or b""), message):
+            return "bad_signature"
+        return ""
