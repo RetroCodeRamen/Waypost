@@ -38,18 +38,14 @@
 #include <microReticulum.h>
 
 static void board_power_on() {
-  // Power-cycle the peripherals (display, LoRa radio, keyboard controller,
-  // SD) on every boot. The side reset button restarts only the ESP32: while
-  // it's held, this enable line floats and the peripherals can brown out
-  // part-way, coming back half-reset — a reboot with the button then
-  // misbehaved where a power-switch reboot was fine (human, 2026-10-05).
-  // Off long enough to drain, then on, so a button reset starts as clean
-  // as a power-on.
+  // Peripheral power on. Not power-cycled: cutting it also restarts the
+  // keyboard's own controller, which then didn't answer (keyboard dead,
+  // 2026-10-05). The frozen-logo-after-reset problem was the shared SPI
+  // bus, fixed in spi_bus.h. LilyGO's examples give the keyboard
+  // controller 500 ms to start.
   pinMode(BOARD_POWERON, OUTPUT);
-  digitalWrite(BOARD_POWERON, LOW);
-  delay(200);
   digitalWrite(BOARD_POWERON, HIGH);
-  delay(150);  // display and keyboard controller come up
+  delay(500);
   // Display, LoRa radio, and SD slot share one SPI bus. Deselect the radio
   // and SD card before the display is used (LilyGO's T-Deck examples do the
   // same); an undriven chip-select floats.
