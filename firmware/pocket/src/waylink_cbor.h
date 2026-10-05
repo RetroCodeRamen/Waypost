@@ -23,7 +23,7 @@ namespace waylink {
 // at most one Reticulum packet (383 bytes), so a tree costs nothing.
 
 struct Field {
-  enum Type { Text, Uint, Bool, EmptyList };
+  enum Type { Text, Uint, Bool, EmptyList, Bytes };
   const char* key;
   Type type;
   std::string s;
@@ -48,6 +48,12 @@ struct Field {
     return f;
   }
   static Field empty_list(const char* k) { return Field(k, EmptyList); }
+  // CBOR byte string (keys, signatures); `v` holds raw bytes.
+  static Field bytes(const char* k, const std::string& v) {
+    Field f(k, Bytes);
+    f.s = v;
+    return f;
+  }
 };
 
 RNS::Bytes encode_request(
@@ -61,11 +67,11 @@ RNS::Bytes encode_request(
     const std::vector<Field>& payload);
 
 struct Value {
-  enum Type { Null, Bool, Uint, Text, Array, Map };
+  enum Type { Null, Bool, Uint, Text, Array, Map, Bytes };
   Type type = Null;
   bool b = false;
   uint64_t u = 0;
-  std::string s;
+  std::string s;  // Text, or raw bytes for Bytes
   std::vector<Value> items;                              // Array
   std::vector<std::pair<std::string, Value>> entries;  // Map
 
@@ -73,10 +79,11 @@ struct Value {
   std::string text(const char* key, const std::string& fallback = "") const;
   uint64_t uint(const char* key, uint64_t fallback = 0) const;
   bool flag(const char* key, bool fallback = false) const;
+  std::string bytes(const char* key) const;  // raw bytes, "" if absent / not bytes
 };
 
 // Top level must be a map. Unsupported CBOR types (negative ints, floats,
-// byte strings, tags) decode as Null rather than failing.
+// tags) decode as Null rather than failing.
 bool parse(const uint8_t* data, size_t len, Value& out);
 
 struct Reply {

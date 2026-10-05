@@ -25,6 +25,7 @@
 
 #include "account.h"
 #include "app.h"
+#include "certs.h"
 #include "contacts.h"
 #include "input.h"
 #include "station_link.h"
@@ -124,6 +125,8 @@ void setup() {
   contacts::load();
   store::load();
   apps::beacon_load();
+  certs::load();
+  certs::self_test();
   ui::set_unread(store::unread_total());
   station_link::start_radio();
   // Show the logo for its minimum time; the bar just marks the time.
@@ -148,6 +151,7 @@ void setup() {
 void loop() {
   station_link::loop();
   store::loop();  // writes saved-message changes once storage is free
+  certs::loop();  // offline identity: fetch/refresh certificates, save
 
   // Once the radio task finishes (or fails), keep its timing for the
   // Signal app — serial output is lost when nobody is reading the port.
@@ -201,6 +205,10 @@ void loop() {
   static bool station_was_known = false;
   static uint32_t last_catch_up = 0;
   const uint32_t kCatchUpEveryMs = 3UL * 60UL * 1000UL;
+  // Look for Station when its path isn't known (throttled to every 30 s
+  // inside). Without this a locked Scout only found Station at Station's
+  // next announce, which after a Station restart could be a long wait.
+  station_link::seek_station();
   bool known = station_link::station_known();
   bool came_back = known && !station_was_known &&
                    (last_catch_up == 0 || millis() - last_catch_up > 60000);

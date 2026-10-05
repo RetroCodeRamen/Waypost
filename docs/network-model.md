@@ -209,20 +209,21 @@ Four separate things:
 | **Username** | human-readable label (`aj`), can change | ✅ on Station |
 | **Identity id** | stable id of the person, derived from a key, never a username/password hash | 📋 |
 | **Credentials** | password / PIN — only ever unlock things locally | ✅ password on Station; ✅ Scout PIN (UI lock only) |
-| **Device identity** | each device's own Reticulum keypair | ✅ Scout and Outpost, persisted |
+| **Device identity** | each device's own Reticulum keypair (network) + a separate signing key (authorship) | ✅ network; ✅ signing key on Scout (D2) |
 
 **Design (v1, extends today's pairing):** full detail in [identity.md](identity.md#offline-identity-target).
 - Station holds a **community key** (created at setup, backed up). Its public half is given to every
   device at pairing/claiming and cached everywhere.
 - **Identity certificate** (object `identity.cert`): username, display name, identity id, issued,
   expiry, serial — signed by the community key.
-- **Device certificate:** "device D acts for identity I until T" — signed by the community key at
-  pairing (today's `PAIR_REDEEM` becomes "issue a device certificate").
+- **Device certificate:** "signing key K on device D acts for identity I until T" — signed by the
+  community key; issued by `CERT_ISSUE` to the paired device, which proves itself with its Reticulum
+  key. ✅ D2.
 - **Verifying offline:** any node with the community public key checks object signature → device
   cert → identity cert → not revoked. No Station contact.
 - **Revocation** (object `identity.revoke`, signed by the community key) spreads at high priority.
-- **Logging in on a Scout:** the PIN unlocks the device's private key, stored encrypted with a
-  PIN-derived key (🔧 today the PIN only locks the UI).
+- **Logging in on a Scout:** the PIN seals a separate **signing key** (the network identity stays
+  usable while locked, so receiving still works). ✅ built 2026-10-04 (D2).
 - **People without a Scout at an Outpost:** see [outpost.md](outpost.md#signing-in-without-a-scout).
 - **Passwords never travel the Waypost network.** ✅ already a rule.
 

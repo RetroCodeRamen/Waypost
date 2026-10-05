@@ -10,6 +10,7 @@
 #include <Arduino.h>
 
 #include "account.h"
+#include "certs.h"
 #include "app.h"
 #include "prompt.h"
 #include "ui.h"
@@ -112,6 +113,7 @@ App& apps::lock_app() { return instance(); }
 
 void apps::lock() {
   if (!account::has_pin() || instance().active()) return;
+  certs::lock();  // the signing key leaves memory while locked
   instance().lock(apps::current());
 }
 

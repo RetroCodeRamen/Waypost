@@ -17,5 +17,8 @@ node_modules/
 htmlcov/
 firmware/**/.pio/
 **/identity
+# ...but not the identity service's source package
+!server/services/identity/
 .tmp/
 /tmp/
+community.key

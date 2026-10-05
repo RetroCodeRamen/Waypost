@@ -44,10 +44,10 @@ dependency order (roadmap track **D**, [roadmap.md](../roadmap.md#decentralizati
 | Step | What | Status |
 |---|---|---|
 | Account + contacts cached in flash, owner-tagged | | ✅ |
-| PIN lock | UI lock only today | ✅ → 🔧 PIN unlocks the device key (D2) |
+| PIN lock | locks the UI and seals the signing key (D2) | ✅ |
 | **Local object store** | messages (own conversations), outbox, Beacon alerts in LittleFS (`store.*`); receipts and certificates come with D2/D3; microSD later | 🟡 D1 built 2026-10-04 |
 | **Apps read from the store** | Dispatch history/compose work offline; outbox sends when Station is in reach (any peer after D4); shows "(waiting)" / "(not sent: …)"; screen dims and sleeps | 🟡 D1 built, hand test pending |
-| **Identity certificates** | stores its device cert and the community public key; verifies others offline | 📋 D2 |
+| **Identity certificates** | pins the community key, keeps certificates for itself and contacts, verifies offline (`certs.*`) | 🟡 D2 built 2026-10-04 |
 | **Signed objects** | every message/receipt/Beacon it creates is signed with its device key | 📋 D3 |
 | **`station_link` → `link`** | talks to any peer by destination; Station is one peer, picked by capability | 🔧 D4 |
 | **Peer sync** | `SYNC_*` with whoever is near: other Scouts, Outposts, Station | 📋 D4 |

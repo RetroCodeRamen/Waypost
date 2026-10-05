@@ -42,6 +42,13 @@ void loop();
 const std::string& node_id();   // e.g. "pocket-1-e75a"
 const std::string& dest_hex();  // Scout's Reticulum destination hash
 
+// This Scout's Reticulum (network) identity: 64-byte public key, 16-byte
+// hash, and signing with it — used to prove a certificate request comes
+// from this device (certs.*). Empty until ready().
+RNS::Bytes identity_public_key();
+RNS::Bytes identity_hash();
+RNS::Bytes identity_sign(const RNS::Bytes& message);
+
 // True when Station's path and identity are already known (cheap, no I/O).
 bool station_known();
 // Non-blocking: if Station's path isn't known, ask the network for it

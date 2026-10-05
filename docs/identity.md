@@ -23,46 +23,67 @@ Registration modes (Station setting): `OPEN` | `INVITE_ONLY` | `ADMIN_APPROVAL`.
 
 ## Offline identity (target)
 
-**Status:** 📋 design, adopted 2026-10-04 ([network-model.md](network-model.md) §7). Extends the
-account model above. Nothing here replaces passwords on Station or pairing codes. It adds a way for
-**any** node to check who sent something **without asking Station**.
+**Status:** 🟡 **built 2026-10-04 (roadmap D2)** — Station side complete and tested; the Scout pins
+the community key, fetches and verifies certificates for itself and its contacts, and keeps them in
+flash (verified on hardware). Still to verify by hand: the Scout's own device certificate, which needs
+one unlock to create its signing key. Outposts: later (D5). Code: `server/services/identity/`,
+`firmware/pocket/src/certs.*`; ops in [protocol.md](protocol.md#offline-identity-profile-cert-ops-2026-10-04).
 
-### Four separate things
+Extends the account model above. Nothing here replaces passwords on Station or pairing codes. It adds
+a way for **any** node to check who someone is **without asking Station**.
 
-| | Today | Target |
+### Separate things
+
+| | What | Status |
 |---|---|---|
-| **Username** (`aj`) | ✅ Station `users` | unchanged; may change without breaking anything |
-| **Identity id** | — (username is the key everywhere) | 📋 stable id = hash of the person's identity record, issued once; usernames map to it |
-| **Credentials** | ✅ password (Station only), ✅ Scout PIN (UI lock) | password stays on Station; PIN unlocks the device key locally; never sent anywhere |
-| **Device identity** | ✅ each Scout/Outpost's Reticulum keypair (Ed25519 + X25519) | unchanged; becomes the *signing* key for that device |
+| **Username** (`aj`) | human-readable, on Station | ✅ |
+| **Identity id** | 16 random bytes per person, issued once (`identities` table), in every certificate | ✅ |
+| **Credentials** | password (Station only, never on the radio); Scout PIN (local only) | ✅ |
+| **Network identity** | each device's Reticulum keypair: addressing, encryption, forwarding. Must work while a Scout is locked (receiving, Beacon alerts), so it is **not** PIN-protected | ✅ |
+| **Signing key** | a separate Ed25519 key per device that *authors* this person's messages (D3). PIN-sealed on a Scout | ✅ Scout |
 
-### Certificates (small signed objects, cached everywhere)
+Why two device keys: if the PIN sealed the network identity, a locked Scout couldn't receive
+anything. Authorship is what needs protecting; reception isn't.
+
+### Certificates
+
+Signed by Station's **community key** (Ed25519, `community.key` in Station's data directory, created
+on first start, mode 0600 — back it up with the data). Kinds (`server/services/identity/certs.py`):
 
 ```text
-community key     Ed25519 keypair created at Station setup; private half stays on Station
-                  (+ offline backup); public half handed to every device at pairing/claim.
-
-identity.cert     { identity_id, username, display_name, serial, issued, expires }
-                  signed by the community key
-
-device.cert       { device_hash (Reticulum identity hash), identity_id, role: scout|outpost,
-                    issued, expires }   signed by the community key
-
-identity.revoke   { serial or device_hash, reason, issued }   signed by the community key
+id    { n serial, i identity id, u username, dn display name (≤40 bytes), t issued, x expires }
+dev   { n, i, u, p signing public key (32), d Reticulum identity hash (16), t, x }
+rev   { n, r serial revoked, t }
 ```
 
-Each fits one LoRa packet. Ed25519 signatures are 64 bytes.
+The signature covers canonical bytes (`WAYPOST-CERT-1\n` + `name:len:value` per field in fixed order),
+not CBOR, so Python and C++ can't disagree. A pinned test vector is checked by pytest **and** by the
+Scout at every boot (`certs: self-test ok`). Each certificate is one LoRa packet (≤313 of 383 bytes).
+Lifetime 30 days; Station serves a fresh one inside the last 7.
 
-**Issuing:** `PAIR_REDEEM` (✅ binds a device today) also returns the identity and device certificates
-plus the community public key (🔧 additive). `OUTPOST_CLAIM` and auto-claim (✅) do the same for
-Outposts. Station republishes certificates when they near expiry, whenever it syncs with a device.
+**Issuing a device certificate** (`CERT_ISSUE`): the device sends its Reticulum public key, its
+signing public key, and a signature by its Reticulum identity over
+`WAYPOST-CERT-REQUEST-1\n<node_id>\n<signing key>`. Station checks the Reticulum key hashes to the
+**paired** address (`device_bindings.transport_dest`) and the signature is valid — so a packet that
+merely *claims* a paired node id gets nothing (`device_key_mismatch` / `bad_signature`).
 
-**Verifying offline (any node):** object signature valid for its device key → device cert signed by
-community key, not expired → identity cert likewise → neither revoked (cached list). No round trip.
+**Pinning the community key:** a Scout takes the first key Station offers after pairing and never
+replaces it silently. A different key later shows "Station key CHANGED - re-pair" in Settings. Unpair
+wipes the pin, so pairing with another Station starts fresh.
 
-**Logging in on a Scout:** the device private key is stored encrypted with a key derived from the
-PIN (slow KDF, salted). PIN entry decrypts it into RAM; locking wipes it. A Scout with no PIN set keeps
-today's behaviour (key unencrypted), clearly labelled. 🔧 today the PIN only guards the UI.
+**Revocation:** Station revokes a device certificate when that device is no longer paired to that
+person (unpair, portal revoke, re-paired to someone else) or gets a new signing key. Checked lazily
+before certificates are served; devices fetch revocations every 6 hours.
+
+**Verifying offline (any node):** message signature valid for a signing key → a `dev` certificate for
+that key, signed by the community key, unexpired, not revoked → the person's `id` certificate. No
+round trip.
+
+**Logging in on a Scout:** the signing key is stored sealed with a key derived from the PIN
+(PBKDF2-HMAC-SHA256, 10 000 iterations, random salt; AES-256-CBC + HMAC token). A correct PIN opens it
+into memory; locking wipes it. A Scout with a PIN but no key yet makes one at the next unlock. With no
+PIN, the key is stored unsealed. **Honest limit:** a 4–8 digit PIN can be brute-forced by anyone who
+reads the flash, whatever the KDF. Sealing stops casual reading, not a lab — revoke a lost Scout.
 
 **Station's role:** issues certificates, revokes, recovers (lost Scout → revoke its device cert, pair a
 new one; forgotten PIN → re-pair), rotates keys, and keeps the canonical directory. **None of these

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "account.h"
+#include "certs.h"
 #include "app.h"
 #include "prompt.h"
 #include "station_link.h"
@@ -77,7 +78,23 @@ class SettingsApp : public App {
     ui::body_line(2, "  node " + station_link::node_id(), ui::kMuted);
     ui::body_line(3, std::string("  PIN lock: ") + (account::has_pin() ? "on" : "off"),
                   account::has_pin() ? ui::kOk : ui::kMuted);
-    ui::body_line(4, "");
+    // Offline identity (D2): can people be checked without Station?
+    certs::Status st = certs::status();
+    std::string idline;
+    uint16_t idcolor = ui::kMuted;
+    if (st.root_conflict) {
+      idline = "  ID: Station key CHANGED - re-pair";
+      idcolor = ui::kWarn;
+    } else if (st.mine) {
+      idline = "  ID: verified offline, " + std::to_string(st.contacts_verified) + "/" +
+               std::to_string(st.contacts) + " contacts";
+      idcolor = ui::kOk;
+    } else if (account::has_pin() && !certs::key_unlocked() && !certs::have_key()) {
+      idline = "  ID: unlock once to make a key";
+    } else {
+      idline = "  ID: waiting for Station";
+    }
+    ui::body_line(4, idline, idcolor);
     for (int i = 0; i < static_cast<int>(_actions.size()); i++) {
       ui::body_line(5 + i, _actions[i].first, ui::kTextDim, i == _sel);
     }

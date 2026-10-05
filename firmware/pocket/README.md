@@ -18,7 +18,7 @@ A Cybiko-style handheld that talks to Station over microReticulum on LoRa (Wayli
 | **Fieldbook** | Search the camp wiki → page outline → read a section | `WIKI_SEARCH` (compact), `WIKI_GET` (outline / section chunks) |
 | **Trailhead** | Browse the Station's linked text pages; follow links, roll left to go back | `TRAIL_GET` |
 | **Signal** | This Scout's node id and hash, Station path, PING round trip | `CORE/PING` |
-| **Settings** | Who the Scout belongs to; set / change / remove the PIN; unpair | `UNPAIR` |
+| **Settings** | Who the Scout belongs to; whether people can be verified offline ("ID: verified offline, 3/3 contacts"); set / change / remove the PIN; unpair | `UNPAIR`, `CERT_*` (background) |
 
 Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply) as you scroll — see `docs/protocol.md` "Trailhead" and the radio-sized Fieldbook forms.
 
@@ -32,6 +32,7 @@ Long text arrives in ~160-byte chunks (one encrypted Reticulum packet per reply)
 |------|------|
 | `main.cpp` | Bring-up and the event loop |
 | `station_link.*` | Reticulum, identity, request/reply (rid-matched, retries for reads); wall clock learned from Station's replies |
+| `certs.*` | Offline identity: pinned community key, certificates for itself and contacts, the PIN-sealed signing key (roadmap D2) |
 | `store.*` | The Scout's own messages: conversations index, one file per conversation, outbox (roadmap D1) |
 | `waylink_cbor.*` | CBOR envelopes: generic `encode_request` / `parse_reply`, plus older hand-written codecs |
 | `input.*`, `keyboard.*` | Keyboard + trackball → one event stream; USB-serial remote control |

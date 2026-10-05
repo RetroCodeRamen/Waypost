@@ -389,6 +389,25 @@ Portal Atlas (Wi‑Fi) uses HTTP against the same logical model; distance / rang
 
 ---
 
+## Offline identity (PROFILE CERT ops, 2026-10-04)
+
+Certificates signed by Station's community key so any node can check a person offline
+([identity.md](identity.md#offline-identity-target)). Certificates and keys travel as CBOR **byte
+strings**. Every reply fits one packet (tested).
+
+| Op | Who may ask | Payload | Reply |
+|---|---|---|---|
+| `CERT_ROOT` | anyone | `{}` | `{pk}` — community public key (32 bytes) |
+| `CERT_ISSUE` | paired device | `{pk (64, Reticulum public key), spk (32, signing key), sig (64)}` — `sig` by the Reticulum identity over `WAYPOST-CERT-REQUEST-1\n<node_id>\n<spk>` | `{cert}` (device); errors `device_key_mismatch`, `bad_signature`, `invalid_payload` |
+| `CERT_GET` | paired device | `{u?}` (default: self) | `{cert, devs}` — identity certificate + how many device certificates; `unknown_user` |
+| `CERT_DEV` | paired device | `{u?, i}` | `{cert, more}` — the i-th live device certificate (`cert: null` past the end) |
+| `CERT_REVOKED` | paired device | `{offset}` | `{revs, offset, more}` — revocation certificates still worth spreading |
+
+Certificate map keys: `k` kind (`id`/`dev`/`rev`), `n` serial, `i` identity id, `u`, `dn`, `p`
+signing key, `d` Reticulum identity hash, `t` issued, `x` expires, `r` revoked serial, `s` signature.
+
+---
+
 ## Peer sync and capabilities (`SYNC`, `CAPS`) — 📋 planned (2026-10-04)
 
 Design: [network-model.md](network-model.md) §5–6. The same ops run between **any** two nodes —

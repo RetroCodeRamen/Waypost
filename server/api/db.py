@@ -13,6 +13,7 @@ from server.services.corkboard.store import CorkboardStore
 from server.services.dispatch.store import DispatchStore
 from server.services.fieldbook.store import FieldbookStore
 from server.services.groups.store import GroupsStore
+from server.services.identity.store import IdentityStore
 from server.services.locker.store import LockerStore
 from server.services.mail.store import MailStore
 from server.services.noticeboard.store import NoticeStore
@@ -78,6 +79,7 @@ class Database:
         self.fieldbook = FieldbookStore(self._conn)
         self.trailhead = TrailheadStore(self._conn)
         self.rollcall = RollcallStore(self._conn)
+        self.identity = IdentityStore(self._conn)
         root = locker_root or (path.parent / "locker")
         self.locker = LockerStore(self._conn, root)
 

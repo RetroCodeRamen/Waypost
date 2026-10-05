@@ -11,3 +11,10 @@ OP_WHOAMI = "WHOAMI"
 OP_UNPAIR = "UNPAIR"
 # Radio-sized people directory for a paired device (Scout contacts).
 OP_ROLL_LIST = "ROLL_LIST"
+# Offline identity (docs/identity.md, roadmap D2): certificates signed by
+# Station's community key.
+OP_CERT_ROOT = "CERT_ROOT"  # the community public key (public)
+OP_CERT_ISSUE = "CERT_ISSUE"  # device certificate for this device's signing key
+OP_CERT_GET = "CERT_GET"  # a person's identity certificate (+ device count)
+OP_CERT_DEV = "CERT_DEV"  # one of a person's device certificates, by index
+OP_CERT_REVOKED = "CERT_REVOKED"  # revocation certificates, paged

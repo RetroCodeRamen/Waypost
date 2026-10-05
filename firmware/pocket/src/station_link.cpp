@@ -372,6 +372,12 @@ bool send(const RNS::Bytes& payload) {
   return true;
 }
 
+RNS::Bytes identity_public_key() { return g_identity ? g_identity.get_public_key() : RNS::Bytes(); }
+RNS::Bytes identity_hash() { return g_identity ? g_identity.hash() : RNS::Bytes(); }
+RNS::Bytes identity_sign(const RNS::Bytes& message) {
+  return g_identity ? g_identity.sign(message) : RNS::Bytes();
+}
+
 uint64_t now_ms() {
   if (g_epoch_s == 0) return 0;
   return g_epoch_s * 1000ULL + static_cast<uint32_t>(millis() - g_epoch_at_ms);

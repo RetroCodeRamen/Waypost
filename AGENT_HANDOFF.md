@@ -162,6 +162,15 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-04 — Claude (D2: offline identity)
+
+**Re:** Human: "Let's keep going" → roadmap **D2**.
+**Station:** `server/services/identity/` — `certs.py` (community key in `<data dir>/community.key`, 0600, created on first start — **back it up**; canonical signed bytes `WAYPOST-CERT-1`; kinds id/dev/rev), `store.py` (`identities`, `certs` tables, one serial space), `service.py` (`PROFILE/CERT_ROOT|ISSUE|GET|DEV|REVOKED`; device certs only for a request signed by the device's Reticulum key that hashes to the paired `transport_dest`; lazy sweep revokes certs of unpaired/re-paired devices; 30-day certs renewed in the last 7). 11 tests incl. a pinned vector; registration test covers the ops; 244 passed. `cryptography` added to requirements explicitly.
+**Scout:** `src/certs.*` — pins the community key (never silently replaced), fetches/verifies identity certs for itself + contacts, device certs, revocations (one request per 1.5 s, retry 1 min), persists in `/wp_certs`; boot self-test against the same vector (`certs: self-test ok` on hardware). **Separate signing key** (Ed25519) for authorship, PIN-sealed (PBKDF2 10k + AES token) — the Reticulum identity stays unsealed so a locked Scout still receives. CBOR byte strings added to `waylink_cbor`. Settings shows "ID: verified offline, n/m contacts". **Bug fixed:** a locked Scout never looked for Station itself (`seek_station` was only called from the pairing screen) — after a Station restart it waited for Station's next announce; now the main loop seeks every 30 s.
+**Verified on hardware:** community key pinned (matches Station), identity certs issued for ridgeline + 3 contacts and verified on the Scout, reloaded/re-verified from flash after reboot.
+**Not verified (PIN):** signing key creation at unlock, `CERT_ISSUE` from the device (C++ Reticulum signature → Python validate; same primitive as announces, which Station already validates), unlock timing of the KDF (logged as "wrapped with the PIN (N ms)").
+**Next:** D3 — signed objects (128-bit oid, Ed25519 by the signing key, Station verifies).
+
 ### 2026-10-04 — Claude (D1: the Scout keeps its own messages)
 
 **Re:** Human: "let's continue building this out" → roadmap step **D1**.

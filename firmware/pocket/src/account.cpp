@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <microReticulum.h>
 
+#include "certs.h"
 #include "contacts.h"
 #include "store.h"
 
@@ -52,11 +53,15 @@ const std::string& display_name() { return g_display_name; }
 
 void set_user(const std::string& username, const std::string& display_name) {
   // Contacts are the old account's directory (maybe from another Station).
-  if (username != g_username) {
+  bool changed = username != g_username;
+  if (changed) {
     contacts::clear();
     store::clear();  // its messages too
   }
   g_username = username;
+  // A different person on this Scout: new signing key, certificates fetched
+  // afresh (after the username is set, so they're filed under it).
+  if (changed) certs::clear();
   g_display_name = display_name.empty() ? username : display_name;
   std::string s = g_username + "\n" + g_display_name;
   RNS::Utilities::OS::write_file(kUserPath, RNS::Bytes(s));
@@ -69,6 +74,7 @@ void unpair() {
   g_display_name.clear();
   remove_file(kUserPath);
   clear_pin();
+  certs::clear();  // signing key and certificates: re-pairing starts fresh
   RNS::Utilities::OS::write_file(kUnpairPath, RNS::Bytes("1"));
 }
 
@@ -91,17 +97,21 @@ void set_pin(const std::string& pin) {
   record.append(pin_hash(salt, pin));
   g_pin_record = record;
   RNS::Utilities::OS::write_file(kPinPath, record);
+  certs::rewrap(pin);  // the signing key is now sealed with this PIN
 }
 
 bool check_pin(const std::string& pin) {
   if (!has_pin()) return true;
   RNS::Bytes salt = g_pin_record.left(kSaltLen);
-  return pin_hash(salt, pin) == g_pin_record.mid(kSaltLen);
+  bool ok = pin_hash(salt, pin) == g_pin_record.mid(kSaltLen);
+  if (ok) certs::unlock(pin);  // the right PIN also opens the signing key
+  return ok;
 }
 
 void clear_pin() {
   g_pin_record = RNS::Bytes();
   remove_file(kPinPath);
+  certs::rewrap("");  // stored unsealed: nothing protects it without a PIN
 }
 
 }  // namespace account

@@ -90,7 +90,19 @@ from server.services.noticeboard.constants import (
     OP_NOTICE_LIST,
 )
 from server.services.noticeboard.service import NoticeboardService
-from server.services.profiles.constants import OP_PAIR_REDEEM, OP_ROLL_LIST, OP_UNPAIR, OP_WHOAMI
+from server.services.identity.certs import CommunityKey
+from server.services.identity.service import IdentityService
+from server.services.profiles.constants import (
+    OP_CERT_DEV,
+    OP_CERT_GET,
+    OP_CERT_ISSUE,
+    OP_CERT_REVOKED,
+    OP_CERT_ROOT,
+    OP_PAIR_REDEEM,
+    OP_ROLL_LIST,
+    OP_UNPAIR,
+    OP_WHOAMI,
+)
 from server.services.profiles.rollcall import RollcallService
 from server.services.signal.service import (
     OP_SIGNAL_ROUTE,
@@ -200,6 +212,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         app.state.signal = SignalService(lambda: app.state)
         app.state.auth = AuthService(db)
         app.state.pairing = PairingService(db, dispatch, corkboard_store=db.corkboard)
+        # Offline identity (roadmap D2): the community key lives next to the
+        # database and is created on first start. Back it up with the data dir.
+        app.state.identity = IdentityService(
+            db.identity,
+            CommunityKey.load_or_create(settings.waypost_data_dir / "community.key"),
+            get_binding=db.dispatch.get_binding,
+            get_user=db.get_user_by_username,
+        )
 
         transport = create_transport(
             settings.waypost_transport,
@@ -257,6 +277,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_WHOAMI, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_UNPAIR, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_ROLL_LIST, app.state.rollcall.handle_rpc)
+        for op in (OP_CERT_ROOT, OP_CERT_ISSUE, OP_CERT_GET, OP_CERT_DEV, OP_CERT_REVOKED):
+            gateway.register(SVC_PROFILE, op, app.state.identity.handle_rpc)
         app.state.transport = transport
         app.state.gateway = gateway
         # PairingService is constructed before Transport exists (it needs

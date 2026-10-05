@@ -32,6 +32,10 @@ class CborWriter {
     if (!s.empty()) _out.append(reinterpret_cast<const uint8_t*>(s.data()), s.size());
   }
   void write_uint(uint64_t v) { write_head(0x00, v); }
+  void write_bytes(const std::string& b) {
+    write_head(0x40, b.size());
+    if (!b.empty()) _out.append(reinterpret_cast<const uint8_t*>(b.data()), b.size());
+  }
   void write_bool(bool v) { _out.append(static_cast<uint8_t>(v ? 0xF5 : 0xF4)); }
   void write_null() { _out.append(static_cast<uint8_t>(0xF6)); }
 
@@ -240,6 +244,12 @@ class CborReader {
       case 0:
         out.type = Value::Uint;
         out.u = val;
+        return true;
+      case 2:
+        if (val > _len - _pos) return false;
+        out.type = Value::Bytes;
+        out.s.assign(reinterpret_cast<const char*>(_buf + _pos), static_cast<size_t>(val));
+        _pos += static_cast<size_t>(val);
         return true;
       case 3:
         _pos = save;
@@ -765,6 +775,9 @@ RNS::Bytes encode_request(
       case Field::EmptyList:
         w.write_array_header(0);
         break;
+      case Field::Bytes:
+        w.write_bytes(f.s);
+        break;
     }
   }
   return out;
@@ -785,6 +798,11 @@ std::string Value::text(const char* key, const std::string& fallback) const {
 uint64_t Value::uint(const char* key, uint64_t fallback) const {
   const Value* v = get(key);
   return (v && v->type == Uint) ? v->u : fallback;
+}
+
+std::string Value::bytes(const char* key) const {
+  const Value* v = get(key);
+  return (v && v->type == Bytes) ? v->s : std::string();
 }
 
 bool Value::flag(const char* key, bool fallback) const {
