@@ -62,7 +62,7 @@ class SettingsApp : public App {
     } else {
       _actions.push_back({"Set a PIN", Action::SetPin});
     }
-    _actions.push_back({"Unpair this Scout", Action::Unpair});
+    _actions.push_back({"Sign out", Action::Unpair});
     if (_sel >= static_cast<int>(_actions.size())) _sel = 0;
     ui::title_bar(title());
     ui::clear_body();
@@ -78,21 +78,25 @@ class SettingsApp : public App {
     ui::body_line(2, "  node " + station_link::node_id(), ui::kMuted);
     ui::body_line(3, std::string("  PIN lock: ") + (account::has_pin() ? "on" : "off"),
                   account::has_pin() ? ui::kOk : ui::kMuted);
-    // Offline identity (D2): can people be checked without Station?
+    // Identity: can people (and this person) be checked without Station?
     certs::Status st = certs::status();
     std::string idline;
     uint16_t idcolor = ui::kMuted;
     if (st.root_conflict) {
-      idline = "  ID: Station key CHANGED - re-pair";
+      idline = "  ID: Station key CHANGED - sign out and in";
+      idcolor = ui::kWarn;
+    } else if (st.key_differs) {
+      idline = "  ID: Station knows another key - password changed?";
       idcolor = ui::kWarn;
     } else if (st.mine) {
-      idline = "  ID: verified offline, " + std::to_string(st.contacts_verified) + "/" +
-               std::to_string(st.contacts) + " contacts";
+      idline = "  ID: verified, " + std::to_string(st.contacts_verified) + "/" +
+               std::to_string(st.contacts) + " contacts checkable offline";
       idcolor = ui::kOk;
-    } else if (account::has_pin() && !certs::key_unlocked() && !certs::have_key()) {
-      idline = "  ID: unlock once to make a key";
+    } else if (!certs::have_key()) {
+      idline = "  ID: sign out and in to set up your key";
+      idcolor = ui::kWarn;
     } else {
-      idline = "  ID: waiting for Station";
+      idline = "  ID: waiting for Station to vouch";
     }
     ui::body_line(4, idline, idcolor);
     for (int i = 0; i < static_cast<int>(_actions.size()); i++) {
@@ -113,8 +117,8 @@ class SettingsApp : public App {
     } else if (account::has_pin()) {
       ask(Mode::CurrentPin, "Enter your current PIN.");
     } else {
-      ask(Mode::ConfirmUnpair, "Type UNPAIR to unpair this Scout. It will need a new pairing "
-                               "code from the Station portal to be used again.");
+      ask(Mode::ConfirmUnpair, "Type OUT to sign out. Messages kept on this Scout are removed "
+                               "(Station keeps its copies); sign in again any time.");
     }
   }
 
@@ -141,8 +145,8 @@ class SettingsApp : public App {
         } else if (_action == Action::ChangePin) {
           ask(Mode::NewPin, "Choose a new PIN of 4 to 8 digits.");
         } else if (_action == Action::Unpair) {
-          ask(Mode::ConfirmUnpair, "Type UNPAIR to unpair this Scout. It will need a new pairing "
-                                   "code from the Station portal to be used again.");
+          ask(Mode::ConfirmUnpair, "Type OUT to sign out. Messages kept on this Scout are removed "
+                                   "(Station keeps its copies); sign in again any time.");
         }
         return;
       case Mode::NewPin:
@@ -166,13 +170,13 @@ class SettingsApp : public App {
       case Mode::ConfirmUnpair: {
         std::string upper = v;
         for (auto& c : upper) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-        if (upper != "UNPAIR") {
+        if (upper != "OUT") {
           _prompt.clear();
-          _prompt.set_error("Type UNPAIR to confirm, or roll left to cancel.");
+          _prompt.set_error("Type OUT to confirm, or roll left to cancel.");
           return;
         }
         account::unpair();
-        apps::open(apps::pairing_app());
+        apps::open(apps::login_app());
         return;
       }
       case Mode::Menu:

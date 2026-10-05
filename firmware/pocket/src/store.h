@@ -28,10 +28,10 @@ struct Message {
   // 'q' queued in the outbox, 'f' failed for good (note says why).
   char state = 'r';
   std::string note;
-  // Signed by its author's device (D3): what lets this Scout hand the
+  // Signed with its author's identity key: what lets this Scout hand the
   // message on to others (peer sync, D4). Empty sig = unsigned copy.
   std::string sig;        // 64 raw bytes
-  uint64_t serial = 0;    // author's device certificate
+  std::string author_id;  // author's identity id (16 raw bytes)
   uint64_t signed_t = 0;  // signed time (s)
 };
 
@@ -52,10 +52,10 @@ struct Conversation {
 struct Outgoing {
   std::string id, conv, peer, body;  // peer set for direct messages
   uint64_t ts;                       // queued at (wall ms, 0 = unknown)
-  // Signed by this person's signing key (roadmap D3); empty sig = unsigned.
-  std::string sig;     // 64 raw bytes
-  uint64_t serial;     // device certificate serial
-  uint64_t signed_t;   // signed time (s), sent as the envelope ts
+  // Signed with this person's identity key; empty sig = unsigned.
+  std::string sig;        // 64 raw bytes
+  std::string author_id;  // this person's identity id (16 raw bytes)
+  uint64_t signed_t;      // signed time (s), sent as the envelope ts
 };
 
 void load();  // after mount_storage + account::load, before start_radio

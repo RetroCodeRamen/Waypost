@@ -28,6 +28,7 @@
 #include "certs.h"
 #include "contacts.h"
 #include "input.h"
+#include "kdf.h"
 #include "station_link.h"
 #include "store.h"
 #include "sync.h"
@@ -128,6 +129,16 @@ void setup() {
   apps::beacon_load();
   certs::load();
   certs::self_test();
+#ifdef WAYPOST_KDF_SELFTEST
+  {  // one-off: server/tests/test_identity_keys.py vector, and how long it takes here
+    uint32_t t0 = millis();
+    std::string seed = kdf::identity_seed("Basecamp", "blue canoe river");
+    char hex[65] = {0};
+    for (size_t i = 0; i < seed.size(); i++) snprintf(hex + 2 * i, 3, "%02x", static_cast<uint8_t>(seed[i]));
+    Serial.printf("kdf: %s in %lu ms (%s)\n", hex, static_cast<unsigned long>(millis() - t0),
+                  strcmp(hex, "0bfde6e3b8b2a6f55eb9e13e94c483df0a5feb350e939a840240c8e241d2c2e6") == 0 ? "matches" : "MISMATCH");
+  }
+#endif
   ui::set_unread(store::unread_total());
   station_link::start_radio();
   // Show the logo for its minimum time; the bar just marks the time.
@@ -141,7 +152,7 @@ void setup() {
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
   g_last_input = g_last_activity = millis();
   if (!account::paired()) {
-    apps::open(apps::pairing_app());  // adopted automatically if Station already knows us
+    apps::open(apps::login_app());  // adopted automatically if Station already knows us
   } else {
     apps::home();
     apps::lock();  // no-op without a PIN

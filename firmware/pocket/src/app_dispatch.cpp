@@ -20,6 +20,7 @@
 #include "contacts.h"
 #include "station_link.h"
 #include "store.h"
+#include "sync.h"
 #include "ui.h"
 
 namespace {
@@ -76,7 +77,7 @@ std::vector<waylink::Field> send_fields(const store::Outgoing& o) {
     else f.push_back(waylink::Field::text("v", o.conv));
     f.push_back(waylink::Field::text("b", o.body));
     f.push_back(waylink::Field::bytes("o", raw_id(o.id)));
-    f.push_back(waylink::Field::num("c", o.serial));
+    f.push_back(waylink::Field::bytes("a", o.author_id));
     f.push_back(waylink::Field::bytes("s", o.sig));
   } else {
     if (!o.peer.empty()) f.push_back(waylink::Field::text("peer", o.peer));
@@ -539,9 +540,10 @@ class DispatchApp : public App {
     // Signed now, while unlocked, so it can go out later whoever carries it.
     uint64_t now = station_link::now_ms() / 1000;
     o.signed_t = now ? now : 1;  // 1 = this Scout didn't know the time
-    if (!certs::sign_dispatch(raw_id(o.id), o.conv, o.body, o.signed_t, o.sig, o.serial)) {
+    if (!certs::sign_dispatch(raw_id(o.id), o.conv, o.body, o.signed_t, o.sig, o.author_id)) {
       o.sig.clear();
-      o.serial = o.signed_t = 0;
+      o.author_id.clear();
+      o.signed_t = 0;
     }
     store::queue(o);
     reload();
@@ -561,14 +563,17 @@ class DispatchApp : public App {
     probe.peer = _peer;
     if (signing) {
       probe.sig = std::string(64, '\0');
-      probe.serial = 0xFFFFFFFFULL;
+      probe.author_id = std::string(16, '\0');
       probe.signed_t = 4000000000ULL;
     }
     size_t n = kMaxBody;
     for (; n > 1; n--) {
       probe.body.assign(n, 'x');
+      // It has to fit going to Station (MSG_SEND) and between devices (sync);
+      // same as server/services/sync/engine.py max_signed_body.
       if (station_link::encode("DISPATCH", "MSG_SEND", send_fields(probe), probe.signed_t).size() <=
-          waylink::kRadioMdu)
+              waylink::kRadioMdu &&
+          (!signing || peersync::largest_packet(_conv_id, _peer, n) <= waylink::kRadioMdu))
         break;
     }
     _max_conv = _conv_id;

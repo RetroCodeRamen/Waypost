@@ -27,7 +27,7 @@ App& dispatch_app();
 App& fieldbook_app();
 App& trailhead_app();
 App& signal_app();
-App& pairing_app();
+App& login_app();  // username + password (replaced the pairing code, 2026-10-05)
 App& lock_app();
 App& settings_app();
 App& beacon_app();

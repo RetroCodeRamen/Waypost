@@ -26,8 +26,8 @@ const uint32_t kStationEveryMs = 3UL * 60UL * 1000UL;
 const uint32_t kPeerEveryMs = 3UL * 60UL * 1000UL;
 
 struct Obj {
-  std::string o, u, v, b, s;
-  uint64_t c = 0, t = 0;
+  std::string o, u, a, v, b, s;  // a: author's identity id (16 bytes)
+  uint64_t t = 0;
 };
 
 std::string lower(std::string s) {
@@ -121,7 +121,7 @@ bool get(const std::string& oid, Obj& out) {
   out.v = conv;
   out.b = m.body;
   out.s = m.sig;
-  out.c = m.serial;
+  out.a = m.author_id;
   out.t = m.signed_t;
   return true;
 }
@@ -129,7 +129,7 @@ bool get(const std::string& oid, Obj& out) {
 // Verified, then kept. Returns "" (stored or already here) or an error.
 std::string put(const Obj& obj, bool& created) {
   created = false;
-  std::string err = certs::verify_dispatch(obj.o, obj.u, obj.c, obj.v, obj.b, obj.t, obj.s);
+  std::string err = certs::verify_dispatch(obj.o, obj.u, obj.a, obj.v, obj.b, obj.t, obj.s);
   if (!err.empty()) return err;
   store::Message m;
   m.id = hex(obj.o);
@@ -139,7 +139,7 @@ std::string put(const Obj& obj, bool& created) {
   m.ts = now ? now : obj.t * 1000ULL;
   m.state = lower(obj.u) == lower(account::username()) ? 's' : 'r';
   m.sig = obj.s;
-  m.serial = obj.c;
+  m.author_id = obj.a;
   m.signed_t = obj.t;
   created = apps::deliver_message(obj.v, m);
   return "";
@@ -148,7 +148,7 @@ std::string put(const Obj& obj, bool& created) {
 Value to_wire(const Obj& obj) {
   Value w = Value::make_map();
   w.set("o", Value::of_bytes(obj.o));
-  w.set("c", Value::of_uint(obj.c));
+  w.set("a", Value::of_bytes(obj.a));
   w.set("b", Value::of_text(obj.b));
   w.set("t", Value::of_uint(obj.t));
   w.set("s", Value::of_bytes(obj.s));
@@ -162,8 +162,8 @@ Value to_wire(const Obj& obj) {
 }
 
 bool from_wire(const Value& w, Obj& obj) {
-  obj.c = w.uint("c");
-  obj.u = certs::device_owner(obj.c);
+  obj.a = w.bytes("a");
+  obj.u = certs::owner_of(obj.a);  // unknown: looked up from Station later
   if (obj.u.empty()) return false;
   obj.o = w.bytes("o");
   obj.b = w.text("b");
@@ -432,7 +432,7 @@ void handle(const waylink::Reply& req) {
     Obj obj;
     Value out = Value::make_map();
     if (!from_wire(p, obj)) {
-      out.set("error", Value::of_text("unknown_certificate"));
+      out.set("error", Value::of_text("unknown_identity"));
       reply(req, to, out, true);
       return;
     }
@@ -452,6 +452,25 @@ void handle(const waylink::Reply& req) {
     out.set("error", Value::of_text("unknown_op:" + op));
     reply(req, to, out, true);
   }
+}
+
+size_t largest_packet(const std::string& conv, const std::string& peer, size_t body_len) {
+  Obj probe;
+  probe.o.assign(16, '\0');
+  probe.a.assign(16, '\0');
+  probe.s.assign(64, '\0');
+  probe.t = 4000000000ULL;
+  probe.u = account::username();
+  probe.v = conv;
+  probe.b.assign(body_len, 'x');
+  (void)peer;
+  Value wire = to_wire(probe);
+  const char* node = "pocket-1-xxxx";  // the longest node ids
+  size_t put = waylink::encode_envelope(node, node, "0123456789abcdef", "0123456789abcdef", "SYNC", "PUT", 1,
+                                        120, 4000000000ULL, wire).size();
+  size_t want = waylink::encode_envelope(node, node, "0123456789abcdef", "0123456789abcdef", "SYNC", "WANT", 2,
+                                         120, 4000000000ULL, wire).size();
+  return put > want ? put : want;
 }
 
 void loop() {

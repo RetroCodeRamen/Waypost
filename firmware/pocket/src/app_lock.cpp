@@ -50,7 +50,7 @@ class LockApp : public App {
     if (upper == "RESET") {
       account::unpair();
       _fails = 0;
-      apps::open(apps::pairing_app());
+      apps::open(apps::login_app());
       return;
     }
     if (account::check_pin(v)) {

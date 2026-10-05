@@ -29,6 +29,10 @@ Result with(const RNS::Bytes& dest, const std::string& node);
 // An unsolicited SYNC request from a peer (station_link::pop_event): answer it.
 void handle(const waylink::Reply& request);
 
+// The biggest packet a signed message to `conv` with a `body_len`-byte body
+// takes in peer sync (PUT, or a WANT reply) — the compose limit checks it.
+size_t largest_packet(const std::string& conv, const std::string& peer, size_t body_len);
+
 // Call every loop(): syncs with Station while it's in reach (every few
 // minutes) and with contacts whose Scouts are in range.
 void loop();

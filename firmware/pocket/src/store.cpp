@@ -136,8 +136,9 @@ std::vector<Message> read_conv(const std::string& conv) {
     m.body = unesc(f[5]);
     if (f.size() >= 9) {  // signed copy (D4); older lines have 6 fields
       m.sig = bytes_of(f[6]);
-      m.serial = to_u64(f[7]);
+      m.author_id = f[7].size() == 32 ? bytes_of(f[7]) : "";  // older lines: a certificate serial
       m.signed_t = to_u64(f[8]);
+      if (m.author_id.empty()) m.sig.clear();  // can't be passed on any more
     }
     out.push_back(std::move(m));
   }
@@ -151,7 +152,7 @@ void write_conv(const std::string& conv, const std::vector<Message>& msgs) {
     const auto& m = msgs[i];
     out += m.id + "\t" + esc(m.sender) + "\t" + std::to_string(m.ts) + "\t" + std::string(1, m.state) +
            "\t" + esc(m.note) + "\t" + esc(m.body) + "\t" + hex_of(m.sig) + "\t" +
-           std::to_string(m.serial) + "\t" + std::to_string(m.signed_t) + "\n";
+           hex_of(m.author_id) + "\t" + std::to_string(m.signed_t) + "\n";
   }
   RNS::Utilities::OS::write_file(conv_path(conv).c_str(), RNS::Bytes(out));
 }
@@ -171,7 +172,7 @@ Insert insert_ex(std::vector<Message>& msgs, const Message& m) {
     if (x.sig.empty() && !m.sig.empty()) {
       x.body = m.body;
       x.sig = m.sig;
-      x.serial = m.serial;
+      x.author_id = m.author_id;
       x.signed_t = m.signed_t;
       return Insert::Upgraded;
     }
@@ -237,7 +238,7 @@ void save_outbox() {
   std::string out = owner_line() + "\n";
   for (const auto& o : g_outbox)
     out += o.id + "\t" + esc(o.conv) + "\t" + esc(o.peer) + "\t" + std::to_string(o.ts) + "\t" +
-           esc(o.body) + "\t" + hex_of(o.sig) + "\t" + std::to_string(o.serial) + "\t" +
+           esc(o.body) + "\t" + hex_of(o.sig) + "\t" + hex_of(o.author_id) + "\t" +
            std::to_string(o.signed_t) + "\n";
   RNS::Utilities::OS::write_file(kOutboxPath, RNS::Bytes(out));
 }
@@ -288,10 +289,10 @@ void load() {
     for (size_t i = 1; i < outbox.size(); i++) {
       auto f = split(outbox[i]);
       if (f.size() < 5) continue;
-      Outgoing o{f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3]), "", 0, 0};
-      if (f.size() >= 8) {  // signed (D3); older lines have 5 fields
+      Outgoing o{f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3]), "", "", 0};
+      if (f.size() >= 8 && f[6].size() == 32) {  // signed; older lines aren't (or by a device key)
         o.sig = bytes_of(f[5]);
-        o.serial = to_u64(f[6]);
+        o.author_id = bytes_of(f[6]);
         o.signed_t = to_u64(f[7]);
       }
       g_outbox.push_back(o);
@@ -464,7 +465,7 @@ void settle(const std::string& id, const std::string& conv_override, char state,
   m.note = note;
   if (state == 's') {  // a signed message we wrote can be passed on too
     m.sig = o.sig;
-    m.serial = o.serial;
+    m.author_id = o.author_id;
     m.signed_t = o.signed_t;
   }
   add(conv, m, false);
