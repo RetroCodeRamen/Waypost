@@ -354,13 +354,20 @@ Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t
 }
 
 Result request(const char* svc, const char* op, const std::vector<waylink::Field>& payload,
-               waylink::Reply& out, int attempts, uint32_t timeout_ms) {
+               waylink::Reply& out, int attempts, uint32_t timeout_ms, uint64_t ts) {
   return request(
       [&](const std::string& mid, const std::string& rid) {
         return waylink::encode_request(node_id().c_str(), kStationNodeId, mid, rid, svc, op,
-                                       120, payload);
+                                       120, payload, ts);
       },
       out, attempts, timeout_ms);
+}
+
+RNS::Bytes encode(const char* svc, const char* op, const std::vector<waylink::Field>& payload,
+                  uint64_t ts) {
+  // Same lengths as real ids (new_id(): 16 hex characters).
+  return waylink::encode_request(node_id().c_str(), kStationNodeId, "0123456789abcdef",
+                                 "0123456789abcdef", svc, op, 120, payload, ts);
 }
 
 bool send(const RNS::Bytes& payload) {

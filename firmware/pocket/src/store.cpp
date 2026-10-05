@@ -86,6 +86,23 @@ std::vector<std::string> lines_of(const char* path) {
 
 uint64_t to_u64(const std::string& s) { return strtoull(s.c_str(), nullptr, 10); }
 
+std::string hex_of(const std::string& raw) {
+  static const char* d = "0123456789abcdef";
+  std::string out;
+  for (unsigned char c : raw) {
+    out += d[c >> 4];
+    out += d[c & 15];
+  }
+  return out;
+}
+
+std::string bytes_of(const std::string& hex) {
+  std::string out;
+  for (size_t i = 0; i + 1 < hex.size(); i += 2)
+    out += static_cast<char>(strtoul(hex.substr(i, 2).c_str(), nullptr, 16));
+  return out;
+}
+
 std::string owner_line() { return "#owner\t" + account::username(); }
 
 // /wp_c_<FNV-1a of the conversation id>: LittleFS names are short.
@@ -186,7 +203,8 @@ void save_outbox() {
   std::string out = owner_line() + "\n";
   for (const auto& o : g_outbox)
     out += o.id + "\t" + esc(o.conv) + "\t" + esc(o.peer) + "\t" + std::to_string(o.ts) + "\t" +
-           esc(o.body) + "\n";
+           esc(o.body) + "\t" + hex_of(o.sig) + "\t" + std::to_string(o.serial) + "\t" +
+           std::to_string(o.signed_t) + "\n";
   RNS::Utilities::OS::write_file(kOutboxPath, RNS::Bytes(out));
 }
 
@@ -233,7 +251,13 @@ void load() {
     for (size_t i = 1; i < outbox.size(); i++) {
       auto f = split(outbox[i]);
       if (f.size() < 5) continue;
-      g_outbox.push_back({f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3])});
+      Outgoing o{f[0], unesc(f[1]), unesc(f[2]), unesc(f[4]), to_u64(f[3]), "", 0, 0};
+      if (f.size() >= 8) {  // signed (D3); older lines have 5 fields
+        o.sig = bytes_of(f[5]);
+        o.serial = to_u64(f[6]);
+        o.signed_t = to_u64(f[7]);
+      }
+      g_outbox.push_back(o);
     }
   }
   sort_convs();
@@ -339,10 +363,12 @@ std::string new_id() {
   return std::string(buf, 32);
 }
 
-const Outgoing& queue(const std::string& conv, const std::string& peer, const std::string& body) {
-  g_outbox.push_back({new_id(), conv, peer, body, station_link::now_ms()});
+const Outgoing& queue(Outgoing o) {
+  if (o.id.empty()) o.id = new_id();
+  o.ts = station_link::now_ms();
+  g_outbox.push_back(o);
   g_outbox_dirty = true;
-  note_conversation(conv, "", station_link::now_ms());
+  note_conversation(o.conv, "", o.ts);
   return g_outbox.back();
 }
 

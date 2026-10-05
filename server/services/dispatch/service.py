@@ -47,8 +47,14 @@ class DispatchService:
         self._outbox: Dict[str, Deque[dict[str, Any]]] = defaultdict(deque)
         # Optional: push envelopes over radio (serial/Reticulum) as well as HTTP outbox
         self._radio_push = None  # Callable[[Envelope], None]
+        self._verify_object = None  # see set_object_verifier
         # Avoid duplicate outbox entries for the same (node, message) before ACK
         self._queued_push_keys: set[tuple[str, str]] = set()
+
+    def set_object_verifier(self, verify) -> None:
+        """Signed messages (roadmap D3): ``verify(obj, sig)`` returns
+        (author username, "") or (None, error) — IdentityService.verify_object."""
+        self._verify_object = verify
 
     def set_radio_push(self, callback) -> None:
         """Register a sink that transmits push envelopes on the live radio path."""
@@ -199,6 +205,7 @@ class DispatchService:
         body: str,
         message_id: Optional[str] = None,
         transport: str = TRANSPORT_WIFI,
+        signature: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         if not body.strip():
             raise ValueError("empty message body")
@@ -211,10 +218,13 @@ class DispatchService:
         msg, created = self.store.add_message(
             conversation_id=conversation_id,
             sender=sender,
-            body=body.strip(),
+            # A signed body is kept exactly as signed, so the signature can be
+            # checked again later (and by others, once copies sync).
+            body=body if signature else body.strip(),
             message_id=message_id,
             transport=transport,
             delivery_state=DELIVERY_SENT,
+            signature=signature,
         )
         # A device may pick its own message id so a resend after a lost
         # reply is recognised (the Scout's outbox does this). A repeat must be
@@ -401,6 +411,9 @@ class DispatchService:
         #   infrastructure, as for BEACON_SYNC; signatures would make this
         #   end-to-end, see docs/security.md);
         # - anything else is rejected.
+        if payload.get("s") is not None:
+            return self._rpc_send_signed(env, payload)
+
         binding = self.store.get_binding(env.src)
         claimed = payload.get("sender")
         if binding:
@@ -480,6 +493,90 @@ class DispatchService:
             },
             flags=Flags.RESPONSE | Flags.ACK,
         )
+
+    def _rpc_send_signed(self, env: Envelope, payload: dict[str, Any]) -> Envelope:
+        """A message signed by its author's device (roadmap D3): who sent it
+        is whoever's certificate the signature checks against — not which
+        device delivered it, so any node may carry it here.
+
+        payload: o (16-byte object id), b (body), p (peer, direct) or v
+        (conversation id), c (device certificate serial), s (signature);
+        the signed time is the envelope's ts (1 = the device didn't know the
+        time; 0 can't be sent, the envelope reader replaces it with now)."""
+        from server.services.identity import objects as O
+
+        def err(code: str) -> Envelope:
+            return env.make_response(op=OP_MSG_SEND, payload={"error": code}, error=True)
+
+        if self._verify_object is None:
+            return err("signatures_not_supported")
+        oid, body, sig = payload.get("o"), payload.get("b"), payload.get("s")
+        peer, conv = payload.get("p"), payload.get("v")
+        if not isinstance(oid, bytes) or len(oid) != 16 or not isinstance(body, str) or not (peer or conv):
+            return err("invalid_payload")
+        if not body.strip():
+            return err("sender_and_body_required")
+        obj = {"k": O.KIND_DISPATCH_MSG, "o": oid, "c": payload.get("c"), "b": body,
+               "t": int(env.ts or 0)}
+        if conv:
+            obj["v"] = str(conv)
+            author, code = self._verify_object(obj, sig)
+        else:
+            author, code = self._verify_dm(obj, str(peer), sig)
+        if not author:
+            return err(code)
+        sender = author
+        conversation_id = obj["v"]
+        if peer:
+            if self._user_exists is not None and not self._user_exists(str(peer)):
+                return err("unknown_user")
+            self.store.ensure_direct(sender, str(peer))
+        signature = {"sig": bytes(sig).hex(), "cert_serial": int(obj["c"]), "signed_at": obj["t"]}
+        try:
+            result = self.send_to_conversation(
+                conversation_id=conversation_id,
+                sender=sender,
+                body=body,
+                message_id=oid.hex(),
+                transport=str(payload.get("transport") or TRANSPORT_LORA),
+                signature=signature,
+            )
+        except ValueError as exc:
+            return err(str(exc))
+        return env.make_response(
+            op=OP_MSG_SEND,
+            payload={
+                "ok": True,
+                "created": result["created"],
+                "id": result["message"]["id"],
+                "conversation_id": result["conversation"]["id"],
+                "delivery_state": result["message"]["delivery_state"],
+                "signed": True,
+            },
+            flags=Flags.RESPONSE | Flags.ACK,
+        )
+
+    def _verify_dm(self, obj: dict[str, Any], peer: str, sig: Any) -> tuple[Optional[str], str]:
+        """Direct message: its conversation id (dm:<author>:<peer>) is part of
+        what was signed, and the author is whoever the certificate names."""
+        from server.services.dispatch.store import direct_conversation_id
+
+        owner = self._cert_owner(obj.get("c"))
+        if not owner:
+            return None, "unknown_certificate"
+        obj["v"] = direct_conversation_id(owner, peer)
+        return self._verify_object(obj, sig)
+
+    def set_cert_owner(self, lookup) -> None:
+        """``lookup(serial) -> username | None`` (IdentityStore)."""
+        self._cert_owner_lookup = lookup
+
+    def _cert_owner(self, serial: Any) -> Optional[str]:
+        lookup = getattr(self, "_cert_owner_lookup", None)
+        try:
+            return lookup(int(serial)) if lookup else None
+        except (TypeError, ValueError):
+            return None
 
     async def _rpc_list(self, env: Envelope) -> Envelope:
         """Conversation history, radio-sized: newest first, as many whole

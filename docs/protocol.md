@@ -199,6 +199,18 @@ Anything else gets `unauthorized_device`. From a radio device, a `peer` Station 
 for gets `unknown_user` (rather than a dead-end conversation; the portal's HTTP path still creates
 users on send).
 
+**Signed `MSG_SEND` (2026-10-04, roadmap D3):** a device holding a current device certificate
+signs each message with its signing key and sends
+`{p (peer) | v (conversation id), b (body), o (16-byte object id), c (device certificate serial),
+s (64-byte signature)}`, with the **signed time in the envelope `ts`** (1 = the device didn't know the
+time). Signed bytes: `WAYPOST-OBJ-1\n` + `k o u c v b t` as `name:len:value`
+(`server/services/identity/objects.py`; for a direct message `v` is `dm:<a>:<b>`). Station takes the
+author from the certificate, so **any** node may deliver it (a courier, an Outpost); errors
+`bad_signature`, `unknown_certificate`, `certificate_revoked`, `certificate_expired`,
+`unknown_user`. The message id is `o` in hex; the body is stored exactly as signed; the reply adds
+`signed: true`. A 64-byte signature leaves less room: ~133 bytes of body to a short username, less to
+long names or rooms — the Scout measures the encoded request and limits typing to what fits.
+
 **Device-chosen message id (2026-10-04):** `MSG_SEND` takes an optional `message_id`. The Scout's
 outbox sets its own (32 hex characters, random) so a resend after a lost reply is the **same**
 message: Station stores it once, replies `ok` with `created: false`, and pushes nothing again. A

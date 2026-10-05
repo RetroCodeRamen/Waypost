@@ -52,6 +52,17 @@ void rewrap(const std::string& pin);  // PIN set/changed ("" = removed)
 std::string sign(const std::string& message);  // 64 bytes, "" if locked
 const std::string& signing_public();
 
+// Signed Dispatch messages (roadmap D3; server/services/identity/objects.py).
+// True when a message can be signed right now: key unlocked and this
+// device holds a current certificate. Otherwise messages go unsigned (the
+// pre-D3 path, accepted by Station from this paired device).
+bool can_sign();
+// oid: 16 raw bytes; conv: conversation id (dm:<a>:<b> or room:...);
+// t: signed time in seconds (1 when unknown). Fills the 64-byte signature
+// and the device certificate serial.
+bool sign_dispatch(const std::string& oid, const std::string& conv, const std::string& body,
+                   uint64_t t, std::string& sig, uint64_t& serial);
+
 // -- lookups (only certificates that verify, unexpired, not revoked) --
 const Cert* identity(const std::string& username);
 std::vector<const Cert*> devices(const std::string& username);

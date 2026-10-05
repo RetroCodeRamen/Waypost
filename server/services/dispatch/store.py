@@ -112,6 +112,15 @@ class DispatchStore:
             )
         if "for_user" not in courier_cols:
             self._conn.execute("ALTER TABLE courier_queue ADD COLUMN for_user TEXT")
+        msg_cols = {r[1] for r in self._conn.execute("PRAGMA table_info(messages)").fetchall()}
+        # Signed messages (roadmap D3): the author device's signature (hex),
+        # the device certificate it was checked against, and the signed time.
+        if "sig" not in msg_cols:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN sig TEXT")
+        if "cert_serial" not in msg_cols:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN cert_serial INTEGER")
+        if "signed_at" not in msg_cols:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN signed_at INTEGER")
 
     def bind_device(
         self,
@@ -322,6 +331,7 @@ class DispatchStore:
         transport: Optional[str] = None,
         delivery_state: str = DELIVERY_QUEUED,
         created_at: Optional[float] = None,
+        signature: Optional[dict[str, Any]] = None,
     ) -> tuple[dict[str, Any], bool]:
         mid = message_id or new_id()
         existing = self._conn.execute(
@@ -334,10 +344,13 @@ class DispatchStore:
         self._conn.execute(
             """
             INSERT INTO messages
-                (id, conversation_id, sender, body, created_at, transport, delivery_state)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, conversation_id, sender, body, created_at, transport, delivery_state,
+                 sig, cert_serial, signed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (mid, conversation_id, sender, body, ts, transport, delivery_state),
+            (mid, conversation_id, sender, body, ts, transport, delivery_state,
+             (signature or {}).get("sig"), (signature or {}).get("cert_serial"),
+             (signature or {}).get("signed_at")),
         )
         self._conn.execute(
             "UPDATE conversations SET updated_at = ? WHERE id = ?",

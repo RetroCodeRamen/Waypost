@@ -74,6 +74,12 @@ class IdentityStore:
         row = self._conn.execute("SELECT * FROM certs WHERE serial = ?", (serial,)).fetchone()
         return dict(row) if row else None
 
+    def device_owner(self, serial: int) -> Optional[str]:
+        row = self._conn.execute(
+            "SELECT username FROM certs WHERE serial = ? AND kind = 'dev'", (serial,)
+        ).fetchone()
+        return str(row[0]) if row else None
+
     def add_identity(self, *, username: str, identity_id: bytes, display_name: str,
                      issued: int, expires: int) -> dict[str, Any]:
         return self._insert(kind="id", username=username, identity_id=identity_id,

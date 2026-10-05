@@ -49,6 +49,9 @@
         '<span class="foot">' + esc(when) +
         (m.transport ? " · " + esc(transportLabel(m.transport)) : "") +
         (m.delivery_state ? " · " + esc(m.delivery_state) : "") +
+        // Signed on the sender's device (roadmap D3): checked by Station
+        // against that device's certificate.
+        (m.sig ? ' · <span title="Signed on ' + esc(m.sender) + "'s device and verified by Station" + '">signed</span>' : "") +
         "</span>";
       listEl.appendChild(li);
     });

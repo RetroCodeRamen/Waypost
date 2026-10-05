@@ -104,7 +104,7 @@ This expands step 3 of the Scout plan (see `AGENT_HANDOFF.md`, 2026-10-04 review
 Scout keeping its own message store and an outbox — comes first, because a courier needs somewhere
 to keep what it carries.
 
-1. **Signed message envelope** (Station verifies; Scout signs) — shared canonical bytes pinned by
+1. ✅ (2026-10-04, D3) **Signed message envelope** (Station verifies; Scout signs) — shared canonical bytes pinned by
    a test, Python and C++.
 2. **Scout-to-Scout direct** when Station is out of reach, with the copy synced to Station later.
 3. **Outpost courier on hardware:** deliver to Scouts in range, forward everything, replies take

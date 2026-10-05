@@ -69,7 +69,11 @@ Result request(const Builder& build, waylink::Reply& out, int attempts, uint32_t
 
 // Convenience for generic ops: svc/op + flat payload, 3 attempts.
 Result request(const char* svc, const char* op, const std::vector<waylink::Field>& payload,
-               waylink::Reply& out, int attempts = 3, uint32_t timeout_ms = 6000);
+               waylink::Reply& out, int attempts = 3, uint32_t timeout_ms = 6000,
+               uint64_t ts = 0);
+// The exact bytes such a request would be (for size checks before sending).
+RNS::Bytes encode(const char* svc, const char* op, const std::vector<waylink::Field>& payload,
+                  uint64_t ts = 0);
 
 // Fire-and-forget (acks). False if Station isn't reachable.
 bool send(const RNS::Bytes& payload);

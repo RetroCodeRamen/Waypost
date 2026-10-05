@@ -220,6 +220,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             get_binding=db.dispatch.get_binding,
             get_user=db.get_user_by_username,
         )
+        dispatch.set_object_verifier(app.state.identity.verify_object)
+        dispatch.set_cert_owner(db.identity.device_owner)
 
         transport = create_transport(
             settings.waypost_transport,

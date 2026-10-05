@@ -88,6 +88,16 @@ bool canonical(const Cert& c, std::string& out) {
   return true;
 }
 
+// Same bytes as server/services/identity/objects.py canonical_bytes() for
+// kind dispatch.msg.
+std::string dispatch_bytes(const std::string& oid, const std::string& user, uint64_t serial,
+                           const std::string& conv, const std::string& body, uint64_t t) {
+  std::string out = "WAYPOST-OBJ-1\n";
+  put(out, "k", "dispatch.msg"), put(out, "o", oid), put(out, "u", user), put(out, "c", u64be(serial));
+  put(out, "v", conv), put(out, "b", body), put(out, "t", u64be(t));
+  return out;
+}
+
 bool verify_with(const std::string& root, const Cert& c) {
   std::string msg;
   if (root.size() != 32 || c.s.size() != 64 || !canonical(c, msg)) return false;
@@ -432,6 +442,12 @@ bool self_test() {
   Cert bad = c;
   bad.u = "bob";
   ok = ok && !verify_with(pub, bad);
+  // test_signed_messages.py test_pinned_object_vector
+  std::string oid;
+  for (int k = 0; k < 16; k++) oid += static_cast<char>(k);
+  ok = ok && hex(raw(key.sign(bytes(dispatch_bytes(oid, "aj", 7, "dm:aj:bob", "hello", 1790000000))))) ==
+                 "53a22849b552e78676b96d7a51b6d62477a42b297636c0fd1a52e490ae4f0110"
+                 "d9bf87ce722b3d2f6350571956570e103e0a928ed61be596d2c9935ee7e3ac0d";
   Serial.printf("certs: self-test %s\n", ok ? "ok" : "FAILED");
   return ok;
 }
@@ -528,6 +544,17 @@ std::string sign(const std::string& message) {
 }
 
 const std::string& signing_public() { return g_pub; }
+
+bool can_sign() { return !g_priv.empty() && my_device() != nullptr; }
+
+bool sign_dispatch(const std::string& oid, const std::string& conv, const std::string& body,
+                   uint64_t t, std::string& sig, uint64_t& serial) {
+  const Cert* dev = my_device();
+  if (g_priv.empty() || !dev || oid.size() != 16) return false;
+  serial = dev->n;
+  sig = sign(dispatch_bytes(oid, account::username(), serial, conv, body, t));
+  return sig.size() == 64;
+}
 
 const Cert* identity(const std::string& username) {
   for (const auto& c : g_certs)

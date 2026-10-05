@@ -16,6 +16,7 @@
 
 #include "account.h"
 #include "app.h"
+#include "certs.h"
 #include "contacts.h"
 #include "station_link.h"
 #include "store.h"
@@ -25,7 +26,7 @@ namespace {
 
 using waylink::Field;
 
-constexpr size_t kMaxBody = 140;  // bytes; fits one packet on every path
+constexpr size_t kMaxBody = 140;  // bytes; the most any path allows (signed: less, see max_body)
 constexpr int kHistoryRows = ui::kBodyLines - 1;  // last row is the input line
 constexpr uint32_t kRetryMs = 30000;              // outbox retry after a failed try
 
@@ -57,6 +58,34 @@ std::string title_for(const std::string& conv) {
 }
 
 bool is_me(const std::string& user) { return lower(user) == lower(account::username()); }
+
+// Message ids are 32 hex characters; signed messages carry the 16 raw bytes.
+std::string raw_id(const std::string& hex) {
+  std::string out;
+  for (size_t i = 0; i + 1 < hex.size(); i += 2)
+    out += static_cast<char>(strtoul(hex.substr(i, 2).c_str(), nullptr, 16));
+  return out;
+}
+
+// MSG_SEND payload: signed (D3) when the outbox entry carries a signature,
+// otherwise the paired-device form.
+std::vector<waylink::Field> send_fields(const store::Outgoing& o) {
+  std::vector<waylink::Field> f;
+  if (!o.sig.empty()) {
+    if (!o.peer.empty()) f.push_back(waylink::Field::text("p", o.peer));
+    else f.push_back(waylink::Field::text("v", o.conv));
+    f.push_back(waylink::Field::text("b", o.body));
+    f.push_back(waylink::Field::bytes("o", raw_id(o.id)));
+    f.push_back(waylink::Field::num("c", o.serial));
+    f.push_back(waylink::Field::bytes("s", o.sig));
+  } else {
+    if (!o.peer.empty()) f.push_back(waylink::Field::text("peer", o.peer));
+    else f.push_back(waylink::Field::text("conversation_id", o.conv));
+    f.push_back(waylink::Field::text("body", o.body));
+    f.push_back(waylink::Field::text("message_id", o.id));
+  }
+  return f;
+}
 
 int queued_in(const std::string& conv) {
   int n = 0;
@@ -127,19 +156,15 @@ class DispatchApp : public App {
     if (store::outbox().empty() || !account::paired() || !station_link::station_known()) return;
     if (!force && _retry_at && static_cast<int32_t>(millis() - _retry_at) < 0) return;
     store::Outgoing o = store::outbox().front();
-    std::vector<Field> f;
-    if (!o.peer.empty()) f.push_back(Field::text("peer", o.peer));
-    else f.push_back(Field::text("conversation_id", o.conv));
-    f.push_back(Field::text("body", o.body));
-    f.push_back(Field::text("message_id", o.id));
     waylink::Reply reply;
     if (apps::current() == this && _mode == Mode::Chat) ui::footer("Sending...", ui::kLive);
     // Retries are safe: the message id is ours, Station keeps one copy.
-    auto r = station_link::request("DISPATCH", "MSG_SEND", f, reply, 2, 8000);
+    auto r = station_link::request("DISPATCH", "MSG_SEND", send_fields(o), reply, 2, 8000, o.signed_t);
     if (r == station_link::Result::Ok && reply.payload().flag("ok")) {
       store::outbox_sent(o.id, reply.payload().text("conversation_id", o.conv));
       _retry_at = 0;
-      Serial.printf("dispatch: sent %s (%u still queued)\n", o.id.c_str(),
+      Serial.printf("dispatch: sent %s%s (%u still queued)\n", o.id.c_str(),
+                    reply.payload().flag("signed") ? " signed" : "",
                     static_cast<unsigned>(store::outbox().size()));
     } else if (r == station_link::Result::Error) {
       // Station refused it (unknown person, not a member...): retrying
@@ -434,7 +459,7 @@ class DispatchApp : public App {
     if (!_chat_note.empty()) {
       ui::footer(_chat_note, ui::kWarn);
     } else {
-      std::string foot = std::to_string(_input.size()) + "/" + std::to_string(kMaxBody) +
+      std::string foot = std::to_string(_input.size()) + "/" + std::to_string(max_body()) +
                          "   Enter: send   roll left: back";
       if (!station_link::station_known()) foot += "   (offline: queued)";
       ui::footer(foot);
@@ -456,7 +481,7 @@ class DispatchApp : public App {
         draw_input();
         return;
       case Kind::Char:
-        if (_input.size() < kMaxBody) _input.push_back(e.ch);
+        if (_input.size() < max_body()) _input.push_back(e.ch);
         _chat_note.clear();
         draw_input();
         return;
@@ -494,15 +519,57 @@ class DispatchApp : public App {
     _input.clear();
     _chat_note.clear();
     store::note_conversation(_conv_id, _title, station_link::now_ms());
-    store::queue(_conv_id, _peer, body);
+    store::Outgoing o{};
+    o.id = store::new_id();
+    o.conv = _conv_id;
+    o.peer = _peer;
+    o.body = body;
+    // Signed now, while unlocked, so it can go out later whoever carries it.
+    uint64_t now = station_link::now_ms() / 1000;
+    o.signed_t = now ? now : 1;  // 1 = this Scout didn't know the time
+    if (!certs::sign_dispatch(raw_id(o.id), o.conv, o.body, o.signed_t, o.sig, o.serial)) {
+      o.sig.clear();
+      o.serial = o.signed_t = 0;
+    }
+    store::queue(o);
     reload();
     _scroll = 0;
     draw_chat();
     flush_outbox(true);
   }
 
+  // The longest body that still makes one packet for this conversation —
+  // a signature costs ~80 bytes, a long name or room id a little more.
+  size_t max_body() {
+    bool signing = certs::can_sign();
+    if (_max_conv == _conv_id && _max_signed == signing) return _max_body;
+    store::Outgoing probe{};
+    probe.id = std::string(32, '0');
+    probe.conv = _conv_id;
+    probe.peer = _peer;
+    if (signing) {
+      probe.sig = std::string(64, '\0');
+      probe.serial = 0xFFFFFFFFULL;
+      probe.signed_t = 4000000000ULL;
+    }
+    size_t n = kMaxBody;
+    for (; n > 1; n--) {
+      probe.body.assign(n, 'x');
+      if (station_link::encode("DISPATCH", "MSG_SEND", send_fields(probe), probe.signed_t).size() <=
+          waylink::kRadioMdu)
+        break;
+    }
+    _max_conv = _conv_id;
+    _max_signed = signing;
+    _max_body = n;
+    return n;
+  }
+
   Mode _mode = Mode::List;
   uint32_t _retry_at = 0;
+  std::string _max_conv;
+  bool _max_signed = false;
+  size_t _max_body = kMaxBody;
 
   size_t _station_offset = 0;
   bool _convs_more = false;

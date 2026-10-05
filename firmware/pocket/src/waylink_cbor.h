@@ -64,7 +64,12 @@ RNS::Bytes encode_request(
     const char* svc,
     const char* op,
     uint32_t ttl,
-    const std::vector<Field>& payload);
+    const std::vector<Field>& payload,
+    uint64_t ts = 0);  // envelope ts (seconds); signed messages carry their signed time here
+
+// Largest Waylink packet a Scout can send or receive: one encrypted
+// Reticulum packet (shared/protocol/radio.py RADIO_MDU).
+constexpr size_t kRadioMdu = 383;
 
 struct Value {
   enum Type { Null, Bool, Uint, Text, Array, Map, Bytes };

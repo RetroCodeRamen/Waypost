@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable, Optional
 
 from server.services.identity import certs as C
+from server.services.identity import objects as O
 from server.services.identity.store import IdentityStore
 from server.services.profiles.constants import (
     OP_CERT_DEV,
@@ -146,6 +147,35 @@ class IdentityService:
         else:
             cert = {"k": kind, "n": row["serial"], "r": row["revokes"], "t": row["issued"]}
         return self.key.sign(cert)
+
+    # -- signed objects (D3) ------------------------------------------------------
+
+    def verify_object(self, obj: dict[str, Any], signature: bytes) -> tuple[Optional[str], str]:
+        """Checks an object signed with a device signing key. ``obj`` has
+        every field but ``u`` — the author comes from the certificate named
+        by ``c``. Returns (author username, "") or (None, error code)."""
+        self.sweep()
+        try:
+            serial = int(obj.get("c"))
+        except (TypeError, ValueError):
+            return None, "invalid_payload"
+        row = self.store.get(serial)
+        if not row or row["kind"] != C.KIND_DEVICE:
+            return None, "unknown_certificate"
+        if row["revoked_at"] is not None:
+            return None, "certificate_revoked"
+        if row["expires"] <= self.now():
+            return None, "certificate_expired"
+        signed = dict(obj, u=str(row["username"]))
+        try:
+            message = O.canonical_bytes(signed)
+        except C.CertError:
+            return None, "invalid_payload"
+        if not isinstance(signature, (bytes, bytearray)) or len(signature) != 64:
+            return None, "invalid_payload"
+        if not C.verify_signing_key(bytes(row["signing_key"]), bytes(signature), message):
+            return None, "bad_signature"
+        return str(row["username"]), ""
 
     # -- Waylink --------------------------------------------------------------
 

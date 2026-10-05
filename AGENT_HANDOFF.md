@@ -162,6 +162,13 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-04 — Claude (D3: signed messages)
+
+**Built:** `server/services/identity/objects.py` (`WAYPOST-OBJ-1` canonical bytes, kind `dispatch.msg`: k o u c v b t); `IdentityService.verify_object` (cert by serial, not revoked/expired, Ed25519 by its signing key, author = cert owner); Dispatch `_rpc_send_signed` — signed `MSG_SEND {p|v, b, o, c, s}` with the signed time in the envelope ts, accepted from **any** carrier, body stored exactly as signed, `messages.sig/cert_serial/signed_at` (migration). 7 tests incl. tampering, impersonation, revoked device, courier delivery, pinned vector; 251 passed. Scout: signs at compose (`certs::sign_dispatch`), outbox persists sig/serial/time, sends the signed form; compose limit computed from the actual encoded request (signature costs ~80 bytes: 133 to a short name); self-test checks the object vector too (ok on hardware). Portal shows "signed". Envelope `ts` now settable from the Scout (`encode_request(..., ts)`).
+**Gotcha:** the envelope reader turns ts=0 into "now", so the Scout signs with t=1 when it doesn't know the time.
+**Not verified live:** an actual signed send — needs the human to unlock once (creates the signing key → `CERT_ISSUE` → device certificate), then any message they write is signed; the portal should show "signed".
+**Next:** D4 peer sync (sim first: `SYNC_HELLO/DIFF/WANT/PUT`).
+
 ### 2026-10-04 — Claude (D2: offline identity)
 
 **Re:** Human: "Let's keep going" → roadmap **D2**.

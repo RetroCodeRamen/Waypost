@@ -732,7 +732,8 @@ RNS::Bytes encode_request(
     const char* svc,
     const char* op,
     uint32_t ttl,
-    const std::vector<Field>& payload) {
+    const std::vector<Field>& payload,
+    uint64_t ts) {
   RNS::Bytes out;
   CborWriter w(out);
 
@@ -755,7 +756,7 @@ RNS::Bytes encode_request(
   w.write_text("flags");
   w.write_uint(1);  // Flags.REQUEST
   w.write_text("ts");
-  w.write_uint(0);
+  w.write_uint(ts);
   w.write_text("ttl");
   w.write_uint(ttl);
   w.write_text("payload");

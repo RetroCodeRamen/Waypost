@@ -39,7 +39,11 @@ struct Conversation {
 
 struct Outgoing {
   std::string id, conv, peer, body;  // peer set for direct messages
-  uint64_t ts;
+  uint64_t ts;                       // queued at (wall ms, 0 = unknown)
+  // Signed by this person's signing key (roadmap D3); empty sig = unsigned.
+  std::string sig;     // 64 raw bytes
+  uint64_t serial;     // device certificate serial
+  uint64_t signed_t;   // signed time (s), sent as the envelope ts
 };
 
 void load();  // after mount_storage + account::load, before start_radio
@@ -67,7 +71,8 @@ bool add(const std::string& conv, const Message& m, bool unread);
 
 // -- outbox --
 std::string new_id();  // 128 random bits, 32 hex chars
-const Outgoing& queue(const std::string& conv, const std::string& peer, const std::string& body);
+// Adds to the outbox (o.id from new_id(); o.ts set here).
+const Outgoing& queue(Outgoing o);
 const std::vector<Outgoing>& outbox();
 // Station has it: moves it into the conversation (Station's conversation
 // id, in case it differs) as sent.
