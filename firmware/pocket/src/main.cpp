@@ -182,6 +182,7 @@ void loop() {
     boot_timing_saved = true;
     std::string t = station_link::boot_timing();
     Serial.printf("boot timing: %s\n", t.c_str());
+    ui::reinit_panel();  // the radio is done with the bus: start the panel afresh
     RNS::Utilities::OS::write_file("/waypost_lastboot", RNS::Bytes(t));
   }
 

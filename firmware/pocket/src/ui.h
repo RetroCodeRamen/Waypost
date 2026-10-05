@@ -51,6 +51,9 @@ void mark_dirty();  // whole screen
 // Pushes changed pixels to the display. main loop() calls it every pass;
 // busy_tick() calls it during blocking waits.
 void present();
+// Re-initialise the panel and redraw the whole screen (once the radio is
+// up, in case boot left the panel in a bad state).
+void reinit_panel();
 
 // Backlight, 0 (off) .. kBrightnessMax.
 constexpr uint8_t kBrightnessMax = 16;

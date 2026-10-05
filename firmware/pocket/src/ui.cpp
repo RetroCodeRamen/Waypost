@@ -1,5 +1,7 @@
 #include "ui.h"
 
+#include "spi_bus.h"
+
 #include <Arduino.h>
 
 #include "utilities.h"
@@ -136,8 +138,14 @@ void mark_dirty() { mark_dirty(0, 0, kWidth, kHeight); }
 
 void present() {
   if (!g_dirty) return;
+  if (!g_have_canvas) {
+    g_dirty = false;
+    return;  // already drawn straight to the LCD
+  }
+  // The radio task owns the shared SPI bus while it starts (spi_bus.h):
+  // keep it dirty and push next time.
+  if (!spi_bus::try_lock()) return;
   g_dirty = false;
-  if (!g_have_canvas) return;  // already drawn straight to the LCD
   // Push row by row ourselves rather than via pushSprite(): its fast path
   // (one block push for full-width regions) never reached this panel —
   // only narrower, line-by-line pushes refreshed, leaving stale areas and
@@ -155,6 +163,18 @@ void present() {
   }
   g_lcd.endWrite();
   g_lcd.setSwapBytes(swap);
+  spi_bus::unlock();
+}
+
+void reinit_panel() {
+  // Re-send the panel's init sequence, then redraw everything: clears any
+  // state a bus collision or a reset-button power dip left it in.
+  if (!spi_bus::try_lock()) return;
+  g_lcd.init();
+  g_lcd.setRotation(1);
+  spi_bus::unlock();
+  mark_dirty();
+  present();
 }
 
 void title_bar(const char* title) {

@@ -90,7 +90,7 @@ class LockApp : public App {
  private:
   bool in_backoff() const { return static_cast<int32_t>(_backoff_until - millis()) > 0; }
   void note_default() {
-    _prompt.set_note("Forgot it? Type RESET to unpair this Scout; it will need a new pairing code.");
+    _prompt.set_note("Forgot it? Type RESET to sign out, then sign in again with your password.");
   }
 
   Prompt _prompt;

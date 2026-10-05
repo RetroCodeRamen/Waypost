@@ -1,5 +1,7 @@
 #include "station_link.h"
 
+#include "spi_bus.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -191,6 +193,8 @@ void step(const char* label) {
 }
 
 void radio_task(void*) {
+  // The bus is ours until the radio is up and has announced (spi_bus.h).
+  spi_bus::lock();
   step("Starting LoRa radio");
 #ifdef WAYPOST_TEST_SLOW_RADIO_MS
   delay(WAYPOST_TEST_SLOW_RADIO_MS);  // test builds only: simulate a slow radio
@@ -199,6 +203,7 @@ void radio_task(void*) {
   g_lora_interface.mode(RNS::Type::Interface::MODE_GATEWAY);
   RNS::Transport::register_interface(g_lora_interface);
   if (!g_lora_interface.start()) {
+    spi_bus::unlock();
     Serial.println("link: LoRa init failed");
     g_done_ms = millis();
     g_state.store(kFailed, std::memory_order_release);
@@ -245,6 +250,7 @@ void radio_task(void*) {
   Serial.printf("Scout Reticulum destination: %s\n", g_dest_hex.c_str());
   Serial.printf("device_class=pocket node_id=%s\n", g_node_id.c_str());
   g_done_ms = millis();
+  spi_bus::unlock();
   g_state.store(kReady, std::memory_order_release);
   vTaskDelete(nullptr);
 }
@@ -269,8 +275,8 @@ bool mount_storage() {
 
 void start_radio() {
   // Core 0, so the UI's loop() (core 1) keeps running. The display and the
-  // radio share one SPI bus; both go through the global SPI object, whose
-  // transactions are locked, so they can't interleave mid-transfer.
+  // radio share one SPI bus: the task holds spi_bus while it uses it, and
+  // the UI skips screen refreshes until it's done.
   xTaskCreatePinnedToCore(radio_task, "radio_boot", 24576, nullptr, 1, nullptr, 0);
 }
 
