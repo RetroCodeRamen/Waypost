@@ -1,5 +1,8 @@
 #include "ui.h"
 
+#include <algorithm>
+#include <cstring>
+
 #include "spi_bus.h"
 
 #include <Arduino.h>
@@ -136,6 +139,8 @@ void mark_dirty(int x, int y, int w, int h) {
 
 void mark_dirty() { mark_dirty(0, 0, kWidth, kHeight); }
 
+static constexpr int kChunk = 80;  // pixels per SPI piece (even, so 4-byte aligned)
+
 void present() {
   if (!g_dirty) return;
   if (!g_have_canvas) {
@@ -157,9 +162,16 @@ void present() {
   uint16_t* buf = static_cast<uint16_t*>(g_canvas.getPointer());
   bool swap = g_lcd.getSwapBytes();
   g_lcd.setSwapBytes(false);  // the sprite already stores panel byte order
+  // The canvas lives in PSRAM: copy each piece into internal RAM first and
+  // send it in short pieces (partial screen updates, 2026-10-05).
+  static uint16_t chunk[kChunk];
   g_lcd.startWrite();
   for (int y = g_dy0; y < g_dy1; y++) {
-    g_lcd.pushImage(x0, y, w, 1, buf + y * kWidth + x0);
+    for (int x = x0; x < x0 + w; x += kChunk) {
+      int n = std::min(kChunk, x0 + w - x);
+      memcpy(chunk, buf + y * kWidth + x, n * sizeof(uint16_t));
+      g_lcd.pushImage(x, y, n, 1, chunk);
+    }
   }
   g_lcd.endWrite();
   g_lcd.setSwapBytes(swap);

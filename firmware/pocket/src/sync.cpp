@@ -177,8 +177,12 @@ void loop() {
   for (const auto& p : peers) {
     RNS::Bytes dest;
     dest.assignHex(p.first.c_str());
-    if (!station_link::has_path(dest)) continue;
+    // Timer first: has_path reads flash (station_link.cpp station_known).
     if (!hurry && !due(g_peer_at[p.first], kPeerEveryMs)) continue;
+    if (!station_link::has_path(dest)) {
+      g_peer_at[p.first] = millis() | 1;  // not in range: look again next round
+      continue;
+    }
     g_peer_at[p.first] = millis() | 1;
     Result r = with(dest, p.second);
     Serial.printf("sync: %s %s, %d request(s), pulled %d, pushed %d, refused %d\n", p.second.c_str(),

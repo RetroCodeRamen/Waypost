@@ -53,6 +53,11 @@ static void board_power_on() {
   digitalWrite(BOARD_SDCARD_CS, HIGH);
   pinMode(RADIO_CS_PIN, OUTPUT);
   digitalWrite(RADIO_CS_PIN, HIGH);
+  pinMode(BOARD_TFT_CS, OUTPUT);
+  digitalWrite(BOARD_TFT_CS, HIGH);
+  // As LilyGO's T-Deck examples: the shared MISO line pulled up, so it
+  // never floats while nothing drives it.
+  pinMode(BOARD_SPI_MISO, INPUT_PULLUP);
 }
 
 static const uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;  // PIN lock after no keys
@@ -189,7 +194,6 @@ void loop() {
     boot_timing_saved = true;
     std::string t = station_link::boot_timing();
     Serial.printf("boot timing: %s\n", t.c_str());
-    ui::reinit_panel();  // the radio is done with the bus: start the panel afresh
     RNS::Utilities::OS::write_file("/waypost_lastboot", RNS::Bytes(t));
   }
 
@@ -266,6 +270,16 @@ void loop() {
   }
 
   ui::present();
+
+  // One line a minute: how many passes the loop managed (a slow loop is
+  // what laggy keys and screen look like).
+  static uint32_t loops = 0, loops_at = 0;
+  loops++;
+  if (millis() - loops_at >= 60000) {
+    Serial.printf("loop: %lu passes/min\n", static_cast<unsigned long>(loops));
+    loops = 0;
+    loops_at = millis();
+  }
 
   delay(5);
 }

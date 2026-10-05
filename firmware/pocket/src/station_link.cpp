@@ -328,9 +328,18 @@ const std::string& dest_hex() {
 
 bool station_known() {
   if (!ready() || station_quiet()) return false;
+  // Asked many times per loop; microReticulum answers has_path/recall from
+  // its flash-backed stores (~45 ms each) — that alone held the main loop
+  // to ~5 passes a second (laggy keys and screen, 2026-10-05). The answer
+  // is good for a second.
+  static uint32_t at = 0;
+  static bool known = false;
+  if (at && millis() - at < 1000) return known;
   RNS::Bytes hash;
-  return station_hash(hash) && RNS::Transport::has_path(hash) &&
-         static_cast<bool>(RNS::Identity::recall(hash));
+  known = station_hash(hash) && RNS::Transport::has_path(hash) &&
+          static_cast<bool>(RNS::Identity::recall(hash));
+  at = millis() | 1;
+  return known;
 }
 
 void seek_station() {
