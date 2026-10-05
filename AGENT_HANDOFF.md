@@ -162,6 +162,10 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-05 — Claude (Scout firmware rebuild, milestone 1)
+
+The human chose to rebuild the Scout firmware fresh alongside the old one, using LovyanGFX ([docs/scout-firmware-architecture.md](docs/scout-firmware-architecture.md)). New project `firmware/scout`: two tasks (net on core 0 owns Reticulum and the radio; ui on core 1 at 30 Hz), one SPI bus lock shared by RadioLib and the display, an interrupt-driven non-blocking LoRa driver (the same RNode framing), and LovyanGFX dirty-rect flushes. No apps yet, only a test screen (P = ping Station, F = ping flood, A = announce). Flashed: 31 fps, Station heard its announce. **Waiting on:** the human's test that the screen stays right while the network is busy. After that, port the apps (Dispatch first) onto the async API. `firmware/pocket` is unchanged; flash it back to restore the full app.
+
 ### 2026-10-05 — Claude (identity = username + password; Outpost as a node with a Wi-Fi Dispatch page)
 
 **Re:** Human: "What about someone logged into the outpost and the t deck that should work as well". Asked; human decided: **identity = key derived from username + password** ("each combo had a unique identity" so friends' messages reach the right person even if someone reuses a username), **everywhere** (Scout login replaces pairing codes; Outpost page; portal), **per Wi-Fi/browser session** on Outposts, **10+ character passwords**. Costs told and accepted: offline password guessing against public keys; a new password = a new identity. Saved to memory.

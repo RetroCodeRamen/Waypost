@@ -1,6 +1,9 @@
 # Scout firmware — architecture review and redesign
 
-**Status:** proposal, 2026-10-05 — for the human's approval before any rebuild.
+**Status:** approved 2026-10-05. The human chose a **fresh firmware alongside** the old one
+(`firmware/scout`; `firmware/pocket` stays until scout does everything it does) and **LovyanGFX**.
+Milestone 1 (steps A, C, D and the net task from B, with a test screen instead of apps) is built:
+see §6.
 **Why now:** a day of chasing symptoms (frozen logo, lost keys, a "dead" keyboard, partial and
 stale screen updates, lag) kept uncovering new ones. They share causes in how the firmware is
 built, not in single lines. This review states those causes with the evidence, looks at how two
@@ -114,3 +117,18 @@ priority.
 - The RF question isn't settled: if the Scout's own transmissions disturb the panel (antenna a few
   cm above the display), the bus lock won't fix that. A 2 dBm transmit test answers it in minutes
   and is worth running during step A.
+
+## 6. Progress
+
+**Milestone 1 — foundation (2026-10-05, `firmware/scout`).** `board` (LilyGO bring-up order),
+`bus` (recursive SPI lock + RadioLib `LockingHal`), `display` (LovyanGFX ST7789, PSRAM canvas,
+dirty-rectangle flush in 8-row pieces from internal RAM, under the lock), `input` (trackball ISRs +
+keyboard into one queue), `radio` (`AsyncLoRa`: DIO1 interrupt, queued sends, CAD listen-before-talk
+with non-blocking back-off, `startTransmit`/TX_DONE, RNode split framing unchanged), `net` (task on
+core 0 owning Reticulum; Station PING test; commands in by queue, status out by snapshot), and a
+test screen on a 30 Hz UI task (core 1) with a sweeping bar that shows any stall.
+Measured on the device: steady 31 fps; net passes ~0 ms except Reticulum's own crypto (~55 ms,
+off the UI core); Station heard the announce over its RNode. Same partitions and file names as
+pocket, so the identity is kept.
+Next: the human's busy-network test (F = PING flood), then apps on the async command/event API,
+Dispatch first.
