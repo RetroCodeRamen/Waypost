@@ -1,13 +1,14 @@
-"""SQLite store for identities and the certificates Station has issued.
+"""SQLite store for people's identity keys and the certificates Station has
+issued for them.
 
-All three certificate kinds share one serial space (``certs.serial``). Only
-the fields are stored: signatures are recomputed when served (Ed25519 is
+``identities`` holds each person's current key (derived from username +
+password, keys.py). Certificates share one serial space (``certs.serial``).
+Only fields are stored: signatures are recomputed when served (Ed25519 is
 deterministic, so a certificate is always served with the same bytes).
 """
 
 from __future__ import annotations
 
-import os
 import sqlite3
 import time
 from typing import Any, Optional
@@ -21,20 +22,19 @@ CREATE TABLE IF NOT EXISTS identities (
 
 CREATE TABLE IF NOT EXISTS certs (
     serial INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind TEXT NOT NULL,                 -- id | dev | rev
+    kind TEXT NOT NULL,                 -- id | rev
     username TEXT COLLATE NOCASE,
     identity_id BLOB,
     display_name TEXT,                  -- id
-    node_id TEXT,                       -- dev
-    signing_key BLOB,                   -- dev
-    device_hash BLOB,                   -- dev
+    node_id TEXT,                       -- (unused since 2026-10-05: device certificates)
+    signing_key BLOB,                   -- (unused since 2026-10-05)
+    device_hash BLOB,                   -- (unused since 2026-10-05)
     revokes INTEGER,                    -- rev: the serial it revokes
     issued INTEGER NOT NULL,
-    expires INTEGER,                    -- id, dev
-    revoked_at INTEGER                  -- id, dev: set when revoked
+    expires INTEGER,                    -- id
+    revoked_at INTEGER                  -- id: set when revoked
 );
 CREATE INDEX IF NOT EXISTS certs_user ON certs (kind, username);
-CREATE INDEX IF NOT EXISTS certs_node ON certs (kind, node_id);
 """
 
 
@@ -42,24 +42,44 @@ class IdentityStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
         self._conn.executescript(IDENTITY_SCHEMA)
+        self._migrate()
         self._conn.commit()
 
-    # -- identities ---------------------------------------------------------
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(identities)").fetchall()}
+        if "public_key" not in cols:
+            # Before 2026-10-05 identity ids were random; rows without a key
+            # are ignored until the person signs in and gets a real one.
+            self._conn.execute("ALTER TABLE identities ADD COLUMN public_key BLOB")
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(certs)").fetchall()}
+        if "public_key" not in cols:
+            self._conn.execute("ALTER TABLE certs ADD COLUMN public_key BLOB")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS certs_ident ON certs (kind, identity_id)")
 
-    def identity_id(self, username: str) -> bytes:
-        """The person's stable identity id, created on first use."""
+    # -- identity keys --------------------------------------------------------
+
+    def key_for(self, username: str) -> Optional[tuple[bytes, bytes]]:
+        """(public key, identity id) of the person's current key, if known."""
         row = self._conn.execute(
-            "SELECT identity_id FROM identities WHERE username = ?", (username,)
+            "SELECT public_key, identity_id FROM identities WHERE username = ? AND public_key IS NOT NULL",
+            (username,),
         ).fetchone()
-        if row:
-            return bytes(row[0])
-        ident = os.urandom(16)
+        return (bytes(row[0]), bytes(row[1])) if row else None
+
+    def set_key(self, username: str, public_key: bytes, identity_id: bytes) -> Optional[bytes]:
+        """Records the person's key. Returns the previous identity id when it
+        changed (a new password = a new identity), else None."""
+        old = self.key_for(username)
+        if old and old[0] == bytes(public_key):
+            return None
         self._conn.execute(
-            "INSERT INTO identities (username, identity_id, created_at) VALUES (?, ?, ?)",
-            (username, ident, time.time()),
+            """INSERT INTO identities (username, identity_id, public_key, created_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(username) DO UPDATE SET identity_id = excluded.identity_id,
+                   public_key = excluded.public_key, created_at = excluded.created_at""",
+            (username, bytes(identity_id), bytes(public_key), time.time()),
         )
         self._conn.commit()
-        return ident
+        return old[1] if old else None
 
     # -- certificates -------------------------------------------------------
 
@@ -74,60 +94,36 @@ class IdentityStore:
         row = self._conn.execute("SELECT * FROM certs WHERE serial = ?", (serial,)).fetchone()
         return dict(row) if row else None
 
-    def device_owner(self, serial: int) -> Optional[str]:
-        row = self._conn.execute(
-            "SELECT username FROM certs WHERE serial = ? AND kind = 'dev'", (serial,)
-        ).fetchone()
-        return str(row[0]) if row else None
-
-    def add_identity(self, *, username: str, identity_id: bytes, display_name: str,
+    def add_identity(self, *, username: str, identity_id: bytes, display_name: str, public_key: bytes,
                      issued: int, expires: int) -> dict[str, Any]:
-        return self._insert(kind="id", username=username, identity_id=identity_id,
-                            display_name=display_name, issued=issued, expires=expires)
-
-    def add_device(self, *, username: str, identity_id: bytes, node_id: str, signing_key: bytes,
-                   device_hash: bytes, issued: int, expires: int) -> dict[str, Any]:
-        return self._insert(kind="dev", username=username, identity_id=identity_id, node_id=node_id,
-                            signing_key=signing_key, device_hash=device_hash, issued=issued,
-                            expires=expires)
+        return self._insert(kind="id", username=username, identity_id=bytes(identity_id),
+                            display_name=display_name, public_key=bytes(public_key),
+                            issued=issued, expires=expires)
 
     def latest_identity(self, username: str) -> Optional[dict[str, Any]]:
         row = self._conn.execute(
             """SELECT * FROM certs WHERE kind = 'id' AND username = ? AND revoked_at IS NULL
-               ORDER BY serial DESC LIMIT 1""",
+               AND public_key IS NOT NULL ORDER BY serial DESC LIMIT 1""",
             (username,),
         ).fetchone()
         return dict(row) if row else None
 
-    def device_certs(self, username: str, now: int) -> list[dict[str, Any]]:
-        """Unrevoked, unexpired device certificates — newest per device."""
-        rows = self._conn.execute(
-            """SELECT * FROM certs WHERE kind = 'dev' AND username = ? AND revoked_at IS NULL
-               AND expires > ? ORDER BY serial DESC""",
-            (username, now),
-        ).fetchall()
-        seen: set[tuple[str, bytes]] = set()
-        out = []
-        for r in rows:
-            key = (r["node_id"], bytes(r["signing_key"]))
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(dict(r))
-        out.reverse()  # oldest first: stable indexes for paging
-        return out
+    def by_identity_id(self, identity_id: bytes) -> Optional[dict[str, Any]]:
+        """The newest certificate ever issued for this identity id —
+        revoked ones included, so callers can tell 'revoked' from 'unknown'."""
+        row = self._conn.execute(
+            "SELECT * FROM certs WHERE kind = 'id' AND identity_id = ? ORDER BY serial DESC LIMIT 1",
+            (bytes(identity_id),),
+        ).fetchone()
+        return dict(row) if row else None
 
-    def live_device_certs(self, now: int) -> list[dict[str, Any]]:
+    def revoke_identity(self, identity_id: bytes, now: int) -> int:
+        """Revokes every live certificate for this identity id."""
         rows = self._conn.execute(
-            "SELECT * FROM certs WHERE kind = 'dev' AND revoked_at IS NULL AND expires > ?", (now,)
+            "SELECT serial FROM certs WHERE kind = 'id' AND identity_id = ? AND revoked_at IS NULL",
+            (bytes(identity_id),),
         ).fetchall()
-        return [dict(r) for r in rows]
-
-    def certs_for_node(self, node_id: str) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM certs WHERE kind = 'dev' AND node_id = ? AND revoked_at IS NULL", (node_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
+        return sum(1 for r in rows if self.revoke(int(r[0]), now))
 
     def revoke(self, serial: int, now: int) -> Optional[dict[str, Any]]:
         """Marks `serial` revoked and records a revocation certificate."""
@@ -148,3 +144,7 @@ class IdentityStore:
             (now,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def owner_of(self, identity_id: bytes) -> Optional[str]:
+        row = self.by_identity_id(identity_id)
+        return str(row["username"]) if row else None

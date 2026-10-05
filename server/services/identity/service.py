@@ -1,7 +1,9 @@
-"""Identity service: issues and serves certificates over Waylink (PROFILE
-``CERT_*`` ops, docs/protocol.md) so devices can verify people offline.
+"""Identity service: records each person's identity key (derived from
+username + password, keys.py) and vouches for it with certificates served
+over Waylink (PROFILE ``CERT_*`` ops, docs/protocol.md), so any device can
+check who wrote something with no Station in reach.
 
-Station's part is issuing, revoking and recovery — never a step that an
+Station's part is recording keys, vouching, revoking — never a step that an
 ordinary login or message waits on (docs/network-model.md §7).
 """
 
@@ -11,45 +13,15 @@ import time
 from typing import Any, Callable, Optional
 
 from server.services.identity import certs as C
+from server.services.identity import keys as K
 from server.services.identity import objects as O
 from server.services.identity.store import IdentityStore
-from server.services.profiles.constants import (
-    OP_CERT_DEV,
-    OP_CERT_GET,
-    OP_CERT_ISSUE,
-    OP_CERT_REVOKED,
-    OP_CERT_ROOT,
-)
+from server.services.profiles.constants import OP_CERT_GET, OP_CERT_REVOKED, OP_CERT_ROOT
 from shared.protocol.envelope import Envelope
 from shared.protocol.radio import fit_list_reply
 
 CERT_LIFETIME_SEC = 30 * 24 * 3600
 RENEW_BEFORE_SEC = 7 * 24 * 3600  # serve a fresh certificate once this close to expiry
-
-WAYLINK_APP = "waypost"
-WAYLINK_ASPECTS = ("waylink",)
-
-
-def waylink_dest_hex(public_key: bytes) -> tuple[str, bytes]:
-    """(destination hash hex, identity hash) for a device's Reticulum public
-    key, as every Waypost node computes its own ``waypost.waylink`` address."""
-    import RNS
-
-    ident = RNS.Identity(create_keys=False)
-    ident.load_public_key(bytes(public_key))
-    dest = RNS.Destination.hash(ident, WAYLINK_APP, *WAYLINK_ASPECTS)
-    return dest.hex(), bytes(ident.hash)
-
-
-def reticulum_signature_ok(public_key: bytes, signature: bytes, message: bytes) -> bool:
-    import RNS
-
-    try:
-        ident = RNS.Identity(create_keys=False)
-        ident.load_public_key(bytes(public_key))
-        return bool(ident.validate(bytes(signature), message))
-    except Exception:
-        return False
 
 
 class IdentityService:
@@ -71,101 +43,77 @@ class IdentityService:
     def now(self) -> int:
         return int(self._clock())
 
+    # -- keys -------------------------------------------------------------------
+
+    def record_password(self, username: str, password: str) -> bytes:
+        """Called wherever Station sees a password (registration, portal
+        sign-in, password change): works out the person's identity key and
+        records it. A different password than before means a new identity —
+        the old one's certificates are revoked. Returns the public key."""
+        public = K.public_key(username, password)
+        self.record_key(username, public)
+        return public
+
+    def record_key(self, username: str, public: bytes) -> None:
+        old = self.store.set_key(username, public, K.identity_id(public))
+        if old is not None:
+            self.store.revoke_identity(old, self.now())
+        self.identity_cert(username)  # vouch for it straight away
+
     # -- issuing --------------------------------------------------------------
 
     def identity_cert(self, username: str) -> Optional[dict[str, Any]]:
+        """The person's certificate, or None when Station doesn't know their
+        key yet (they haven't signed in since keys came in)."""
         user = self._get_user(username)
         if not user:
             return None
         username = user["username"]
+        known = self.store.key_for(username)
+        if not known:
+            return None
+        public, ident = known
         name = C.clip_utf8(str(user.get("display_name") or username), C.MAX_DISPLAY_NAME)
         now = self.now()
         row = self.store.latest_identity(username)
-        if not row or row["expires"] - now < RENEW_BEFORE_SEC or row["display_name"] != name:
-            row = self.store.add_identity(
-                username=username,
-                identity_id=self.store.identity_id(username),
-                display_name=name,
-                issued=now,
-                expires=now + CERT_LIFETIME_SEC,
-            )
+        if (not row or row["expires"] - now < RENEW_BEFORE_SEC or row["display_name"] != name
+                or bytes(row["public_key"]) != public):
+            row = self.store.add_identity(username=username, identity_id=ident, display_name=name,
+                                          public_key=public, issued=now, expires=now + CERT_LIFETIME_SEC)
         return self._wire(row)
 
-    def issue_device_cert(
-        self, *, node_id: str, username: str, signing_key: bytes, device_hash: bytes
-    ) -> dict[str, Any]:
-        now = self.now()
-        for row in self.store.certs_for_node(node_id):
-            same = bytes(row["signing_key"]) == bytes(signing_key) and str(row["username"]).lower() == username.lower()
-            if same and row["expires"] - now >= RENEW_BEFORE_SEC:
-                return self._wire(row)
-            if not same:
-                # A new key (re-paired, PIN reset) or a different person on
-                # this device: the old certificate must stop being believed.
-                self.store.revoke(row["serial"], now)
-        row = self.store.add_device(
-            username=username,
-            identity_id=self.store.identity_id(username),
-            node_id=node_id,
-            signing_key=bytes(signing_key),
-            device_hash=bytes(device_hash),
-            issued=now,
-            expires=now + CERT_LIFETIME_SEC,
-        )
-        return self._wire(row)
-
-    def sweep(self) -> int:
-        """Revoke device certificates whose device is no longer paired to
-        that person (unpaired, revoked from the portal, re-paired to someone
-        else). Lazy: runs before anything that serves certificates."""
-        now = self.now()
-        n = 0
-        for row in self.store.live_device_certs(now):
-            binding = self._get_binding(row["node_id"])
-            if not binding or str(binding["username"]).lower() != str(row["username"]).lower():
-                if self.store.revoke(row["serial"], now):
-                    n += 1
-        return n
-
-    def device_certs(self, username: str) -> list[dict[str, Any]]:
-        self.sweep()
-        return [self._wire(r) for r in self.store.device_certs(username, self.now())]
+    def cert_for_id(self, identity_id: bytes) -> Optional[dict[str, Any]]:
+        row = self.store.by_identity_id(identity_id)
+        if not row or row["revoked_at"] is not None:
+            return None
+        return self.identity_cert(str(row["username"]))
 
     def revocations(self) -> list[dict[str, Any]]:
-        self.sweep()
         return [self._wire(r) for r in self.store.revocations(self.now())]
 
     def _wire(self, row: dict[str, Any]) -> dict[str, Any]:
-        kind = row["kind"]
-        if kind == C.KIND_IDENTITY:
-            cert = {"k": kind, "n": row["serial"], "i": bytes(row["identity_id"]), "u": row["username"],
-                    "dn": row["display_name"], "t": row["issued"], "x": row["expires"]}
-        elif kind == C.KIND_DEVICE:
-            cert = {"k": kind, "n": row["serial"], "i": bytes(row["identity_id"]), "u": row["username"],
-                    "p": bytes(row["signing_key"]), "d": bytes(row["device_hash"]),
+        if row["kind"] == C.KIND_IDENTITY:
+            cert = {"k": "id", "n": row["serial"], "i": bytes(row["identity_id"]), "u": row["username"],
+                    "dn": row["display_name"], "p": bytes(row["public_key"]),
                     "t": row["issued"], "x": row["expires"]}
         else:
-            cert = {"k": kind, "n": row["serial"], "r": row["revokes"], "t": row["issued"]}
+            cert = {"k": "rev", "n": row["serial"], "r": row["revokes"], "t": row["issued"]}
         return self.key.sign(cert)
 
-    # -- signed objects (D3) ------------------------------------------------------
+    # -- checking ------------------------------------------------------------------
 
     def verify_object(self, obj: dict[str, Any], signature: bytes) -> tuple[Optional[str], str]:
-        """Checks an object signed with a device signing key. ``obj`` has
-        every field but ``u`` — the author comes from the certificate named
-        by ``c``. Returns (author username, "") or (None, error code)."""
-        self.sweep()
-        try:
-            serial = int(obj.get("c"))
-        except (TypeError, ValueError):
+        """Checks an object signed with a person's identity key. ``obj`` has
+        every field but ``u`` — the author comes from the identity id ``a``.
+        Returns (author username, "") or (None, error code)."""
+        ident = obj.get("a")
+        if not isinstance(ident, (bytes, bytearray)) or len(ident) != 16:
             return None, "invalid_payload"
-        row = self.store.get(serial)
-        if not row or row["kind"] != C.KIND_DEVICE:
-            return None, "unknown_certificate"
+        row = self.store.by_identity_id(bytes(ident))
+        if not row:
+            return None, "unknown_identity"
         if row["revoked_at"] is not None:
-            return None, "certificate_revoked"
-        if row["expires"] <= self.now():
-            return None, "certificate_expired"
+            return None, "identity_revoked"
         signed = dict(obj, u=str(row["username"]))
         try:
             message = O.canonical_bytes(signed)
@@ -173,9 +121,15 @@ class IdentityService:
             return None, "invalid_payload"
         if not isinstance(signature, (bytes, bytearray)) or len(signature) != 64:
             return None, "invalid_payload"
-        if not C.verify_signing_key(bytes(row["signing_key"]), bytes(signature), message):
+        if not C.verify_signing_key(bytes(row["public_key"]), bytes(signature), message):
             return None, "bad_signature"
         return str(row["username"]), ""
+
+    def owner_of(self, identity_id: bytes) -> Optional[str]:
+        """Whose identity id this is — replaced (revoked) keys included, so
+        a message signed with one is refused as revoked, not as unknown.
+        Whether it's still good is verify_object's call."""
+        return self.store.owner_of(bytes(identity_id))
 
     # -- Waylink --------------------------------------------------------------
 
@@ -186,36 +140,28 @@ class IdentityService:
             return env.make_response(op=env.op, payload={"error": code}, error=True)
 
         # The community public key is public: anyone may ask (a device
-        # pins it at pairing and refuses a different one later).
+        # pins it the first time and refuses a different one later).
         if env.op == OP_CERT_ROOT:
             return env.make_response(op=env.op, payload={"pk": self.key.public_bytes})
 
         binding = self._get_binding(env.src)
         if not binding:
             return err("unauthorized_device")
-        me = str(binding["username"])
-
-        if env.op == OP_CERT_ISSUE:
-            return self._rpc_issue(env, payload, binding, err)
 
         if env.op == OP_CERT_GET:
-            who = str(payload.get("u") or me)
-            cert = self.identity_cert(who)
-            if not cert:
-                return err("unknown_user")
-            return env.make_response(
-                op=env.op, payload={"cert": cert, "devs": len(self.device_certs(who))}
-            )
-
-        if env.op == OP_CERT_DEV:
-            who = str(payload.get("u") or me)
-            index = max(0, int(payload.get("i") or 0))
-            devs = self.device_certs(who)
-            if index >= len(devs):
-                return env.make_response(op=env.op, payload={"cert": None, "more": False})
-            return env.make_response(
-                op=env.op, payload={"cert": devs[index], "more": index + 1 < len(devs)}
-            )
+            ident = payload.get("i")
+            if isinstance(ident, bytes):
+                cert = self.cert_for_id(ident)
+                if not cert:
+                    return err("unknown_identity")
+            else:
+                who = str(payload.get("u") or binding["username"])
+                if not self._get_user(who):
+                    return err("unknown_user")
+                cert = self.identity_cert(who)
+                if not cert:
+                    return err("no_identity_yet")
+            return env.make_response(op=env.op, payload={"cert": cert})
 
         if env.op == OP_CERT_REVOKED:
             offset = max(0, int(payload.get("offset") or 0))
@@ -229,21 +175,3 @@ class IdentityService:
             return reply
 
         return err(f"unknown_op:{env.op}")
-
-    def _rpc_issue(self, env: Envelope, payload: dict, binding: dict, err) -> Envelope:
-        pk, spk, sig = payload.get("pk"), payload.get("spk"), payload.get("sig")
-        if not (isinstance(pk, bytes) and len(pk) == 64 and isinstance(spk, bytes) and len(spk) == 32
-                and isinstance(sig, bytes) and len(sig) == 64):
-            return err("invalid_payload")
-        # The request must come from the device that was paired: its
-        # Reticulum key must hash to the paired address, and it must have
-        # signed this request (env.src alone is only a claim).
-        dest_hex, device_hash = waylink_dest_hex(pk)
-        if not binding.get("transport_dest") or dest_hex != str(binding["transport_dest"]).lower():
-            return err("device_key_mismatch")
-        if not reticulum_signature_ok(pk, sig, C.issue_request_bytes(env.src, spk)):
-            return err("bad_signature")
-        cert = self.issue_device_cert(
-            node_id=env.src, username=str(binding["username"]), signing_key=spk, device_hash=device_hash
-        )
-        return env.make_response(op=env.op, payload={"cert": cert})

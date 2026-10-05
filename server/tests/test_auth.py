@@ -30,7 +30,7 @@ def client(tmp_path: Path):
 def test_register_login_me(client: TestClient):
     r = client.post(
         "/api/auth/register",
-        json={"username": "carol", "password": "secret123", "display_name": "Carol"},
+        json={"username": "carol", "password": "secret12345", "display_name": "Carol"},
     )
     assert r.status_code == 200
     assert r.json()["user"]["username"] == "carol"
@@ -47,7 +47,7 @@ def test_register_login_me(client: TestClient):
     assert bad.status_code == 401
 
     ok = client.post(
-        "/api/auth/login", json={"username": "carol", "password": "secret123"}
+        "/api/auth/login", json={"username": "carol", "password": "secret12345"}
     )
     assert ok.status_code == 200
 
@@ -55,7 +55,7 @@ def test_register_login_me(client: TestClient):
 def test_send_requires_auth_and_uses_session_user(client: TestClient):
     client.post(
         "/api/auth/register",
-        json={"username": "dave", "password": "secret123"},
+        json={"username": "dave", "password": "secret12345"},
     )
     # Register sets cookie on TestClient
     sent = client.post(
@@ -84,7 +84,7 @@ def test_private_apis_require_auth(client: TestClient):
 def test_cannot_spoof_sender(client: TestClient):
     client.post(
         "/api/auth/register",
-        json={"username": "erin", "password": "secret123"},
+        json={"username": "erin", "password": "secret12345"},
     )
     sent = client.post(
         "/api/commons/posts",
@@ -141,7 +141,7 @@ def auth(tmp_path: Path) -> AuthService:
 
 def test_first_user_bootstraps_as_admin_and_approved(auth: AuthService):
     result = auth.register(
-        username="carol", password="secret123", registration_mode="ADMIN_APPROVAL"
+        username="carol", password="secret12345", registration_mode="ADMIN_APPROVAL"
     )
     assert "token" in result  # not pending — bootstrap admin skips approval
     assert result["user"]["is_admin"] is True
@@ -149,9 +149,9 @@ def test_first_user_bootstraps_as_admin_and_approved(auth: AuthService):
 
 
 def test_second_user_pending_under_admin_approval(auth: AuthService):
-    auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    auth.register(username="carol", password="secret12345", registration_mode="OPEN")
     result = auth.register(
-        username="dave", password="secret123", registration_mode="ADMIN_APPROVAL"
+        username="dave", password="secret12345", registration_mode="ADMIN_APPROVAL"
     )
     assert result.get("pending_approval") is True
     assert "token" not in result
@@ -159,12 +159,12 @@ def test_second_user_pending_under_admin_approval(auth: AuthService):
     assert result["user"]["approved"] is False
 
     with pytest.raises(ValueError, match="pending"):
-        auth.login(username="dave", password="secret123")
+        auth.login(username="dave", password="secret12345")
 
 
 def test_approval_unblocks_login(auth: AuthService):
-    auth.register(username="carol", password="secret123", registration_mode="OPEN")
-    auth.register(username="dave", password="secret123", registration_mode="ADMIN_APPROVAL")
+    auth.register(username="carol", password="secret12345", registration_mode="OPEN")
+    auth.register(username="dave", password="secret12345", registration_mode="ADMIN_APPROVAL")
 
     pending = auth.list_pending_users()
     assert [u["username"] for u in pending] == ["dave"]
@@ -172,23 +172,23 @@ def test_approval_unblocks_login(auth: AuthService):
     approved = auth.approve_user("dave")
     assert approved["approved"] is True
 
-    result = auth.login(username="dave", password="secret123")
+    result = auth.login(username="dave", password="secret12345")
     assert "token" in result
 
 
 def test_approving_twice_rejected(auth: AuthService):
-    auth.register(username="carol", password="secret123", registration_mode="OPEN")
-    auth.register(username="dave", password="secret123", registration_mode="ADMIN_APPROVAL")
+    auth.register(username="carol", password="secret12345", registration_mode="OPEN")
+    auth.register(username="dave", password="secret12345", registration_mode="ADMIN_APPROVAL")
     auth.approve_user("dave")
     with pytest.raises(ValueError, match="already approved"):
         auth.approve_user("dave")
 
 
 def test_open_and_invite_only_modes_do_not_require_approval(auth: AuthService):
-    result = auth.register(username="carol", password="secret123", registration_mode="OPEN")
+    result = auth.register(username="carol", password="secret12345", registration_mode="OPEN")
     assert "token" in result
     # Second user, so not the bootstrap-admin path
-    result2 = auth.register(username="dave", password="secret123", registration_mode="OPEN")
+    result2 = auth.register(username="dave", password="secret12345", registration_mode="OPEN")
     assert "token" in result2
     assert result2["user"]["approved"] is True
 
@@ -214,26 +214,26 @@ def test_http_register_pending_then_approve_flow(admin_approval_client: TestClie
     c = admin_approval_client
     # First registrant bootstraps as admin, gets a session immediately.
     admin_reg = c.post(
-        "/api/auth/register", json={"username": "carol", "password": "secret123"}
+        "/api/auth/register", json={"username": "carol", "password": "secret12345"}
     )
     assert admin_reg.status_code == 200
     admin_token = admin_reg.json()["token"]
 
     # Second registrant is gated.
     pending_reg = c.post(
-        "/api/auth/register", json={"username": "dave", "password": "secret123"}
+        "/api/auth/register", json={"username": "dave", "password": "secret12345"}
     )
     assert pending_reg.status_code == 200
     assert pending_reg.json()["pending_approval"] is True
     assert "token" not in pending_reg.json()
 
     blocked_login = c.post(
-        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+        "/api/auth/login", json={"username": "dave", "password": "secret12345"}
     )
     assert blocked_login.status_code == 401
 
     # A non-admin can't see or approve pending users.
-    c.post("/api/auth/login", json={"username": "dave", "password": "secret123"})
+    c.post("/api/auth/login", json={"username": "dave", "password": "secret12345"})
     forbidden = c.get(
         "/api/auth/pending", headers={"Authorization": f"Bearer {admin_token}bad"}
     )
@@ -250,29 +250,36 @@ def test_http_register_pending_then_approve_flow(admin_approval_client: TestClie
     assert approve.status_code == 200
 
     now_login = c.post(
-        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+        "/api/auth/login", json={"username": "dave", "password": "secret12345"}
     )
     assert now_login.status_code == 200
 
 
 def test_non_admin_cannot_reach_admin_routes(admin_approval_client: TestClient):
     c = admin_approval_client
-    c.post("/api/auth/register", json={"username": "carol", "password": "secret123"})
+    c.post("/api/auth/register", json={"username": "carol", "password": "secret12345"})
     dave_reg = c.post(
-        "/api/auth/register", json={"username": "dave", "password": "secret123"}
+        "/api/auth/register", json={"username": "dave", "password": "secret12345"}
     )
     assert dave_reg.json()["pending_approval"] is True
 
     admin_headers = {
         "Authorization": "Bearer "
         + c.post(
-            "/api/auth/login", json={"username": "carol", "password": "secret123"}
+            "/api/auth/login", json={"username": "carol", "password": "secret12345"}
         ).json()["token"]
     }
     c.post("/api/auth/approve", json={"username": "dave"}, headers=admin_headers)
     dave_token = c.post(
-        "/api/auth/login", json={"username": "dave", "password": "secret123"}
+        "/api/auth/login", json={"username": "dave", "password": "secret12345"}
     ).json()["token"]
 
     r = c.get("/api/auth/pending", headers={"Authorization": f"Bearer {dave_token}"})
     assert r.status_code == 403
+
+
+def test_register_needs_ten_characters(client: TestClient):
+    """The password is also what a person's identity key comes from
+    (server/services/identity/keys.py), so it has to resist offline guessing."""
+    r = client.post("/api/auth/register", json={"username": "shorty", "password": "nine char"})
+    assert r.status_code == 422

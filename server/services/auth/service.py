@@ -4,15 +4,25 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from server.api.db import Database
 from server.services.auth.passwords import hash_password, verify_password
 
 
+MIN_PASSWORD = 10  # server/services/identity/keys.py MIN_PASSWORD
+
+
 class AuthService:
     def __init__(self, db: Database) -> None:
         self.db = db
+        # Wherever Station sees a password it also records the identity key
+        # derived from it (IdentityService.record_password; set in main.py).
+        self.on_password: Optional[Callable[[str, str], Any]] = None
+
+    def _record(self, username: str, password: str) -> None:
+        if self.on_password is not None:
+            self.on_password(username, password)
 
     def register(
         self,
@@ -27,6 +37,8 @@ class AuthService:
             raise ValueError("invalid username")
         if self.db.get_user_by_username(username):
             raise ValueError("username taken")
+        if len(password) < MIN_PASSWORD:
+            raise ValueError(f"password must be at least {MIN_PASSWORD} characters")
         pw_hash = hash_password(password)
         now = time.time()
         # First account ever on this Station bootstraps as admin, and is
@@ -46,6 +58,7 @@ class AuthService:
             is_admin=is_admin,
             approved_at=approved_at,
         )
+        self._record(user["username"], password)
         if approved_at is None:
             return {"user": self._public_user(user), "pending_approval": True}
         session = self.create_session(user["username"])
@@ -59,6 +72,7 @@ class AuthService:
             raise ValueError("invalid credentials")
         if not user.get("is_admin") and not user.get("approved_at"):
             raise ValueError("account pending admin approval")
+        self._record(user["username"], password)
         session = self.create_session(user["username"])
         return {"user": self._public_user(user), "token": session["token"]}
 

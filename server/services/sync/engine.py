@@ -25,7 +25,7 @@ Waylink ops (service ``SYNC``), every reply one packet:
           without "*" send it — it's how a courier's cargo gets found)
     SUM   {q: scope, p: hex prefix}            -> {n, x, oids: [...]} | {n, x, sub: [[n, x] x16]}
     WANT  {o: oid}                             -> object fields | {missing: true}
-    PUT   object fields                        -> {ok, new} | error
+    PUT   object fields                        -> {ok, new} | error (bad_signature, unknown_identity, ...)
 
 Objects travel as their fields directly in the payload (no wrapper map —
 every byte counts: a signed message at the Scout's compose limit must fit
@@ -82,9 +82,9 @@ def wants(interests: Iterable[str], obj: dict[str, Any]) -> bool:
 
 
 def to_wire(obj: dict[str, Any]) -> dict[str, Any]:
-    """Compact form for one packet: the author comes back from the
-    certificate (``c``), a direct conversation is sent as the other person."""
-    wire = {"o": obj["o"], "c": obj["c"], "b": obj["b"], "t": obj["t"], "s": obj["s"]}
+    """Compact form for one packet: the author comes back from their
+    identity id (``a``), a direct conversation is sent as the other person."""
+    wire = {"o": obj["o"], "a": obj["a"], "b": obj["b"], "t": obj["t"], "s": obj["s"]}
     conv = str(obj["v"])
     if conv.startswith("dm:"):
         a, b = conv[3:].split(":", 1)
@@ -94,18 +94,18 @@ def to_wire(obj: dict[str, Any]) -> dict[str, Any]:
     return wire
 
 
-def from_wire(wire: dict[str, Any], owner_of: Callable[[int], Optional[str]]) -> Optional[dict[str, Any]]:
-    """Rebuilds the full object, or None when the certificate is unknown here."""
+def from_wire(wire: dict[str, Any], owner_of: Callable[[bytes], Optional[str]]) -> Optional[dict[str, Any]]:
+    """Rebuilds the full object, or None when the author's identity is unknown here."""
     from server.services.dispatch.store import direct_conversation_id
     from server.services.identity.objects import KIND_DISPATCH_MSG
 
     try:
-        serial = int(wire["c"])
-        author = owner_of(serial)
+        ident = bytes(wire["a"])
+        author = owner_of(ident)
         if not author:
             return None
         conv = wire.get("v") or direct_conversation_id(author, str(wire["p"]))
-        return {"k": KIND_DISPATCH_MSG, "o": bytes(wire["o"]), "u": author, "c": serial,
+        return {"k": KIND_DISPATCH_MSG, "o": bytes(wire["o"]), "u": author, "a": ident,
                 "v": str(conv), "b": str(wire["b"]), "t": int(wire["t"]), "s": bytes(wire["s"])}
     except (KeyError, TypeError, ValueError):
         return None
@@ -148,7 +148,7 @@ class ObjectSet(Protocol):
     def put(self, obj: dict[str, Any]) -> tuple[bool, str]:
         """Verify and store. (created, "") or (False, error); a duplicate is (False, "")."""
         ...
-    def owner_of(self, serial: int) -> Optional[str]: ...
+    def owner_of(self, identity_id: bytes) -> Optional[str]: ...
 
 
 def held_scopes(objects: "ObjectSet", interests: list[str]) -> list[str]:
@@ -201,7 +201,7 @@ class SyncResponder:
         if env.op == OP_PUT:
             obj = from_wire(p, self.objects.owner_of)
             if obj is None:
-                return err("unknown_certificate")
+                return err("unknown_identity")
             created, code = self.objects.put(obj)
             if code:
                 return err(code)
@@ -342,8 +342,8 @@ def max_signed_body(target: str, *, room: bool = False) -> int:
         body = "x" * n
         yield Envelope(mid="0" * 16, rid="0" * 16, src=node, dst="station", svc="DISPATCH",
                        op="MSG_SEND", flags=1, ts=4_000_000_000,
-                       payload={**addr, "b": body, "o": bytes(16), "c": 0xFFFFFFFF, "s": bytes(64)})
-        wire = {"o": bytes(16), "c": 0xFFFFFFFF, "b": body, "t": 4_000_000_000, "s": bytes(64), **addr}
+                       payload={**addr, "b": body, "o": bytes(16), "a": bytes(16), "s": bytes(64)})
+        wire = {"o": bytes(16), "a": bytes(16), "b": body, "t": 4_000_000_000, "s": bytes(64), **addr}
         yield Envelope(mid="0" * 16, rid="0" * 16, src=node, dst=node, svc=SVC_SYNC, op=OP_PUT,
                        flags=1, ts=4_000_000_000, payload=wire)
         yield Envelope(mid="0" * 16, rid="0" * 16, src=node, dst=node, svc=SVC_SYNC, op=OP_WANT,

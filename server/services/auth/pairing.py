@@ -26,7 +26,13 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from server.api.db import Database
 from server.services.corkboard.constants import OP_OUTPOST_CLAIM
-from server.services.profiles.constants import OP_PAIR_REDEEM, OP_UNPAIR, OP_WHOAMI
+from server.services.profiles.constants import (
+    OP_LOGIN,
+    OP_LOGIN_NONCE,
+    OP_PAIR_REDEEM,
+    OP_UNPAIR,
+    OP_WHOAMI,
+)
 from shared.protocol.envelope import Envelope, Flags
 
 if TYPE_CHECKING:
@@ -59,6 +65,8 @@ class PairingService:
         self.dispatch = dispatch
         self.corkboard_store = corkboard_store
         self.transport = None  # set once Transport exists, see main.py
+        self.identity = None  # IdentityService, set in main.py (Scout login)
+        self._nonces: dict[str, tuple[bytes, float]] = {}  # node -> (challenge, expires)
 
     def _learn_route(self, node_id: str, transport_dest: Optional[str]) -> None:
         if not transport_dest or self.transport is None:
@@ -102,8 +110,12 @@ class PairingService:
     async def handle_rpc(self, env: Envelope) -> Envelope:
         """Waylink parity for radio-only devices — same single-use code,
         no password ever crosses LoRa (docs/security.md)."""
-        if env.op in (OP_WHOAMI, OP_UNPAIR):
+        if env.op in (OP_WHOAMI, OP_UNPAIR, OP_LOGIN_NONCE, OP_LOGIN):
             self._route_reply_to_unbound(env)
+        if env.op == OP_LOGIN_NONCE:
+            return self._rpc_login_nonce(env)
+        if env.op == OP_LOGIN:
+            return self._rpc_login(env)
         if env.op == OP_WHOAMI:
             return self._rpc_whoami(env)
         if env.op == OP_UNPAIR:
@@ -159,6 +171,59 @@ class PairingService:
             self._learn_route(str(env.src), str(dest))
         except ValueError:
             logger.info("whoami_bad_transport_dest node=%s", env.src)
+
+    # -- Scout login with username + password (2026-10-05) -----------------------
+    #
+    # The Scout works out the person's identity key from username + password
+    # (server/services/identity/keys.py) and signs a one-time challenge with
+    # it. The password never crosses the radio, and the challenge can't be
+    # used to test password guesses (that needs the key). Station only knows
+    # a person's key once it has seen their password — at registration or a
+    # portal sign-in — hence "no_identity_yet" for older accounts.
+
+    LOGIN_MAGIC = b"WAYPOST-LOGIN-1\n"
+    NONCE_TTL = 120.0
+
+    @classmethod
+    def login_bytes(cls, node_id: str, dest: bytes, nonce: bytes) -> bytes:
+        return cls.LOGIN_MAGIC + node_id.encode("utf-8") + b"\n" + bytes(dest) + b"\n" + bytes(nonce)
+
+    def _rpc_login_nonce(self, env: Envelope) -> Envelope:
+        nonce = secrets.token_bytes(16)
+        self._nonces[str(env.src)] = (nonce, time.time() + self.NONCE_TTL)
+        return env.make_response(op=OP_LOGIN_NONCE, payload={"nonce": nonce})
+
+    def _rpc_login(self, env: Envelope) -> Envelope:
+        from server.services.identity import certs as C
+
+        def err(code: str) -> Envelope:
+            return env.make_response(op=OP_LOGIN, payload={"error": code}, error=True)
+
+        p = env.payload if isinstance(env.payload, dict) else {}
+        username, dest, sig = str(p.get("u") or ""), p.get("rd"), p.get("sig")
+        if not (isinstance(dest, bytes) and len(dest) == 16 and isinstance(sig, bytes) and len(sig) == 64):
+            return err("invalid_payload")
+        nonce, expires = self._nonces.pop(str(env.src), (b"", 0.0))
+        if not nonce or expires < time.time():
+            return err("login_expired")
+        user = self.db.get_user_by_username(username)
+        if not user:
+            return err("unknown_user")
+        if not user.get("is_admin") and not user.get("approved_at"):
+            return err("account pending admin approval")
+        known = self.identity.store.key_for(user["username"]) if self.identity else None
+        if not known:
+            return err("no_identity_yet")
+        if not C.verify_signing_key(known[0], sig, self.login_bytes(str(env.src), dest, nonce)):
+            return err("wrong_password")
+        binding = self.dispatch.bind_device(str(env.src), user["username"], transport_dest=dest.hex())
+        self._learn_route(str(env.src), dest.hex())
+        return env.make_response(
+            op=OP_LOGIN,
+            payload={"ok": True, "username": user["username"],
+                     "display_name": (user.get("display_name") or user["username"])[:40]},
+            flags=Flags.RESPONSE | Flags.ACK,
+        )
 
     def _rpc_whoami(self, env: Envelope) -> Envelope:
         binding = self.dispatch.store.get_binding(env.src)

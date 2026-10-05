@@ -195,8 +195,8 @@ def test_every_scout_op_is_registered_with_the_gateway(tmp_path: Path):
             ("PROFILE", "PAIR_REDEEM"), ("PROFILE", "WHOAMI"), ("PROFILE", "UNPAIR"),
             ("PROFILE", "ROLL_LIST"), ("FIELDBOOK", "WIKI_SEARCH"), ("FIELDBOOK", "WIKI_GET"),
             ("TRAILHEAD", "TRAIL_GET"), ("CORE", "PING"),
-            ("PROFILE", "CERT_ROOT"), ("PROFILE", "CERT_ISSUE"), ("PROFILE", "CERT_GET"),
-            ("PROFILE", "CERT_DEV"), ("PROFILE", "CERT_REVOKED"),
+            ("PROFILE", "CERT_ROOT"), ("PROFILE", "CERT_GET"), ("PROFILE", "CERT_REVOKED"),
+            ("PROFILE", "LOGIN_NONCE"), ("PROFILE", "LOGIN"),
             ("SYNC", "HELLO"), ("SYNC", "SUM"), ("SYNC", "WANT"), ("SYNC", "PUT"),
         ]:
             assert key in handlers, key

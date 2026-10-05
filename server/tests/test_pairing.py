@@ -99,7 +99,7 @@ def client(tmp_path: Path):
 def _register(client: TestClient, username: str) -> None:
     r = client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={"username": username, "password": "secret12345"},
     )
     assert r.status_code == 200
 
@@ -163,7 +163,7 @@ def test_cannot_unbind_another_users_device(client: TestClient):
     assert r.status_code == 404
 
     login = client.post(
-        "/api/auth/login", json={"username": "carol", "password": "secret123"}
+        "/api/auth/login", json={"username": "carol", "password": "secret12345"}
     )
     assert login.status_code == 200
     devices = client.get("/api/dispatch/devices").json()["devices"]

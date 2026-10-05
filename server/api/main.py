@@ -99,11 +99,11 @@ from server.services.sync.engine import OP_WANT as OP_SYNC_WANT
 from server.services.sync.engine import SVC_SYNC, SyncResponder
 from server.services.sync.sets import StationObjectSet
 from server.services.profiles.constants import (
-    OP_CERT_DEV,
     OP_CERT_GET,
-    OP_CERT_ISSUE,
     OP_CERT_REVOKED,
     OP_CERT_ROOT,
+    OP_LOGIN,
+    OP_LOGIN_NONCE,
     OP_PAIR_REDEEM,
     OP_ROLL_LIST,
     OP_UNPAIR,
@@ -226,8 +226,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             get_binding=db.dispatch.get_binding,
             get_user=db.get_user_by_username,
         )
+        app.state.auth.on_password = app.state.identity.record_password
+        app.state.pairing.identity = app.state.identity
         dispatch.set_object_verifier(app.state.identity.verify_object)
-        dispatch.set_cert_owner(db.identity.device_owner)
+        dispatch.set_author_lookup(app.state.identity.owner_of)
 
         transport = create_transport(
             settings.waypost_transport,
@@ -284,13 +286,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         gateway.register(SVC_PROFILE, OP_PAIR_REDEEM, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_WHOAMI, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_UNPAIR, app.state.pairing.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_LOGIN_NONCE, app.state.pairing.handle_rpc)
+        gateway.register(SVC_PROFILE, OP_LOGIN, app.state.pairing.handle_rpc)
         gateway.register(SVC_PROFILE, OP_ROLL_LIST, app.state.rollcall.handle_rpc)
-        for op in (OP_CERT_ROOT, OP_CERT_ISSUE, OP_CERT_GET, OP_CERT_DEV, OP_CERT_REVOKED):
+        for op in (OP_CERT_ROOT, OP_CERT_GET, OP_CERT_REVOKED):
             gateway.register(SVC_PROFILE, op, app.state.identity.handle_rpc)
         # Peer sync (roadmap D4): Station is one peer among many — the one
         # that wants everything and keeps it.
         app.state.sync = SyncResponder(
-            StationObjectSet(dispatch, db.identity), role="station", interests=lambda: ["*"]
+            StationObjectSet(dispatch, app.state.identity), role="station", interests=lambda: ["*"]
         )
         for op in (OP_SYNC_HELLO, OP_SYNC_SUM, OP_SYNC_WANT, OP_SYNC_PUT):
             gateway.register(SVC_SYNC, op, app.state.sync.handle_rpc)

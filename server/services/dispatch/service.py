@@ -500,7 +500,7 @@ class DispatchService:
         device delivered it, so any node may carry it here.
 
         payload: o (16-byte object id), b (body), p (peer, direct) or v
-        (conversation id), c (device certificate serial), s (signature);
+        (conversation id), a (author's identity id), s (signature);
         the signed time is the envelope's ts (1 = the device didn't know the
         time; 0 can't be sent, the envelope reader replaces it with now)."""
         from server.services.dispatch.store import direct_conversation_id
@@ -517,16 +517,16 @@ class DispatchService:
             return err("invalid_payload")
         if not body.strip():
             return err("sender_and_body_required")
-        obj = {"k": O.KIND_DISPATCH_MSG, "o": oid, "c": payload.get("c"), "b": body,
+        obj = {"k": O.KIND_DISPATCH_MSG, "o": oid, "a": payload.get("a"), "b": body,
                "t": int(env.ts or 0)}
         if conv:
             obj["v"] = str(conv)
         else:
-            owner = self._cert_owner(obj.get("c"))
+            owner = self._author(obj.get("a"))
             if not owner:
-                return err("unknown_certificate")
+                return err("unknown_identity")
             obj["v"] = direct_conversation_id(owner, str(peer))
-        obj["u"], obj["s"] = self._cert_owner(obj.get("c")) or "", sig
+        obj["u"], obj["s"] = self._author(obj.get("a")) or "", sig
         transport = str(payload.get("transport") or TRANSPORT_LORA)
         result, code = self._ingest(obj, transport)
         if code:
@@ -569,7 +569,7 @@ class DispatchService:
             if self._user_exists is not None and not self._user_exists(peer):
                 return None, "unknown_user"
             self.store.ensure_direct(author, peer)
-        signature = {"sig": bytes(obj["s"]).hex(), "cert_serial": int(obj["c"]),
+        signature = {"sig": bytes(obj["s"]).hex(), "author_id": bytes(obj["a"]).hex(),
                      "signed_at": int(obj["t"])}
         try:
             result = self.send_to_conversation(
@@ -584,16 +584,15 @@ class DispatchService:
             return None, str(exc)
         return result, ""
 
-    def set_cert_owner(self, lookup) -> None:
-        """``lookup(serial) -> username | None`` (IdentityStore)."""
-        self._cert_owner_lookup = lookup
+    def set_author_lookup(self, lookup) -> None:
+        """``lookup(identity id bytes) -> username | None`` (IdentityService.owner_of)."""
+        self._author_lookup = lookup
 
-    def _cert_owner(self, serial: Any) -> Optional[str]:
-        lookup = getattr(self, "_cert_owner_lookup", None)
-        try:
-            return lookup(int(serial)) if lookup else None
-        except (TypeError, ValueError):
+    def _author(self, identity_id: Any) -> Optional[str]:
+        lookup = getattr(self, "_author_lookup", None)
+        if not lookup or not isinstance(identity_id, (bytes, bytearray)):
             return None
+        return lookup(bytes(identity_id))
 
     async def _rpc_list(self, env: Envelope) -> Envelope:
         """Conversation history, radio-sized: newest first, as many whole

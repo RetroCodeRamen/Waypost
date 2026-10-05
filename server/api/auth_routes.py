@@ -17,7 +17,10 @@ class ApproveUserBody(BaseModel):
 
 class RegisterBody(BaseModel):
     username: str = Field(min_length=1, max_length=32, pattern=r"^[a-zA-Z0-9_\-]+$")
-    password: str = Field(min_length=8, max_length=128)
+    # 10+: the password is also what a person's identity key is derived
+    # from, and anyone holding one of their signed messages can try guesses
+    # offline (docs/identity.md).
+    password: str = Field(min_length=10, max_length=128)
     display_name: Optional[str] = Field(default=None, max_length=80)
 
 

@@ -14,16 +14,15 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pytest
-import RNS
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from server.api.db import Database
 from server.gateway.waylink import WaylinkGateway
 from server.services.dispatch.service import DispatchService
 from server.services.identity import certs as C
+from server.services.identity import keys as K
 from server.services.identity.objects import OfflineVerifier
-from server.services.identity.service import IdentityService, waylink_dest_hex
+from server.services.identity.service import IdentityService
 from server.services.sync.engine import (
     max_signed_body,
     OP_HELLO,
@@ -52,26 +51,24 @@ class World:
         self.identity = IdentityService(self.db.identity, self.key, get_binding=self.db.dispatch.get_binding,
                                         get_user=self.db.get_user_by_username)
         self.dispatch.set_object_verifier(self.identity.verify_object)
-        self.dispatch.set_cert_owner(self.db.identity.device_owner)
-        self.station_set = StationObjectSet(self.dispatch, self.db.identity)
+        self.dispatch.set_author_lookup(self.identity.owner_of)
+        self.station_set = StationObjectSet(self.dispatch, self.identity)
         self.mesh = MockMesh()
         self.keys: dict[str, Ed25519PrivateKey] = {}
-        self.certs: dict[str, dict[str, Any]] = {}
+        self.ids: dict[str, bytes] = {}
         for node, user in PEOPLE.items():
             self.db.ensure_user(user, user.title())
-            net = RNS.Identity()
-            self.dispatch.bind_device(node, user, transport_dest=waylink_dest_hex(net.get_public_key())[0])
-            sk = Ed25519PrivateKey.generate()
-            self.keys[node] = sk
-            self.certs[node] = self.identity.issue_device_cert(
-                node_id=node, username=user,
-                signing_key=sk.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw), device_hash=net.hash)
+            password = f"{user} long passphrase"
+            self.identity.record_password(user, password)  # as at registration
+            self.dispatch.bind_device(node, user, transport_dest=node[-4:] * 8)
+            self.keys[node] = K.private_key(user, password)  # what the device derives at login
+            self.ids[node] = K.identity_id(K.public_key(user, password))
 
     def verifier(self) -> OfflineVerifier:
         """What a device has cached from Station (D2)."""
         v = OfflineVerifier(self.key.public_bytes)
-        for cert in self.certs.values():
-            assert v.add_cert(cert)
+        for user in PEOPLE.values():
+            assert v.add_cert(self.identity.identity_cert(user))
         for rev in self.identity.revocations():
             v.add_cert(rev)
         return v
@@ -81,7 +78,7 @@ class World:
         return SyncNode(node_id=node, transport=self.mesh.attach(node, MockTransportConfig(1, 5, seed=seed)),
                         objects=MemoryObjectSet(self.verifier()), role="scout",
                         interests=interests or [f"u:{user}"], username=user,
-                        signing_key=self.keys[node], cert_serial=self.certs[node]["n"])
+                        signing_key=self.keys[node], identity_id=self.ids[node])
 
     async def station(self) -> WaylinkGateway:
         gw = WaylinkGateway(self.mesh.attach("station", MockTransportConfig(1, 5, seed=1)), local_id="station")
@@ -185,17 +182,21 @@ async def test_a_carrier_cannot_alter_or_forge(world):
         await a.stop(), await b.stop(), await courier.stop()
 
 
-async def test_revoked_device_is_refused_offline(world):
+async def test_a_replaced_key_is_refused_offline(world):
+    """A leaked password: the person picks a new one, Station revokes the
+    old key, and devices that synced the revocation refuse the old key."""
     a = world.scout("pocket-1-aaaa")
-    world.dispatch.unbind_device("pocket-1-aaaa", username="ridgeline")  # lost Scout, revoked
-    b = world.scout("pocket-1-bbbb", seed=3)  # synced revocations from Station (D2)
+    b = world.scout("pocket-1-bbbb", seed=3)  # has ridgeline's certificate cached
+    world.identity.record_password("ridgeline", "a fresh passphrase now")
+    for rev in world.identity.revocations():  # ...and later syncs the revocation
+        b.objects.verifier.add_cert(rev)
     world.mesh.link(a.node_id, b.node_id)
     await a.start(), await b.start()
     try:
-        a.objects.verifier.revoked.clear()  # the lost Scout itself doesn't care
-        a.write("from a revoked device", peer="basecamp")
+        a.objects.verifier.revoked.clear()  # whoever holds the old key doesn't care
+        a.write("signed with the leaked key", peer="basecamp")
         r = await a.sync(b.node_id)
-        assert r.pushed == 0 and r.rejected == ["certificate_revoked"]
+        assert r.pushed == 0 and r.rejected == ["identity_revoked"]
     finally:
         await a.stop(), await b.stop()
 
@@ -221,7 +222,7 @@ async def test_mostly_in_sync_costs_few_packets_and_every_packet_fits(world):
     for i in range(300):
         obj = writer.write(f"shared message number {i} " + "x" * 90, peer="basecamp")
         left.put(obj), right.put(obj)
-    only_left = [writer.write("left only " + "y" * 120, peer="basecamp") for _ in range(2)]
+    only_left = [writer.write("y" * max_signed_body("basecamp"), peer="basecamp") for _ in range(2)]
     only_right = [writer.write("right only", peer="basecamp") for _ in range(2)]
     for o in only_left:
         left.put(o)

@@ -39,8 +39,8 @@ class SyncNode(WaylinkPeerNode):
         role: str,
         interests: list[str],
         username: str = "",
-        signing_key: Optional[Ed25519PrivateKey] = None,
-        cert_serial: int = 0,
+        signing_key: Optional[Ed25519PrivateKey] = None,  # the person's identity key
+        identity_id: bytes = b"",
     ) -> None:
         super().__init__(node_id=node_id, transport=transport)
         self.objects = objects
@@ -48,14 +48,14 @@ class SyncNode(WaylinkPeerNode):
         self.interests = interests
         self.username = username
         self.signing_key = signing_key
-        self.cert_serial = cert_serial
+        self.identity_id = identity_id
         self.responder = SyncResponder(objects, role=role, interests=lambda: self.interests)
         for op in (OP_HELLO, OP_SUM, OP_WANT, OP_PUT):
             self._handlers[(SVC_SYNC, op)] = self.responder.handle_rpc
 
     def write(self, body: str, *, peer: str = "", conv: str = "", t: int = 1_791_000_000) -> dict[str, Any]:
         """Author a signed message (what the Scout does at compose)."""
-        obj = {"k": O.KIND_DISPATCH_MSG, "o": O.new_oid(), "u": self.username, "c": self.cert_serial,
+        obj = {"k": O.KIND_DISPATCH_MSG, "o": O.new_oid(), "u": self.username, "a": self.identity_id,
                "v": conv or direct_conversation_id(self.username, peer), "b": body, "t": t}
         obj["s"] = self.signing_key.sign(O.canonical_bytes(obj))
         created, code = self.objects.put(obj)

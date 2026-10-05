@@ -1,29 +1,28 @@
-"""Waypost certificates — offline-verifiable identity (docs/identity.md,
-"Offline identity (target)"; roadmap D2).
+"""Waypost certificates — Station vouching for people's identity keys
+(docs/identity.md; roadmap D2, reworked 2026-10-05 for keys derived from
+username + password, see keys.py).
 
-A certificate is a small signed record. Station's **community key** (Ed25519)
-signs it; any node holding the community public key can check it with no
-round trip to Station.
+A certificate is a small signed record. Station's **community key**
+(Ed25519) signs it; any node holding the community public key can check it
+with no round trip to Station.
 
 Kinds:
-  id   — a person: identity id (16 random bytes, stable), username, display name
-  dev  — a device acting for that person: its *signing* key (Ed25519, used to
-         author messages; PIN-protected on a Scout) and its Reticulum identity
-         hash (its network identity)
-  rev  — a revocation of an earlier certificate's serial
+  id   — "the community's <username> is identity key p": identity id
+         (SHA-256(p)[:16]), username, display name, the 32-byte public key
+  rev  — a revocation of an earlier certificate's serial (a leaked or
+         replaced key)
 
 What gets signed is a canonical byte string, not CBOR, so Python and the
 C++ on Scouts/Outposts produce identical bytes without sharing a CBOR
 encoder:
 
-    b"WAYPOST-CERT-1\\n" + for each field, in the kind's fixed order:
+    b"WAYPOST-CERT-1\n" + for each field, in the kind's fixed order:
         name (ASCII) + b":" + 2-byte big-endian length + value
 
-Integers are 8-byte big-endian, text is UTF-8, bytes are raw. The field name
-is part of each entry so no two field layouts can produce the same bytes.
-On the wire a certificate is a CBOR map of the same fields plus ``s`` (the
-64-byte signature). ``server/tests/test_identity_certs.py`` pins a vector
-that the Scout firmware checks too (``firmware/pocket/src/certs.cpp``).
+Integers are 8-byte big-endian, text is UTF-8, bytes are raw. On the wire a
+certificate is a CBOR map of the same fields plus ``s`` (the 64-byte
+signature). ``server/tests/test_identity_certs.py`` pins a vector that the
+Scout firmware checks too (``firmware/pocket/src/certs.cpp``).
 """
 
 from __future__ import annotations
@@ -47,25 +46,19 @@ from cryptography.hazmat.primitives.serialization import (
 MAGIC = b"WAYPOST-CERT-1\n"
 
 KIND_IDENTITY = "id"
-KIND_DEVICE = "dev"
 KIND_REVOCATION = "rev"
 
 # Field order per kind; every field is required.
 FIELDS: dict[str, tuple[str, ...]] = {
-    KIND_IDENTITY: ("k", "n", "i", "u", "dn", "t", "x"),
-    KIND_DEVICE: ("k", "n", "i", "u", "p", "d", "t", "x"),
+    KIND_IDENTITY: ("k", "n", "i", "u", "dn", "p", "t", "x"),
     KIND_REVOCATION: ("k", "n", "r", "t"),
 }
 INT_FIELDS = {"n", "r", "t", "x"}
-BYTES_FIELDS = {"i": 16, "p": 32, "d": 16}  # exact lengths
+BYTES_FIELDS = {"i": 16, "p": 32}  # exact lengths
 TEXT_FIELDS = {"k", "u", "dn"}
 
 MAX_DISPLAY_NAME = 40  # bytes; keeps a certificate inside one LoRa packet
 
-# What a device signs (with its Reticulum identity) to ask for a device
-# certificate for a signing key: proves the request comes from the device
-# Station paired, whatever env.src says.
-ISSUE_REQUEST_MAGIC = b"WAYPOST-CERT-REQUEST-1\n"
 
 
 class CertError(ValueError):
@@ -101,10 +94,6 @@ def canonical_bytes(cert: dict[str, Any]) -> bytes:
             raise CertError(f"field {name} too long")
         out += name.encode("ascii") + b":" + len(value).to_bytes(2, "big") + value
     return bytes(out)
-
-
-def issue_request_bytes(node_id: str, signing_key: bytes) -> bytes:
-    return ISSUE_REQUEST_MAGIC + node_id.encode("utf-8") + b"\n" + bytes(signing_key)
 
 
 def clip_utf8(text: str, limit: int) -> str:
@@ -169,7 +158,7 @@ def verify(cert: dict[str, Any], community_public: bytes) -> bool:
 
 
 def verify_signing_key(public: bytes, signature: bytes, message: bytes) -> bool:
-    """Ed25519 check with a device's signing key (used by D3 objects)."""
+    """Ed25519 check with a person's identity key (signed objects, logins)."""
     try:
         Ed25519PublicKey.from_public_bytes(bytes(public)).verify(bytes(signature), message)
         return True

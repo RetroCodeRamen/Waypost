@@ -113,12 +113,14 @@ class DispatchStore:
         if "for_user" not in courier_cols:
             self._conn.execute("ALTER TABLE courier_queue ADD COLUMN for_user TEXT")
         msg_cols = {r[1] for r in self._conn.execute("PRAGMA table_info(messages)").fetchall()}
-        # Signed messages (roadmap D3): the author device's signature (hex),
-        # the device certificate it was checked against, and the signed time.
+        # Signed messages (roadmap D3): the author's signature (hex), their
+        # identity id, and the signed time.
         if "sig" not in msg_cols:
             self._conn.execute("ALTER TABLE messages ADD COLUMN sig TEXT")
-        if "cert_serial" not in msg_cols:
+        if "cert_serial" not in msg_cols:  # 2026-10-04 device certificates; unused since
             self._conn.execute("ALTER TABLE messages ADD COLUMN cert_serial INTEGER")
+        if "author_id" not in msg_cols:  # the author's identity id (hex), 2026-10-05
+            self._conn.execute("ALTER TABLE messages ADD COLUMN author_id TEXT")
         if "signed_at" not in msg_cols:
             self._conn.execute("ALTER TABLE messages ADD COLUMN signed_at INTEGER")
 
@@ -345,11 +347,11 @@ class DispatchStore:
             """
             INSERT INTO messages
                 (id, conversation_id, sender, body, created_at, transport, delivery_state,
-                 sig, cert_serial, signed_at)
+                 sig, author_id, signed_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (mid, conversation_id, sender, body, ts, transport, delivery_state,
-             (signature or {}).get("sig"), (signature or {}).get("cert_serial"),
+             (signature or {}).get("sig"), (signature or {}).get("author_id"),
              (signature or {}).get("signed_at")),
         )
         self._conn.execute(
