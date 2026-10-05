@@ -8,7 +8,7 @@ different password is a different identity, so reusing someone's username
 can't intercept their friends' messages: contacts are pinned by key.
 
     seed = scrypt(password (UTF-8), salt = "waypost-identity-v1\\n" + lower(username),
-                  N = 4096, r = 8, p = 1, 32 bytes)
+                  N = 4096, r = 8, p = 4, 32 bytes)
     key  = Ed25519 private key with that seed
     id   = SHA-256(public key)[:16]
 
@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 SALT_PREFIX = b"waypost-identity-v1\n"
 SCRYPT_N = 4096
 SCRYPT_R = 8
-SCRYPT_P = 1
+SCRYPT_P = 4  # 4 passes: ~4.4 s on a Scout, ~1-2 s in a phone browser (measured/estimated 2026-10-05)
 MIN_PASSWORD = 10
 
 
