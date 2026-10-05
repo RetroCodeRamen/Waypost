@@ -166,6 +166,8 @@ Portal login: http://127.0.0.1:8000/login.html
 
 After milestone 1 the human said "everything is looking much better". Every pocket app and background job now runs on `firmware/scout`'s async base (details: [docs/scout-firmware-architecture.md](docs/scout-firmware-architecture.md) §6).
 
+**Human, hands-on:** "this looks a million times better". `firmware/scout` is now the Scout firmware; `firmware/pocket` is legacy (keep it until retired).
+
 **Live-verified:** boot to the PIN lock; requests answered over LoRa (`MSG_SYNC`, `BEACON_GET`, `CERT_REVOKED`, `SYNC HELLO/SUM`).
 
 **Not verified:** anything behind the lock. That needs the human's PIN, which agents don't enter.
