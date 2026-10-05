@@ -36,6 +36,9 @@ std::string boot_timing();
 // Called repeatedly while waiting on Station (tick) and once when the wait
 // ends (done) — main wires these to the title-bar spinner.
 void set_busy_hooks(void (*tick)(), void (*done)());
+// Called while waiting on the radio (main wires input::pump), so keys
+// typed during a request are kept.
+void set_wait_hook(void (*hook)());
 // Call every loop(): runs Reticulum and the periodic re-announce.
 void loop();
 

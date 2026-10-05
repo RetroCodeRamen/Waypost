@@ -160,6 +160,7 @@ void setup() {
                 static_cast<unsigned long>(millis() - splash_start),
                 station_link::ready() ? "ready" : "still starting");
   station_link::set_busy_hooks(ui::busy_tick, ui::busy_clear);
+  station_link::set_wait_hook(input::pump);  // keys typed during a request are kept
   g_last_input = g_last_activity = millis();
   if (!account::paired()) {
     apps::open(apps::login_app());  // adopted automatically if Station already knows us
@@ -170,10 +171,20 @@ void setup() {
 }
 
 
+// Someone is typing (or rolling the trackball): background network work
+// waits, so the loop stays free to handle keys. Each request blocks the
+// loop for a second or more, and the keyboard controller holds only one
+// key — typing a PIN during a sync lost keys (reported 2026-10-05).
+static const uint32_t kTypingQuietMs = 20000;
+static bool typing() {
+  uint32_t last = input::last_activity();
+  return last != 0 && millis() - last < kTypingQuietMs;
+}
+
 void loop() {
   station_link::loop();
   store::loop();  // writes saved-message changes once storage is free
-  certs::loop();  // offline identity: fetch/refresh certificates, save
+  if (!typing()) certs::loop();  // offline identity: fetch/refresh certificates, save
 
   // Once the radio task finishes (or fails), keep its timing for the
   // Signal app — serial output is lost when nobody is reading the port.
@@ -220,7 +231,7 @@ void loop() {
 
   // Learns/confirms which account this Scout belongs to once Station is in
   // reach (rate-limited inside).
-  if (!apps::locked()) apps::check_identity();
+  if (!apps::locked() && !typing()) apps::check_identity();
 
   // Fetch missed messages each time Station comes (back) into reach, and
   // every few minutes while it's in reach: a push whose frames were lost,
@@ -237,18 +248,20 @@ void loop() {
   bool came_back = known && !station_was_known &&
                    (last_catch_up == 0 || millis() - last_catch_up > 60000);
   bool periodic = known && last_catch_up != 0 && millis() - last_catch_up > kCatchUpEveryMs;
-  if ((came_back || periodic) && account::paired()) {
+  if ((came_back || periodic) && account::paired() && !typing()) {
     last_catch_up = millis();
     apps::catch_up_chat();  // saved on the Scout, so fine while locked too
     // A Beacon raised while we were off or away — shown even when locked.
     apps::check_beacon();
   }
-  station_was_known = known;
+  if (!typing()) station_was_known = known;  // a return while typing is caught up afterwards
 
   // Queued messages go out as soon as Station is in reach (one per loop).
-  if (known && account::paired()) apps::flush_outbox();
-  // Peer sync (D4): Station every few minutes, contacts' Scouts in range.
-  peersync::loop();
+  if (!typing()) {
+    if (known && account::paired()) apps::flush_outbox();
+    // Peer sync (D4): Station every few minutes, Outposts and contacts' Scouts in range.
+    peersync::loop();
+  }
 
   static uint32_t last_status = 0;
   if (millis() - last_status >= 1000) {

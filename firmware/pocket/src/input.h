@@ -25,5 +25,11 @@ struct Event {
 void init();
 // Returns at most one event per call; Kind::None when idle.
 Event poll();
+// Read the keyboard/trackball into a queue without handling anything —
+// called while the main loop waits on the radio, so keys typed meanwhile
+// aren't lost (the keyboard controller holds only one).
+void pump();
+// millis() of the last key or trackball event (0 = none since boot).
+uint32_t last_activity();
 
 }  // namespace input

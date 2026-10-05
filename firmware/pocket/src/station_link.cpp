@@ -87,8 +87,11 @@ class OutpostWatcher : public RNS::AnnounceHandler {
 void (*g_busy_tick)() = nullptr;
 void (*g_busy_done)() = nullptr;
 
+void (*g_wait_hook)() = nullptr;
+
 void busy_tick() {
   if (g_busy_tick) g_busy_tick();
+  if (g_wait_hook) g_wait_hook();
 }
 void busy_done() {
   if (g_busy_done) g_busy_done();
@@ -166,6 +169,8 @@ bool connect(RNS::Destination& out) {
 }
 
 }  // namespace
+
+void set_wait_hook(void (*hook)()) { g_wait_hook = hook; }
 
 void set_busy_hooks(void (*tick)(), void (*done)()) {
   g_busy_tick = tick;

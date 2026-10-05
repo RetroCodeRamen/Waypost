@@ -76,7 +76,7 @@ constexpr uint8_t kSerialSelect = 0x07;  // Ctrl-G
 constexpr uint8_t kSerialDump = 0x04;    // Ctrl-D
 constexpr uint8_t kSerialPixels = 0x18;  // Ctrl-X: full screenshot (raw RGB565)
 
-Event poll() {
+Event read_hw() {
   Event e;
 
 #if WAYPOST_USB_REMOTE
@@ -139,5 +139,41 @@ Event poll() {
   else if (take(g_right)) e.kind = Kind::Right;
   return e;
 }
+
+
+namespace {
+Event g_queue[32];
+size_t g_head = 0, g_count = 0;
+uint32_t g_last = 0;
+
+void push(const Event& e) {
+  g_last = millis();
+  if (g_count == 32) return;  // full: drop the newest rather than reorder
+  g_queue[(g_head + g_count) % 32] = e;
+  g_count++;
+}
+}  // namespace
+
+void pump() {
+  for (int i = 0; i < 4; i++) {
+    Event e = read_hw();
+    if (e.kind == Kind::None) break;
+    push(e);
+  }
+}
+
+Event poll() {
+  if (g_count) {
+    Event e = g_queue[g_head];
+    g_head = (g_head + 1) % 32;
+    g_count--;
+    return e;
+  }
+  Event e = read_hw();
+  if (e.kind != Kind::None) g_last = millis();
+  return e;
+}
+
+uint32_t last_activity() { return g_last; }
 
 }  // namespace input
