@@ -162,6 +162,16 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-05 — Claude (delivery receipts as signed objects, D4)
+
+`dispatch.rcpt` is built everywhere: Python reference and Station (`receipts` table; `DELIVERED` also when a receipt overtakes its message), the shared C++ library, the Outpost (stores and carries receipts; its page shows "delivered"), and the Scout (`receipts.*`). The Scout signs a receipt when a message from someone else lands, or at unlock if the PIN has the key locked, and shows "(delivered)" on your newest sent message. 6 new tests; 269 pass.
+
+**On hardware:** Station restarted on the new code; Outpost and Scout flashed. The Outpost self-test passes with the receipt vector. The Scout syncs with Station.
+
+**Pending (hand test):** a live round trip. The Scout's identity key is "none", so the human must sign out and back in on it once before it can sign anything.
+
+**Also:** the human chose to keep `firmware/pocket` for now. Removing it is blocked by the permission check, and the human hasn't decided.
+
 ### 2026-10-05 — Claude (Scout firmware rebuild, milestone 2: every app ported)
 
 After milestone 1 the human said "everything is looking much better". Every pocket app and background job now runs on `firmware/scout`'s async base (details: [docs/scout-firmware-architecture.md](docs/scout-firmware-architecture.md) §6).

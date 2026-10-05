@@ -460,8 +460,16 @@ or at once after writing). Outposts take everything (`*`): Station every 2 min (
 something new), and **push** a new message straight to the Scout of anyone it concerns who synced
 with that Outpost in the last 30 minutes.
 
-**Not yet:** delivery receipts as objects (a message pulled by sync is still `SENT` on Station),
-full capability announces (D6), courier policy (D7), Tier 2 (D8), rooms on the Outpost page.
+**Delivery receipts** (`dispatch.rcpt`, 2026-10-05): the recipient's device signs one when a message
+lands. Its canonical fields are `k o u a v m t` (`m` = the message's object id). The id is derived:
+`o = SHA-256("WAYPOST-RCPT-1\n" + m + lower(u))[:16]`, so all of a person's devices make the same
+receipt. On the wire it is a message's fields with `m` instead of `b`, and it travels in the same
+scopes. Every node checks the derived id and that a direct conversation's receipt comes from one of
+its two people. Station marks the message `DELIVERED`, also when the receipt arrives first. The
+Scout shows "(delivered)" on your newest sent message, and the Outpost page shows "delivered".
+Pinned vector: `server/tests/test_receipts.py`, checked by the firmware self-test.
+
+**Not yet:** full capability announces (D6), courier policy (D7), Tier 2 (D8), rooms on the Outpost page.
 
 ## Outpost Wi-Fi page API (`http://out.post/msg`, 2026-10-05)
 
