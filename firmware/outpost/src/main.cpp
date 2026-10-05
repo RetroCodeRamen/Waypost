@@ -35,6 +35,7 @@
 #include <LoRaInterface.h>
 #include <microReticulum.h>
 
+#include "wp_caps.h"
 #include "outpost_net.h"
 #include "outpost_objects.h"
 #include "outpost_web.h"
@@ -260,13 +261,27 @@ static String html_escape(const std::string& s) {
 // OutpostWatcher) and sync with them when in range.
 static const char* OUTPOST_MARKER = "WPOST-OUTPOST:";
 
+// Whether Station is in reach, as last announced (roadmap D6: Scouts with
+// no path of their own see "Station via Outpost").
+static bool g_announced_reach = false;
+
+static bool station_reach() {
+  RNS::Bytes s = onet::station_dest();
+  return s.size() == 16 && onet::has_path(s) && !onet::station_quiet();
+}
+
+// The marker (what Station and older Scouts read) plus the capability
+// record after a NUL (shared/protocol/caps.py). The Outpost's id is already
+// in the marker, so the record carries no name.
 static void announce_now() {
-  if (!g_claimed && g_auto_claim_enabled) {
-    std::string marker = std::string(AUTO_CLAIM_MARKER) + g_outpost_id;
-    g_destination.announce(RNS::Bytes(marker));
-  } else {
-    g_destination.announce(RNS::Bytes(std::string(OUTPOST_MARKER) + g_outpost_id));
-  }
+  std::string marker = (!g_claimed && g_auto_claim_enabled) ? std::string(AUTO_CLAIM_MARKER) + g_outpost_id
+                                                             : std::string(OUTPOST_MARKER) + g_outpost_id;
+  wp::Caps caps;
+  caps.role = wp::kRoleOutpost;
+  caps.services = wp::kSvcDispatch | wp::kSvcSync | wp::kSvcWifiPage;
+  g_announced_reach = station_reach();
+  caps.station = g_announced_reach ? wp::kStDirect : wp::kStNone;
+  g_destination.announce(wp::caps_app_data(marker, caps));
 }
 
 // -- Reticulum setup --
@@ -966,8 +981,13 @@ void loop() {
   handle_button();
 
   uint32_t now = millis();
-  static uint32_t last_announce = 0;
-  if (now - last_announce > REANNOUNCE_INTERVAL_MS) {
+  static uint32_t last_announce = 0, last_reach_check = 0;
+  bool reach_changed = false;
+  if (now - last_reach_check > 30000) {  // has_path reads flash: not every pass
+    last_reach_check = now;
+    reach_changed = station_reach() != g_announced_reach;
+  }
+  if (now - last_announce > REANNOUNCE_INTERVAL_MS || (reach_changed && now - last_announce > 120000)) {
     last_announce = now;
     announce_now();
   }

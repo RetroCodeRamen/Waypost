@@ -162,6 +162,16 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-05 — Claude (D6: capability records + Scout Nearby)
+
+Announces now carry `<marker> NUL CBOR{r role, s services, st Station reach, n name}` (`shared/protocol/caps.py`, `wp_caps.*`). Station's auto-claim parser reads only the marker part. Station, Outpost and Scout announce a record; Scouts include no name. The Scout has a new **Nearby** app (tile 5) and a home footer line ("Station reachable" / "Station via Outpost …" / "no Station - N nearby"). 4 new tests; all pass.
+
+**Verified over LoRa:** the Scout decoded Station's record (`role=1 services=fff station=1`) and the Outpost's (`role=2 services=1801`).
+
+**Station restarted:** it now runs as background task `bcakeh3su`.
+
+**Open:** `CAPS_GET`, the `h`/`v` fields, choosing sync peers by capability, and a hand look at the Nearby screen (the Scout is PIN-locked; the human must sign out and back in once, see the receipts entry below).
+
 ### 2026-10-05 — Claude (delivery receipts as signed objects, D4)
 
 `dispatch.rcpt` is built everywhere: Python reference and Station (`receipts` table; `DELIVERED` also when a receipt overtakes its message), the shared C++ library, the Outpost (stores and carries receipts; its page shows "delivered"), and the Scout (`receipts.*`). The Scout signs a receipt when a message from someone else lands, or at unlock if the PIN has the key locked, and shows "(delivered)" on your newest sent message. 6 new tests; 269 pass.

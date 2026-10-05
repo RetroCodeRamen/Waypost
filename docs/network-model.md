@@ -170,7 +170,7 @@ pending, paged to one packet for radio devices. It becomes the Dispatch-only spe
 
 ---
 
-## 6. Capability discovery  📋 (🟡 announce `app_data`)
+## 6. Capability discovery  🟡 built 2026-10-05 (announce records, Scout Nearby)
 
 Devices advertise **what they can do**, not where they sit in a hierarchy:
 
@@ -194,6 +194,15 @@ capability record (target ≤ 60 bytes):
 **On demand:** `CAPS_GET` returns the full record (storage free, object counts per kind, Station
 path age, area id). **Nearby view (Scout):** built from announces heard — "3 Scouts, 1 Outpost;
 Station via Outpost (2 min ago)".
+
+**Built (2026-10-05):** the record goes after the old marker and a NUL byte, so older readers keep
+working: `<marker> NUL CBOR{r, s, st, n?}` (`shared/protocol/caps.py`, `firmware/common/waypost_core/src/wp_caps.*`).
+Station, Outposts and Scouts announce one. Scouts put no name on the air, because announces are
+public. The Scout's **Nearby** app lists what it has heard and what each offers, and the home footer
+says "Station reachable", "Station via Outpost …" or "no Station - N nearby". Verified over LoRa:
+the Scout decoded Station's record (written by Python) and the Outpost's. **Not yet:** `CAPS_GET`,
+the `h` and `v` fields, and choosing sync peers by capability (Scouts still sync with Outposts and
+contacts' Scouts).
 
 Not every node implements every service. A small Outpost may offer only Dispatch, Postbox, Beacon,
 Noticeboard; Station offers everything. Clients choose peers by capability.

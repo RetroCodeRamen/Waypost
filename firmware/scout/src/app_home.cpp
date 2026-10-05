@@ -19,6 +19,7 @@ const Tile kTiles[] = {
     {"Beacon", "Emergency alerts", apps::beacon_app},
     {"Fieldbook", "Camp wiki", apps::fieldbook_app},
     {"Trailhead", "Station pages", apps::trailhead_app},
+    {"Nearby", "Who's in range", apps::nearby_app},
     {"Signal", "Radio + Station", apps::signal_app},
     {"Settings", "PIN, pairing", apps::settings_app},
 };
@@ -75,7 +76,8 @@ class HomeApp : public App {
     net::Status st = net::status();
     bool known = st.station_known;
     int radio = st.ready ? 1 : st.failed ? 2 : 0;
-    if (known != _known || radio != _radio || account::display_name() != _who) {
+    std::string summary = apps::nearby_summary();
+    if (known != _known || radio != _radio || account::display_name() != _who || summary != _summary) {
       _radio = radio;
       _who = account::display_name();
       draw_footer();
@@ -113,21 +115,16 @@ class HomeApp : public App {
   void draw_footer() {
     net::Status st = net::status();
     _known = st.station_known;
+    _summary = apps::nearby_summary();
     std::string who = account::paired() ? account::display_name() : std::string("not paired");
-    if (st.failed) {
-      ui::footer(who + "   radio failed to start - restart the Scout", ui::kError);
-    } else if (!st.ready) {
-      ui::footer(who + "   radio starting...", ui::kMuted);
-    } else {
-      ui::footer(who + (_known ? "   Station reachable" : "   looking for Station..."),
-                 _known ? ui::kLive : ui::kMuted);
-    }
+    uint16_t color = st.failed ? ui::kError : _known ? ui::kLive : ui::kMuted;
+    ui::footer(who + "   " + _summary, color);
   }
 
   int _sel = 0;
   bool _known = false;
   int _radio = -1;  // 0 starting, 1 ready, 2 failed
-  std::string _who;
+  std::string _who, _summary;
 };
 
 }  // namespace

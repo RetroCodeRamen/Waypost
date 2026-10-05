@@ -19,6 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
+from shared.protocol.caps import (
+    ROLE_STATION,
+    ST_SELF,
+    STATION_SERVICES,
+    Caps,
+    app_data as caps_app_data,
+    split as split_caps,
+)
 from server.transports.base import (
     LinkQuality,
     RouteInfo,
@@ -288,7 +296,7 @@ class ReticulumTransport(Transport):
             ASPECT,
         )
         self._destination.set_packet_callback(self._on_packet)
-        self._destination.announce()
+        self._destination.announce(app_data=self.announce_data())
 
         self._announce_handler = _OutpostAnnounceHandler(self)
         RNS.Transport.register_announce_handler(self._announce_handler)
@@ -301,6 +309,11 @@ class ReticulumTransport(Transport):
             self.destination_hash_hex,
             self.config_dir,
         )
+
+    @staticmethod
+    def announce_data() -> bytes:
+        """Station's capability record (roadmap D6): everything, and it is Station."""
+        return caps_app_data(b"", Caps(role=ROLE_STATION, services=STATION_SERVICES, station=ST_SELF))
 
     def _remember_peer_identity(self, dest_hex: str, identity: object) -> None:
         """Cache an identity learned from a live announce — lets the very
@@ -328,7 +341,9 @@ class ReticulumTransport(Transport):
             logger.exception("failed to read outpost announce destination hash")
             return
         self._remember_peer_identity(dest_hex, announced_identity)
-        if not app_data or not app_data.startswith(AUTO_CLAIM_MARKER):
+        # The marker is what comes before the capability record (shared/protocol/caps.py).
+        marker, _caps = split_caps(app_data)
+        if not marker.startswith(AUTO_CLAIM_MARKER):
             return
         if self._destination is not None and destination_hash == self._destination.hash:
             return  # never auto-claim our own announce
@@ -336,7 +351,7 @@ class ReticulumTransport(Transport):
         if callback is None or self._loop is None:
             return
         try:
-            rest = app_data[len(AUTO_CLAIM_MARKER) :].decode("utf-8", errors="replace")
+            rest = marker[len(AUTO_CLAIM_MARKER) :].decode("utf-8", errors="replace")
             node_id, _, display_name = rest.partition("|")
             node_id = node_id.strip()
             if not node_id:

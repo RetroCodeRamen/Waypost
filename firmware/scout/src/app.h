@@ -1,6 +1,8 @@
 // Scout app framework — one app owns the screen at a time.
 #pragma once
 
+#include <string>
+
 #include "input.h"
 #include "store.h"
 #include "waylink_cbor.h"
@@ -31,6 +33,9 @@ App& login_app();  // username + password (replaced the pairing code, 2026-10-05
 App& lock_app();
 App& settings_app();
 App& beacon_app();
+App& nearby_app();
+// One line: "Station reachable" / "Station via Outpost x" / "no Station - 2 nearby".
+std::string nearby_summary();
 
 // Lock screen (when a PIN is set); unlocking returns to the app that was
 // showing.

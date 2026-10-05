@@ -849,6 +849,13 @@ void write_value(CborWriter& w, const Value& v) {
 }
 }  // namespace
 
+RNS::Bytes encode_value(const Value& v) {
+  RNS::Bytes out;
+  CborWriter w(out);
+  write_value(w, v);
+  return out;
+}
+
 RNS::Bytes encode_envelope(const char* src, const char* dst, const std::string& mid,
                            const std::string& rid, const char* svc, const char* op, uint64_t flags,
                            uint32_t ttl, uint64_t ts, const Value& payload) {

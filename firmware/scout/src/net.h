@@ -20,6 +20,7 @@
 
 #include "radio.h"
 #include "waylink_cbor.h"
+#include "wp_caps.h"
 
 namespace net {
 
@@ -67,6 +68,16 @@ bool incoming(Incoming& out);
 // net task refreshes (has_path reads flash, ~45 ms — never per frame).
 bool has_path(const RNS::Bytes& dest);
 
+// A Waypost node heard announcing (roadmap D6): what it says it can do.
+struct Peer {
+  std::string dest_hex;
+  wp::Caps caps;
+  bool has_caps = false;  // an older node: only its marker
+  std::string marker;     // WPOST-OUTPOST:<id> / WPOST-CLAIM:<id> / ""
+  uint32_t heard_at = 0;  // millis()
+  bool outpost() const { return (caps.role & wp::kRoleOutpost) || marker.compare(0, 6, "WPOST-") == 0; }
+};
+
 struct Status {
   bool ready = false, failed = false;
   bool station_known = false;  // path known and not gone quiet
@@ -74,6 +85,7 @@ struct Status {
   std::string dest_hex;        // this Scout's destination
   std::string boot;            // boot timing, once finished
   std::vector<std::string> outposts;  // Outposts heard announcing (dest hex)
+  std::vector<Peer> nearby;           // every Waypost node heard, newest first
   radio::Stats radio;
 };
 Status status();

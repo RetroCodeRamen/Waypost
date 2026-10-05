@@ -97,6 +97,9 @@ struct Value {
   void push(Value v);                    // Array: append
 };
 
+// Any value as CBOR (announce capability records, wp_caps.h).
+RNS::Bytes encode_value(const Value& v);
+
 // A whole envelope with any payload tree (requests and replies).
 // flags: 1 = REQUEST, 2 = RESPONSE, 4 = ERROR.
 RNS::Bytes encode_envelope(const char* src, const char* dst, const std::string& mid,

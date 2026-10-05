@@ -168,22 +168,48 @@ void on_packet(const RNS::Bytes& data, const RNS::Packet&) {
   Serial.printf("net: stale reply rid=%s dropped\n", reply.rid.c_str());
 }
 
-class OutpostWatcher : public RNS::AnnounceHandler {
+// Every waypost.waylink announce: who's around and what they can do.
+class PeerWatcher : public RNS::AnnounceHandler {
  public:
-  OutpostWatcher() : RNS::AnnounceHandler("waypost.waylink") {}
+  PeerWatcher() : RNS::AnnounceHandler("waypost.waylink") {}
   void received_announce(const RNS::Bytes& destination_hash, const RNS::Identity&,
                          const RNS::Bytes& app_data) override {
-    std::string ad(reinterpret_cast<const char*>(app_data.data()), app_data.size());
-    if (ad.compare(0, 14, "WPOST-OUTPOST:") != 0 && ad.compare(0, 12, "WPOST-CLAIM:") != 0) return;
-    std::string hex = destination_hash.toHex();
+    Peer p;
+    p.dest_hex = destination_hash.toHex();
+    p.has_caps = wp::split_caps(app_data, p.marker, p.caps);
+    p.heard_at = millis() | 1;
+    Serial.printf("net: heard %s role=%u services=%x station=%u%s\n", p.dest_hex.substr(0, 8).c_str(),
+                  static_cast<unsigned>(p.caps.role), static_cast<unsigned>(p.caps.services),
+                  static_cast<unsigned>(p.caps.station), p.has_caps ? "" : " (no record)");
     Lock l;
-    auto& v = g_status.outposts;
-    if (std::find(v.begin(), v.end(), hex) != v.end()) return;
-    if (v.size() >= 8) v.erase(v.begin());
-    v.push_back(hex);
-    Serial.printf("net: Outpost heard %s\n", hex.c_str());
+    auto& v = g_status.nearby;
+    for (auto it = v.begin(); it != v.end(); ++it)
+      if (it->dest_hex == p.dest_hex) {
+        v.erase(it);
+        break;
+      }
+    v.insert(v.begin(), p);
+    if (v.size() > 16) v.pop_back();
+    if (p.outpost()) {
+      auto& o = g_status.outposts;
+      if (std::find(o.begin(), o.end(), p.dest_hex) == o.end()) {
+        if (o.size() >= 8) o.erase(o.begin());
+        o.push_back(p.dest_hex);
+        Serial.printf("net: Outpost heard %s\n", p.dest_hex.c_str());
+      }
+    }
   }
 };
+
+// This Scout's capability record: Dispatch, Beacon, peer sync; whether it
+// can reach Station right now. No name: announces are public.
+RNS::Bytes my_caps(bool station) {
+  wp::Caps c;
+  c.role = wp::kRoleScout;
+  c.services = wp::kSvcDispatch | wp::kSvcBeacon | wp::kSvcSync;
+  c.station = station ? wp::kStDirect : wp::kStNone;
+  return wp::caps_app_data("", c);
+}
 
 // -- paths ------------------------------------------------------------------------
 
@@ -417,7 +443,7 @@ bool bring_up() {
   g_reticulum.probe_destination_enabled(false);     // nothing probes a Scout
   RNS::Reticulum::neighbor_probing_enabled(false);  // Station never proves Waylink packets
   g_reticulum.start();
-  RNS::Transport::register_announce_handler(RNS::HAnnounceHandler(new OutpostWatcher()));
+  RNS::Transport::register_announce_handler(RNS::HAnnounceHandler(new PeerWatcher()));
   step_log("reticulum");
 
   g_identity = RNS::Identity::from_file(kIdentityPath);
@@ -433,7 +459,7 @@ bool bring_up() {
   g_node_id = std::string(WAYPOST_POCKET_ID) + "-" + hex.substr(0, 4);
   step_log("identity");
 
-  g_destination.announce();
+  g_destination.announce(my_caps(false));
   step_log("announce");
   Serial.printf("net: ready, destination %s, node %s\n", hex.c_str(), g_node_id.c_str());
   Lock l;
@@ -476,8 +502,19 @@ void task(void*) {
     run_requests();
     run_sends();
     refresh_paths();
-    if (millis() - last_announce >= kReannounceMs) {
-      g_destination.announce();
+    // Re-announce every 10 min, or (at most every 2 min) when Station
+    // reach changes, so Nearby screens around us see it.
+    static bool announced_reach = false;
+    bool reach = false;
+    {
+      Lock l;
+      reach = g_status.station_known;
+    }
+    bool due = millis() - last_announce >= kReannounceMs ||
+               (reach != announced_reach && millis() - last_announce >= 2UL * 60UL * 1000UL);
+    if (due) {
+      g_destination.announce(my_caps(reach));
+      announced_reach = reach;
       last_announce = millis();
     }
     if (millis() - last_status >= 250) {
