@@ -1,186 +1,189 @@
-// Waypost Scout — rebuilt firmware, milestone 1 (docs/scout-firmware-architecture.md).
+// Waypost Scout — LilyGO T-Deck. Rebuilt 2026-10-05
+// (docs/scout-firmware-architecture.md).
 //
-// Two tasks and nothing else:
-//   net (core 0)  Reticulum, the radio, every network job   — net.cpp
-//   ui  (core 1)  keys, trackball, drawing, screen flushes  — here
-// They share only net's command queue and status snapshot, and the SPI bus
-// under one lock (bus.h). No apps yet: a test screen to prove the screen
-// and keys stay smooth while the radio is busy (press F for a PING flood).
+// A Cybiko-style handheld: a home launcher and apps (Dispatch, Beacon,
+// Fieldbook, Trailhead, Signal, Settings) talking to Station — and to
+// Outposts and other Scouts — over microReticulum on the LoRa radio.
+//
+// Tasks:
+//   net    (core 0)  Reticulum, the radio, every packet          net.*
+//   ui     (core 1)  keys, apps, all app state, the screen       here, app_*.cpp
+//   crypto (core 1)  password key, PIN seal                      tasks.*
+//   sync   (core 1)  peer sync                                   sync.*
+// The UI task never waits on the network or on slow crypto: requests take a
+// callback (rpc::ask), workers post their results back.
+//
+//   board.*    bring-up order          bus.*      the shared SPI bus lock
+//   display.*  LovyanGFX + canvas      ui.*       drawing kit
+//   input.*    keyboard, trackball     radio.*    non-blocking LoRa driver
+//   store.*    messages on flash       certs.*    identity + certificates
 #include <string>
 
 #include <Arduino.h>
 
+#include "account.h"
+#include "app.h"
 #include "board.h"
+#include "certs.h"
+#include "contacts.h"
 #include "display.h"
 #include "input.h"
 #include "net.h"
+#include "scout_logo.h"
+#include "store.h"
+#include "sync.h"
+#include "tasks.h"
+#include "ui.h"
 
 namespace {
 
-constexpr uint32_t kFrameMs = 33;  // ~30 frames a second
+constexpr uint32_t kFrameMs = 33;                         // ~30 frames a second
+constexpr uint32_t kIdleLockMs = 5UL * 60UL * 1000UL;     // PIN lock after no keys
+constexpr uint32_t kIdleDimMs = 60UL * 1000UL;            // dim the screen
+constexpr uint32_t kIdleOffMs = 3UL * 60UL * 1000UL;      // then switch it off
+constexpr uint8_t kDimLevel = 3;
+constexpr uint32_t kCatchUpEveryMs = 3UL * 60UL * 1000UL;
+constexpr uint32_t kSplashMs = 2500;
 
-struct Colours {
-  uint16_t bg, panel, text, dim, accent, ok, warn, bad;
-};
-Colours c;
+uint32_t g_last_input = 0;     // last key (the lock timer)
+uint32_t g_last_activity = 0;  // last key, or something worth showing (the screen)
 
-// What the UI shows, kept by the UI task.
-uint32_t g_frames = 0, g_fps = 0, g_frame_max_ms = 0;
-std::string g_typed;
-std::string g_last_key = "-";
-uint32_t g_keys = 0, g_rolls = 0;
+// Something arrived that the person should see: light the screen. Doesn't
+// postpone the PIN lock.
+void wake() { g_last_activity = millis(); }
 
-const char* kind_name(input::Kind k) {
-  switch (k) {
-    case input::Kind::Up: return "up";
-    case input::Kind::Down: return "down";
-    case input::Kind::Left: return "left";
-    case input::Kind::Right: return "right";
-    case input::Kind::Select: return "press";
-    case input::Kind::Enter: return "enter";
-    case input::Kind::Backspace: return "backspace";
-    default: return "?";
+// -- boot screen ------------------------------------------------------------------
+
+constexpr int kBarX = 60, kBarY = 229, kBarW = ui::kWidth - 120, kBarH = 5;
+
+void draw_splash(int percent) {
+  auto& t = ui::tft();
+  if (percent == 0) {
+    t.pushImage(0, 0, SCOUT_LOGO_WIDTH, SCOUT_LOGO_HEIGHT, SCOUT_LOGO);
+    ui::mark_dirty();
   }
+  t.fillRoundRect(kBarX, kBarY, kBarW, kBarH, 2, ui::rgb(0xdf, 0xe5, 0xe0));
+  if (percent > 0) t.fillRoundRect(kBarX, kBarY, kBarW * percent / 100, kBarH, 2, ui::rgb(0x0b, 0x3a, 0x2a));
+  ui::mark_dirty(kBarX, kBarY, kBarW, kBarH);
 }
 
-void handle(const input::Event& e) {
-  if (e.kind == input::Kind::Char) {
-    g_keys++;
-    g_last_key = std::string("'") + e.ch + "'";
-    char lower = static_cast<char>(tolower(e.ch));
-    if (lower == 'f') net::send(net::Command::ToggleFlood);
-    else if (lower == 'p') net::send(net::Command::Ping);
-    else if (lower == 'a') net::send(net::Command::Announce);
-    if (g_typed.size() >= 30) g_typed.erase(0, 1);
-    g_typed += e.ch;
-    return;
+// -- network events -----------------------------------------------------------------
+
+void handle_incoming() {
+  net::Incoming in;
+  while (net::incoming(in)) {
+    if (in.kind == net::Incoming::Chat) {
+      apps::deliver_chat(in.chat);
+      wake();
+    } else if (in.event.envelope.text("op") == "BEACON_ALERT") {
+      apps::beacon_event(in.event.payload());
+    } else if (in.event.envelope.text("svc") == "SYNC") {
+      peersync::handle(in.event);  // a peer syncing with us
+    }
   }
-  g_last_key = kind_name(e.kind);
-  if (e.kind == input::Kind::Up || e.kind == input::Kind::Down || e.kind == input::Kind::Left ||
-      e.kind == input::Kind::Right) {
-    g_rolls++;
-  } else {
-    g_keys++;
+  if (apps::beacon_showing()) wake();  // an alert keeps the screen lit
+}
+
+// Background work with Station and peers. Every piece is asynchronous; each
+// keeps at most one request out.
+void background() {
+  store::loop();
+  certs::loop();
+  apps::beacon_save();
+  if (!apps::locked()) apps::check_identity();
+
+  // Fetch missed messages each time Station comes (back) into reach, and
+  // every few minutes while it's in reach: a push whose frames or ack were
+  // lost stays pending on Station until MSG_SYNC collects it (duplicates
+  // are dropped by message id).
+  static bool was_known = false;
+  static uint32_t last_catch_up = 0;
+  bool known = net::station_known();
+  bool came_back = known && !was_known && (last_catch_up == 0 || millis() - last_catch_up > 60000);
+  bool periodic = known && last_catch_up != 0 && millis() - last_catch_up > kCatchUpEveryMs;
+  if ((came_back || periodic) && account::paired()) {
+    last_catch_up = millis();
+    apps::catch_up_chat();  // saved on the Scout, so fine while locked too
+    apps::check_beacon();   // a Beacon raised while we were off or away
   }
-  if (e.kind == input::Kind::Backspace && !g_typed.empty()) g_typed.pop_back();
-  if (e.kind == input::Kind::Enter) g_typed.clear();
-  if (e.kind == input::Kind::Select) net::send(net::Command::Ping);
+  was_known = known;
+
+  if (known && account::paired()) apps::flush_outbox();
+  peersync::loop();
 }
 
-const char* stage_name(const net::Status& s) {
-  switch (s.stage) {
-    case net::Stage::Starting: return s.step;
-    case net::Stage::Ready: return "ready";
-    case net::Stage::Failed: return "FAILED";
+void handle_input() {
+  App* app = apps::current();
+  input::Event e;
+  while (input::next(e)) {
+    bool was_dark = ui::brightness() == 0;
+    g_last_input = g_last_activity = millis();
+    if (was_dark) continue;  // the key that wakes a dark screen only wakes it
+    app->on_event(e);
+    app = apps::current();  // on_event may have switched apps
   }
-  return "?";
-}
-
-// The text part, redrawn only when what it shows changes.
-std::string text_snapshot(const net::Status& s) {
-  char buf[512];
-  snprintf(buf, sizeof(buf),
-           "%u|%u|%s|%s|%d|%d|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%.0f|%.1f|%u|%s|%s|%u|%u",
-           g_fps, g_frame_max_ms, stage_name(s), s.dest, s.station_path, s.flooding, s.pings_sent,
-           s.pings_ok, s.pings_lost, s.last_rtt_ms, s.loop_max_ms, s.radio.tx_packets,
-           s.radio.rx_packets, s.radio.tx_frames, s.radio.rx_frames, s.radio.busy_backoffs,
-           s.radio.last_rssi, s.radio.last_snr, s.radio.rx_errors + s.radio.tx_errors,
-           g_last_key.c_str(), g_typed.c_str(), g_keys, g_rolls);
-  return buf;
-}
-
-void draw_text(const net::Status& s) {
-  auto& g = display::canvas();
-  constexpr int kTop = 0, kBottom = 224;
-  g.fillRect(0, kTop, board::kWidth, kBottom - kTop, c.bg);
-
-  g.fillRect(0, 0, board::kWidth, 22, c.panel);
-  g.setFont(&fonts::Font2);
-  g.setTextColor(c.accent, c.panel);
-  g.setCursor(6, 3);
-  g.print("WAYPOST SCOUT");
-  g.setTextColor(c.dim, c.panel);
-  g.print("  rebuild test");
-
-  g.setTextColor(c.text, c.bg);
-  int y = 28;
-  auto line = [&](uint16_t colour, const char* text) {
-    g.setTextColor(colour, c.bg);
-    g.setCursor(6, y);
-    g.print(text);
-    y += 17;
-  };
-  char b[96];
-  snprintf(b, sizeof(b), "Screen  %u fps   slowest frame %u ms", g_fps, g_frame_max_ms);
-  line(c.text, b);
-  snprintf(b, sizeof(b), "Net     %s   slowest pass %u ms", stage_name(s), s.loop_max_ms);
-  line(s.stage == net::Stage::Failed ? c.bad : (s.stage == net::Stage::Ready ? c.ok : c.warn), b);
-  snprintf(b, sizeof(b), "Me      %.16s", s.dest[0] ? s.dest : "-");
-  line(c.dim, b);
-  snprintf(b, sizeof(b), "Station %s", s.station_path ? "path known" : "no path yet");
-  line(s.station_path ? c.ok : c.warn, b);
-  snprintf(b, sizeof(b), "Radio   tx %u/%u  rx %u/%u  busy %u  err %u", s.radio.tx_packets, s.radio.tx_frames, s.radio.rx_packets, s.radio.rx_frames, s.radio.busy_backoffs, s.radio.rx_errors + s.radio.tx_errors);
-  line(c.text, b);
-  snprintf(b, sizeof(b), "        last %.0f dBm  SNR %.1f", s.radio.last_rssi, s.radio.last_snr);
-  line(c.dim, b);
-  snprintf(b, sizeof(b), "PING    %u sent  %u ok  %u lost  %u ms%s", s.pings_sent, s.pings_ok, s.pings_lost, s.last_rtt_ms, s.flooding ? "  FLOOD" : "");
-  line(s.flooding ? c.warn : c.text, b);
-  snprintf(b, sizeof(b), "Keys    %u   rolls %u   last %s", g_keys, g_rolls, g_last_key.c_str());
-  line(c.text, b);
-  snprintf(b, sizeof(b), "> %s_", g_typed.c_str());
-  line(c.accent, b);
-  y += 4;
-  snprintf(b, sizeof(b), "P ping   F flood on/off   A announce");
-  line(c.dim, b);
-  snprintf(b, sizeof(b), "press: ping   enter: clear");
-  line(c.dim, b);
-  display::mark(0, kTop, board::kWidth, kBottom - kTop);
-}
-
-// A block sweeping along the bottom every frame: if anything stalls the UI
-// or the panel stops taking updates, it visibly stops or tears.
-void draw_sweep() {
-  auto& g = display::canvas();
-  constexpr int kY = 228, kH = 10, kW = 40;
-  g.fillRect(0, kY, board::kWidth, kH, c.panel);
-  int x = (g_frames * 4) % (board::kWidth + kW) - kW;
-  g.fillRect(x, kY, kW, kH, c.accent);
-  display::mark(0, kY, board::kWidth, kH);
+  if (millis() - g_last_input >= kIdleLockMs && account::has_pin() && !apps::locked() &&
+      !apps::beacon_showing()) {
+    apps::lock();
+  }
 }
 
 void ui_task(void*) {
-  uint32_t second = millis(), frames_this_second = 0, worst = 0;
-  std::string shown;
-  TickType_t wake = xTaskGetTickCount();
+  tasks::set_ui_task();
+  // Boot screen while the radio starts on its own task.
+  uint32_t start = millis();
+  for (int pct = 0; millis() - start < kSplashMs; pct = (millis() - start) * 100 / kSplashMs) {
+    draw_splash(pct);
+    display::flush();
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  ui::init();
+  ui::set_unread(store::unread_total());
+  g_last_input = g_last_activity = millis();
+  if (!account::paired()) {
+    apps::open(apps::login_app());
+  } else {
+    apps::home();
+    apps::lock();  // no-op without a PIN
+  }
+
+  uint32_t frame_at = millis(), second_at = millis(), frames = 0, worst = 0;
   for (;;) {
     uint32_t t0 = millis();
+    tasks::drain();   // results from the workers
+    rpc::poll();     // finished requests' callbacks
+    handle_incoming();
     input::poll();
-    input::Event e;
-    while (input::next(e)) handle(e);
+    handle_input();
+    apps::current()->tick();
+    background();
 
-    net::Status s = net::status();
-    std::string snap = text_snapshot(s);
-    if (snap != shown) {
-      draw_text(s);
-      shown = snap;
+    static uint32_t status_at = 0;
+    if (millis() - status_at >= 1000) {
+      status_at = millis();
+      ui::set_station_ok(net::station_known());
     }
-    draw_sweep();
+    ui::animate(rpc::busy() > 0);
+    uint32_t idle = millis() - g_last_activity;
+    ui::set_brightness(idle >= kIdleOffMs ? 0 : idle >= kIdleDimMs ? kDimLevel : ui::kBrightnessMax);
     display::flush();
 
-    g_frames++;
-    frames_this_second++;
+    frames++;
     worst = std::max<uint32_t>(worst, millis() - t0);
-    if (millis() - second >= 1000) {
-      g_fps = frames_this_second;
-      g_frame_max_ms = worst;
-      Serial.printf("ui: %u fps, slowest frame %u ms | net %s, pass max %u ms, tx %u rx %u busy %u\n",
-                    g_fps, g_frame_max_ms, stage_name(s), s.loop_max_ms, s.radio.tx_packets,
-                    s.radio.rx_packets, s.radio.busy_backoffs);
-      frames_this_second = 0;
-      worst = 0;
-      second = millis();
+    if (millis() - second_at >= 60000) {
+      Serial.printf("ui: %lu frames/min, slowest %lu ms, %d request(s) out\n",
+                    static_cast<unsigned long>(frames), static_cast<unsigned long>(worst), net::pending());
+      frames = worst = 0;
+      second_at = millis();
     }
-    vTaskDelayUntil(&wake, pdMS_TO_TICKS(kFrameMs));
+    // Next frame, or sooner if a worker posts something.
+    frame_at += kFrameMs;
+    int32_t left = static_cast<int32_t>(frame_at - millis());
+    if (left <= 0) {
+      frame_at = millis();
+      left = 1;
+    }
+    tasks::wait(left);
   }
 }
 
@@ -188,14 +191,28 @@ void ui_task(void*) {
 
 void setup() {
   Serial.begin(115200);
+  // Native USB serial: with nobody reading the port, a write would block
+  // until a timeout. Drop instead.
+  Serial.setTxTimeoutMs(0);
   board::bring_up();
   display::init();
-  c = {display::rgb(8, 20, 24),    display::rgb(16, 44, 52),  display::rgb(220, 232, 230),
-       display::rgb(120, 150, 150), display::rgb(64, 200, 190), display::rgb(90, 210, 120),
-       display::rgb(240, 190, 70),  display::rgb(240, 90, 80)};
+  draw_splash(0);
+  display::flush();
   input::init();
+  Serial.println("\nWaypost Scout");
+
+  // Files first (the apps' own), then the tasks.
+  net::mount_storage();
+  account::load();
+  contacts::load();
+  store::load();
+  apps::beacon_load();
+  certs::load();
+  certs::self_test();
+
+  tasks::start_workers();
   net::start();
-  xTaskCreatePinnedToCore(ui_task, "ui", 16384, nullptr, 3, nullptr, 1);
+  xTaskCreatePinnedToCore(ui_task, "ui", 24576, nullptr, 3, nullptr, 1);
 }
 
-void loop() { vTaskDelete(nullptr); }  // the two tasks do everything
+void loop() { vTaskDelete(nullptr); }  // the tasks do everything

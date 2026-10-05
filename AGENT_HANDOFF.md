@@ -162,6 +162,18 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-05 — Claude (Scout firmware rebuild, milestone 2: every app ported)
+
+After milestone 1 the human said "everything is looking much better". Every pocket app and background job now runs on `firmware/scout`'s async base (details: [docs/scout-firmware-architecture.md](docs/scout-firmware-architecture.md) §6).
+
+**Live-verified:** boot to the PIN lock; requests answered over LoRa (`MSG_SYNC`, `BEACON_GET`, `CERT_REVOKED`, `SYNC HELLO/SUM`).
+
+**Not verified:** anything behind the lock. That needs the human's PIN, which agents don't enter.
+
+**Open:**
+- `esp_littlefs: Failed to unlink /hashlist_store/seg1.dat. Has open FD` appears in the boot log. It comes from microReticulum's own store, and I haven't checked whether pocket logged it too.
+- Panel colour order: LovyanGFX `rgb_order=false`, where pocket used BGR. The human should confirm the blue-greens don't look olive.
+
 ### 2026-10-05 — Claude (Scout firmware rebuild, milestone 1)
 
 The human chose to rebuild the Scout firmware fresh alongside the old one, using LovyanGFX ([docs/scout-firmware-architecture.md](docs/scout-firmware-architecture.md)). New project `firmware/scout`: two tasks (net on core 0 owns Reticulum and the radio; ui on core 1 at 30 Hz), one SPI bus lock shared by RadioLib and the display, an interrupt-driven non-blocking LoRa driver (the same RNode framing), and LovyanGFX dirty-rect flushes. No apps yet, only a test screen (P = ping Station, F = ping flood, A = announce). Flashed: 31 fps, Station heard its announce. **Waiting on:** the human's test that the screen stays right while the network is busy. After that, port the apps (Dispatch first) onto the async API. `firmware/pocket` is unchanged; flash it back to restore the full app.

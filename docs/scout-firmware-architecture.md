@@ -131,4 +131,21 @@ Measured on the device: steady 31 fps; net passes ~0 ms except Reticulum's own c
 off the UI core); Station heard the announce over its RNode. Same partitions and file names as
 pocket, so the identity is kept.
 Next: the human's busy-network test (F = PING flood), then apps on the async command/event API,
-Dispatch first.
+Dispatch first. *(Human, same day: "everything is looking much better".)*
+
+**Milestone 2 — every app ported (2026-10-05).** All of pocket's apps and background work now run on
+the new base:
+- `net` takes any Waylink request (Station or a peer) and returns the result later (`request` /
+  `result`). It also handles pushes and unsolicited requests (`incoming`), a cached `has_path`, the
+  Station-quiet back-off and Station's clock. **One request on the air at a time**: with two, a
+  request sent while Station's reply to the first was arriving lost that reply (LoRa is half duplex).
+- `tasks.*`: `rpc::ask` (callback on the UI task) for apps and jobs; `rpc::call` (blocking) for
+  workers only. A **crypto** worker does the password key (scrypt, ~4 s) and the PIN seal/unlock
+  (PBKDF2, the old slow PIN screen). A **sync** worker runs peer sync, whose shared engine waits on
+  replies; its store access is passed to the UI task (`on_ui`).
+- The UI task owns all app state; certs, catch-up, outbox, identity check, contacts and Beacon are
+  callback chains with at most one request out each.
+- App files are safe to use at any time (LittleFS locks each operation), so pocket's
+  `files_safe()` wait is gone.
+- `ui.*` sits on the LovyanGFX canvas, and rows that haven't changed aren't redrawn.
+- The radio interface keeps pocket's name ("LoRaInterface"), because saved paths refer to its hash.

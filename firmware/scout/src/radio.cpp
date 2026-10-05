@@ -54,7 +54,9 @@ bool take_dio1() {
 
 void set_wake_task(void* task_handle) { g_wake = static_cast<TaskHandle_t>(task_handle); }
 
-AsyncLoRa::AsyncLoRa() : RNS::InterfaceImpl("LoRa") {
+// Named as pocket's driver was: the interface hash comes from the name, and
+// paths saved on flash refer to it.
+AsyncLoRa::AsyncLoRa() : RNS::InterfaceImpl("LoRaInterface") {
   _IN = true;
   _OUT = true;
   _bitrate = kSpreading * ((4.0 / kCoding) / (pow(2, kSpreading) / kBandwidth)) * 1000.0;
