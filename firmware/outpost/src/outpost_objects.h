@@ -30,7 +30,10 @@ struct Conversation {
   size_t count = 0;
 };
 std::vector<Conversation> conversations_for(const std::string& user);
-std::vector<wp::Obj> messages(const std::string& conv, size_t max);
+// Messages only (oldest first); `delivered`, if given, gets the ids of
+// messages that have a delivery receipt.
+std::vector<wp::Obj> messages(const std::string& conv, size_t max,
+                              std::vector<std::string>* delivered = nullptr);
 // A message written on the Wi-Fi page, already checked against the
 // signed-in session's key. "" when kept.
 std::string add_local(const wp::Obj& obj);

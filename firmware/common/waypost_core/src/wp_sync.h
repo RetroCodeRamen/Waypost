@@ -15,15 +15,19 @@
 
 namespace wp {
 
-// A signed dispatch.msg (server/services/identity/objects.py).
+// A signed object (server/services/identity/objects.py): a dispatch.msg, or
+// with `m` set a dispatch.rcpt (delivery receipt, no body).
 struct Obj {
   std::string o;  // object id, 16 raw bytes (message id = hex)
   std::string u;  // author's username (from their certificate)
   std::string a;  // author's identity id, 16 raw bytes
   std::string v;  // conversation id
-  std::string b;  // body
+  std::string b;  // body (messages)
   std::string s;  // signature, 64 raw bytes
   uint64_t t;     // signed time (s) — a plain aggregate (brace-initialised)
+  std::string m;  // receipts: the message's object id (16 raw bytes); "" for a message
+
+  bool receipt() const { return !m.empty(); }
 };
 
 // What a node holds, in the shape scopes need (no bodies).

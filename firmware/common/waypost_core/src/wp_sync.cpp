@@ -134,7 +134,8 @@ Value to_wire(const Obj& obj) {
   Value w = Value::make_map();
   w.set("o", Value::of_bytes(obj.o));
   w.set("a", Value::of_bytes(obj.a));
-  w.set("b", Value::of_text(obj.b));
+  if (obj.receipt()) w.set("m", Value::of_bytes(obj.m));
+  else w.set("b", Value::of_text(obj.b));
   w.set("t", Value::of_uint(obj.t));
   w.set("s", Value::of_bytes(obj.s));
   if (obj.v.compare(0, 3, "dm:") == 0) {
@@ -152,11 +153,12 @@ bool from_wire(const Value& w, ObjectSet& set, Obj& obj) {
   if (obj.u.empty()) return false;
   obj.o = w.bytes("o");
   obj.b = w.text("b");
+  obj.m = w.bytes("m");
   obj.t = w.uint("t");
   obj.s = w.bytes("s");
   std::string v = w.text("v");
   obj.v = v.empty() ? dm_id(obj.u, w.text("p")) : v;
-  return obj.o.size() == 16 && obj.s.size() == 64;
+  return obj.o.size() == 16 && obj.s.size() == 64 && (obj.m.empty() || obj.m.size() == 16);
 }
 
 // -- responder --------------------------------------------------------------------------

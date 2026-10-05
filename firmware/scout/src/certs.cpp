@@ -410,6 +410,23 @@ bool sign_dispatch(const std::string& oid, const std::string& conv, const std::s
   return sig.size() == 64;
 }
 
+bool sign_receipt(const std::string& oid, const std::string& conv, const std::string& m, uint64_t t,
+                  std::string& sig, std::string& author_id) {
+  if (g_seed.empty() || oid.size() != 16 || m.size() != 16) return false;
+  author_id = my_id();
+  sig = sign(wp::receipt_bytes(oid, account::username(), author_id, conv, m, t));
+  return sig.size() == 64;
+}
+
+std::string verify_receipt(const std::string& oid, const std::string& author, const std::string& id,
+                           const std::string& conv, const std::string& m, uint64_t t, const std::string& sig) {
+  if (!g_pub.empty() && my_id() == id) {  // our own receipts coming back to us
+    if (oid != wp::receipt_oid(m, author)) return "invalid_payload";
+    return wp::ed25519_ok(g_pub, sig, wp::receipt_bytes(oid, author, id, conv, m, t)) ? "" : "bad_signature";
+  }
+  return g_cache.verify_receipt(oid, author, id, conv, m, t, sig);
+}
+
 const Cert* identity(const std::string& username) { return g_cache.identity(username); }
 
 const Cert* identity_by_id(const std::string& id) { return g_cache.identity_by_id(id); }

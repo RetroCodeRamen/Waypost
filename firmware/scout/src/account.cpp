@@ -7,6 +7,7 @@
 
 #include "certs.h"
 #include "contacts.h"
+#include "receipts.h"
 #include "store.h"
 
 namespace account {
@@ -57,6 +58,7 @@ void set_user(const std::string& username, const std::string& display_name) {
   if (changed) {
     contacts::clear();
     store::clear();  // its messages too
+    receipts::clear();
   }
   g_username = username;
   // A different person on this Scout: new signing key, certificates fetched
@@ -70,6 +72,7 @@ void set_user(const std::string& username, const std::string& display_name) {
 void unpair() {
   contacts::clear();
   store::clear();
+  receipts::clear();
   g_username.clear();
   g_display_name.clear();
   remove_file(kUserPath);

@@ -11,6 +11,7 @@
 #include "certs.h"
 #include "contacts.h"
 #include "net.h"
+#include "receipts.h"
 #include "tasks.h"
 #include "store.h"
 #include "wp_objects.h"
@@ -50,6 +51,8 @@ class ScoutSet : public wp::ObjectSet {
       for (const auto& r : store::signed_refs()) out.push_back({r.oid, r.author, r.conv});
       for (const auto& o : store::outbox())
         if (!o.sig.empty()) out.push_back({wp::unhex(o.id), account::username(), o.conv});
+      for (const auto& r : receipts::all())
+        if (!r.sig.empty()) out.push_back({r.oid, r.user, r.conv});
     });
     return out;
   }
@@ -61,6 +64,12 @@ class ScoutSet : public wp::ObjectSet {
       for (const auto& o : store::outbox()) {
         if (o.id != id || o.sig.empty()) continue;
         out = {oid, account::username(), o.author_id, o.conv, o.body, o.sig, o.signed_t};
+        found = true;
+        return;
+      }
+      if (const receipts::Receipt* r = receipts::find(oid)) {
+        if (r->sig.empty()) return;  // not signed yet: not ready to travel
+        out = {r->oid, r->user, r->author_id, r->conv, "", r->sig, r->t, r->m};
         found = true;
         return;
       }
@@ -77,6 +86,13 @@ class ScoutSet : public wp::ObjectSet {
     std::string err;
     bool made = false;
     tasks::on_ui([&] {
+      if (obj.receipt()) {
+        err = certs::verify_receipt(obj.o, obj.u, obj.a, obj.v, obj.m, obj.t, obj.s);
+        if (!err.empty()) return;
+        made = receipts::add({obj.o, obj.m, obj.v, obj.u, obj.a, obj.s, obj.t});
+        if (made) apps::receipt_arrived(obj.v);
+        return;
+      }
       err = certs::verify_dispatch(obj.o, obj.u, obj.a, obj.v, obj.b, obj.t, obj.s);
       if (!err.empty()) return;
       store::Message m;

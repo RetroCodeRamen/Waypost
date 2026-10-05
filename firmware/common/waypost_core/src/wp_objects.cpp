@@ -134,6 +134,19 @@ std::string dispatch_bytes(const std::string& oid, const std::string& user, cons
   return out;
 }
 
+std::string receipt_oid(const std::string& message_oid, const std::string& recipient) {
+  return raw(RNS::Identity::full_hash(bytes("WAYPOST-RCPT-1\n" + message_oid + lower(recipient)))).substr(0, 16);
+}
+
+// canonical_bytes(), kind dispatch.rcpt
+std::string receipt_bytes(const std::string& oid, const std::string& user, const std::string& author_id,
+                          const std::string& conv, const std::string& message_oid, uint64_t t) {
+  std::string out = "WAYPOST-OBJ-1\n";
+  put(out, "k", "dispatch.rcpt"), put(out, "o", oid), put(out, "u", user), put(out, "a", author_id);
+  put(out, "v", conv), put(out, "m", message_oid), put(out, "t", u64be(t));
+  return out;
+}
+
 bool from_value(const waylink::Value& v, Cert& c) {
   if (v.type != waylink::Value::Map) return false;
   c.kind = v.text("k");
@@ -236,6 +249,26 @@ std::string CertCache::verify_dispatch(const std::string& oid, const std::string
   return ed25519_ok(c->p, sig, dispatch_bytes(oid, author, id, conv, body, t)) ? "" : "bad_signature";
 }
 
+std::string CertCache::verify_receipt(const std::string& oid, const std::string& author, const std::string& id,
+                                      const std::string& conv, const std::string& message_oid, uint64_t t,
+                                      const std::string& sig) const {
+  const Cert* c = nullptr;
+  for (const auto& x : certs)
+    if (x.kind == "id" && x.i == id) c = &x;
+  if (!c) return "unknown_identity";
+  if (revoked(c->n)) return "identity_revoked";
+  if (!current(*c)) return "certificate_expired";
+  if (lower(c->u) != lower(author) || message_oid.size() != 16) return "bad_signature";
+  if (oid != receipt_oid(message_oid, author)) return "invalid_payload";
+  if (conv.compare(0, 3, "dm:") == 0) {
+    size_t colon = conv.find(':', 3);
+    std::string who = lower(author);
+    if (colon == std::string::npos || (conv.substr(3, colon - 3) != who && conv.substr(colon + 1) != who))
+      return "bad_signature";
+  }
+  return ed25519_ok(c->p, sig, receipt_bytes(oid, author, id, conv, message_oid, t)) ? "" : "bad_signature";
+}
+
 std::string CertCache::serialize(const std::string& owner) const {
   std::string out = "#owner\t" + owner + "\n";
   if (!root.empty()) out += "root\t" + hex(root) + "\n";
@@ -305,6 +338,13 @@ bool self_test() {
   ok = ok && hex(raw(key.sign(bytes(dispatch_bytes(oid, "aj", author, "dm:aj:bob", "hello", 1790000000))))) ==
                  "05619c34b899c57d550f7faa3676f1b35bd12a2e9bb089d2c4e791624747f433"
                  "7b714cb9caf2e1ad73583e7ba1d33e70dc0d1831835e29a5118777965795c40f";
+  // test_receipts.py test_pinned_receipt_vector
+  std::string rid = receipt_oid(oid, "bob"), recipient;
+  for (int k = 32; k < 48; k++) recipient += static_cast<char>(k);
+  ok = ok && hex(rid) == "aff805e2718459f14c9dfeb9df130ae0" &&
+       hex(raw(key.sign(bytes(receipt_bytes(rid, "bob", recipient, "dm:aj:bob", oid, 1790000100))))) ==
+           "7a79b6f86b266cc608416c5c3948375c703c9ce3f3954dc1ea99906aebe4e3bc"
+           "a9f95457d31d5a56769c72e2c09a0c692b6d11f6ab75c42adc9dac0c528f3802";
   return ok;
 }
 

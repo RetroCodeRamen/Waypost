@@ -18,6 +18,7 @@
 #include "app.h"
 #include "certs.h"
 #include "contacts.h"
+#include "receipts.h"
 #include "tasks.h"
 #include "store.h"
 #include "sync.h"
@@ -132,6 +133,7 @@ class DispatchApp : public App {
       return false;  // seen it already
     }
     ui::set_unread(store::unread_total());
+    if (!is_me(m.sender)) receipts::message_arrived(conv, m.id);  // signed at once, or at unlock
     if (viewing) {
       reload();
       _scroll = 0;
@@ -200,6 +202,10 @@ class DispatchApp : public App {
                 refresh_view();
               },
               2, 8000, o.signed_t);
+  }
+
+  void receipt_arrived(const std::string& conv) {
+    if (apps::current() == this && _mode == Mode::Chat && conv == _conv_id) draw_chat();
   }
 
  private:
@@ -448,10 +454,17 @@ class DispatchApp : public App {
   std::vector<std::pair<std::string, uint16_t>> chat_lines() const {
     std::vector<std::pair<std::string, uint16_t>> lines;
     if (_older) lines.push_back({"  (roll up for older)", ui::kMuted});
-    for (const auto& m : _msgs) {
+    // "delivered" on this person's newest sent message once a receipt for
+    // it is back (one line of state, not a mark on every message).
+    int last_mine = -1;
+    for (int i = 0; i < static_cast<int>(_msgs.size()); i++)
+      if (is_me(_msgs[i].sender)) last_mine = i;
+    for (int i = 0; i < static_cast<int>(_msgs.size()); i++) {
+      const store::Message& m = _msgs[i];
       bool mine = is_me(m.sender);
       std::string text = (mine ? "me" : m.sender) + ": " + m.body;
       uint16_t color = mine ? ui::kTextDim : ui::kText;
+      if (i == last_mine && m.state == 's' && receipts::delivered(m.id)) text += "  (delivered)";
       if (m.state == 'q') {
         text += "  (waiting)";
         color = ui::kMuted;
@@ -648,3 +661,5 @@ bool apps::deliver_message(const std::string& conv, const store::Message& m) {
 }
 
 void apps::flush_outbox(bool force) { instance().flush_outbox(force); }
+
+void apps::receipt_arrived(const std::string& conv) { instance().receipt_arrived(conv); }

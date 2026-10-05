@@ -550,6 +550,39 @@ class DispatchService:
         result, code = self._ingest(obj, TRANSPORT_LORA)
         return (bool(result and result["created"]), code)
 
+    def ingest_receipt(self, obj: dict[str, Any]) -> tuple[bool, str]:
+        """A signed delivery receipt (dispatch.rcpt) arriving by peer sync:
+        verify, keep (it travels on to the sender's devices), and count the
+        message delivered to that person. A receipt can arrive before its
+        message (another path); it's kept and counts once the message does.
+        (created, "") or (False, error)."""
+        from server.services.identity.objects import receipt_problem
+
+        if self._verify_object is None:
+            return False, "signatures_not_supported"
+        unsigned = {k: v for k, v in obj.items() if k not in ("s", "u")}
+        author, code = self._verify_object(unsigned, obj.get("s"))
+        if not author:
+            return False, code
+        problem = receipt_problem(dict(obj, u=author))
+        if problem:
+            return False, problem
+        message_id = bytes(obj["m"]).hex()
+        created = self.store.add_receipt(
+            receipt_id=bytes(obj["o"]).hex(), message_id=message_id, username=author,
+            author_id=bytes(obj["a"]).hex(), conversation_id=str(obj["v"]), signed_at=int(obj["t"]),
+            sig=bytes(obj["s"]).hex(),
+        )
+        if created and self.store.get_message(message_id):
+            self._confirm_delivered(author, message_id)
+            logger.info("dispatch_receipt message=%s by=%s", message_id, author)
+        return created, ""
+
+    def _apply_receipts(self, message_id: str) -> None:
+        """Receipts that arrived before their message."""
+        for r in self.store.receipts_for_message(message_id):
+            self._confirm_delivered(r["username"], message_id)
+
     def _ingest(self, obj: dict[str, Any], transport: str) -> tuple[Optional[dict[str, Any]], str]:
         if self._verify_object is None:
             return None, "signatures_not_supported"
@@ -582,6 +615,8 @@ class DispatchService:
             )
         except ValueError as exc:
             return None, str(exc)
+        if result and result.get("created"):
+            self._apply_receipts(bytes(obj["o"]).hex())
         return result, ""
 
     def set_author_lookup(self, lookup) -> None:

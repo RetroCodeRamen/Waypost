@@ -55,6 +55,14 @@ bool can_sign();
 bool sign_dispatch(const std::string& oid, const std::string& conv, const std::string& body,
                    uint64_t t, std::string& sig, std::string& author_id);
 
+// A delivery receipt for message `m` (16 raw bytes) in `conv`, by this
+// person: fills the signature and their identity id. False when locked.
+bool sign_receipt(const std::string& oid, const std::string& conv, const std::string& m, uint64_t t,
+                  std::string& sig, std::string& author_id);
+// Checks a receipt with cached certificates (offline), same codes as below.
+std::string verify_receipt(const std::string& oid, const std::string& author, const std::string& id,
+                           const std::string& conv, const std::string& m, uint64_t t, const std::string& sig);
+
 // -- lookups (only certificates that verify, unexpired, not revoked) --
 const Cert* identity(const std::string& username);
 const Cert* identity_by_id(const std::string& id);

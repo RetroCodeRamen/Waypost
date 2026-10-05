@@ -189,12 +189,14 @@ void handle_msgs() {
   if (!party_to(*s, conv)) return send_error(403, "not_a_member");
   JsonDocument out;
   JsonArray list = out["msgs"].to<JsonArray>();
-  for (const auto& m : oobj::messages(conv, 50)) {
+  std::vector<std::string> delivered;
+  for (const auto& m : oobj::messages(conv, 50, &delivered)) {
     JsonObject o = list.add<JsonObject>();
     o["o"] = wp::hex(m.o).c_str();
     o["u"] = m.u.c_str();
     o["b"] = m.b.c_str();
     o["t"] = m.t;
+    if (std::find(delivered.begin(), delivered.end(), m.o) != delivered.end()) o["d"] = true;
   }
   out["max"] = wp::max_signed_body(s->u, conv);
   send_json(200, out);

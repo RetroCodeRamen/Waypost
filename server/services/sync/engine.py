@@ -2,8 +2,9 @@
 that the other may not" — one protocol for every pair of nodes (Scout,
 Outpost, Station, a courier), any transport, no realtime path assumed.
 
-Each node holds signed objects (today: ``dispatch.msg``, see
-server/services/identity/objects.py) and declares **interests**:
+Each node holds signed objects (``dispatch.msg`` and its delivery receipts
+``dispatch.rcpt``, see server/services/identity/objects.py) and declares
+**interests**:
 
     "*"        everything (Station, Outposts)
     "u:<name>" objects concerning a person (author or party to a direct
@@ -83,8 +84,13 @@ def wants(interests: Iterable[str], obj: dict[str, Any]) -> bool:
 
 def to_wire(obj: dict[str, Any]) -> dict[str, Any]:
     """Compact form for one packet: the author comes back from their
-    identity id (``a``), a direct conversation is sent as the other person."""
-    wire = {"o": obj["o"], "a": obj["a"], "b": obj["b"], "t": obj["t"], "s": obj["s"]}
+    identity id (``a``), a direct conversation is sent as the other person.
+    A receipt carries ``m`` (the message it confirms) instead of a body."""
+    wire = {"o": obj["o"], "a": obj["a"], "t": obj["t"], "s": obj["s"]}
+    if obj.get("k") == "dispatch.rcpt":
+        wire["m"] = obj["m"]
+    else:
+        wire["b"] = obj["b"]
     conv = str(obj["v"])
     if conv.startswith("dm:"):
         a, b = conv[3:].split(":", 1)
@@ -97,7 +103,7 @@ def to_wire(obj: dict[str, Any]) -> dict[str, Any]:
 def from_wire(wire: dict[str, Any], owner_of: Callable[[bytes], Optional[str]]) -> Optional[dict[str, Any]]:
     """Rebuilds the full object, or None when the author's identity is unknown here."""
     from server.services.dispatch.store import direct_conversation_id
-    from server.services.identity.objects import KIND_DISPATCH_MSG
+    from server.services.identity.objects import KIND_DISPATCH_MSG, KIND_DISPATCH_RCPT
 
     try:
         ident = bytes(wire["a"])
@@ -105,8 +111,13 @@ def from_wire(wire: dict[str, Any], owner_of: Callable[[bytes], Optional[str]]) 
         if not author:
             return None
         conv = wire.get("v") or direct_conversation_id(author, str(wire["p"]))
-        return {"k": KIND_DISPATCH_MSG, "o": bytes(wire["o"]), "u": author, "a": ident,
-                "v": str(conv), "b": str(wire["b"]), "t": int(wire["t"]), "s": bytes(wire["s"])}
+        obj = {"o": bytes(wire["o"]), "u": author, "a": ident, "v": str(conv), "t": int(wire["t"]),
+               "s": bytes(wire["s"])}
+        if "m" in wire:
+            obj.update(k=KIND_DISPATCH_RCPT, m=bytes(wire["m"]))
+        else:
+            obj.update(k=KIND_DISPATCH_MSG, b=str(wire["b"]))
+        return obj
     except (KeyError, TypeError, ValueError):
         return None
 

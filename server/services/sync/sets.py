@@ -4,14 +4,15 @@
   certificates (simulated Scouts and Outposts; the shape the firmware
   follows).
 - ``StationObjectSet`` — Station's Dispatch history: every *signed* message
-  (unsigned ones can't be checked by anyone else, so they don't travel).
+  (unsigned ones can't be checked by anyone else, so they don't travel),
+  and every delivery receipt.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from server.services.identity.objects import KIND_DISPATCH_MSG, OfflineVerifier
+from server.services.identity.objects import KIND_DISPATCH_MSG, KIND_DISPATCH_RCPT, OfflineVerifier
 from server.services.sync.engine import in_scope
 
 
@@ -77,15 +78,29 @@ class StationObjectSet:
                 "a": bytes.fromhex(row["author_id"]), "v": row["conversation_id"], "b": row["body"],
                 "t": int(row["signed_at"] or 0), "s": bytes.fromhex(row["sig"])}
 
+    @staticmethod
+    def _receipt(row: dict[str, Any]) -> dict[str, Any]:
+        return {"k": KIND_DISPATCH_RCPT, "o": bytes.fromhex(row["id"]), "u": row["username"],
+                "a": bytes.fromhex(row["author_id"]), "v": row["conversation_id"],
+                "m": bytes.fromhex(row["message_id"]), "t": int(row["signed_at"]), "s": bytes.fromhex(row["sig"])}
+
     def oids(self, scope: str) -> list[bytes]:
-        return [bytes.fromhex(r["id"]) for r in self._rows(scope) if in_scope(scope, self._obj(r))]
+        out = [bytes.fromhex(r["id"]) for r in self._rows(scope) if in_scope(scope, self._obj(r))]
+        out += [bytes.fromhex(r["id"]) for r in self.store.receipts_in_scope(scope)
+                if in_scope(scope, self._receipt(r))]
+        return out
 
     def get(self, oid: bytes) -> Optional[dict[str, Any]]:
         row = self.store.get_message(bytes(oid).hex())
-        return self._obj(row) if row and row.get("sig") and row.get("author_id") else None
+        if row and row.get("sig") and row.get("author_id"):
+            return self._obj(row)
+        rcpt = self.store.get_receipt(bytes(oid).hex())
+        return self._receipt(rcpt) if rcpt else None
 
     def owner_of(self, identity_id: bytes) -> Optional[str]:
         return self.identity.owner_of(identity_id)
 
     def put(self, obj: dict[str, Any]) -> tuple[bool, str]:
+        if obj.get("k") == KIND_DISPATCH_RCPT:
+            return self.dispatch.ingest_receipt(obj)
         return self.dispatch.ingest_signed(obj)

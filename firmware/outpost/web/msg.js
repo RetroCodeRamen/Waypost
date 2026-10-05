@@ -130,7 +130,8 @@ async function loadMsgs() {
     div.textContent = m.b;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = (mine ? "you" : m.u) + (m.t > 1 ? " · " + new Date(m.t * 1000).toLocaleString() : "");
+    meta.textContent = (mine ? "you" : m.u) + (m.t > 1 ? " · " + new Date(m.t * 1000).toLocaleString() : "") +
+      (mine && m.d ? " · delivered" : "");
     div.appendChild(meta);
     box.appendChild(div);
   }

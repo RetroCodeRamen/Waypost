@@ -30,6 +30,7 @@ bool g_certs_dirty = false;
 struct Entry {
   std::string oid, author, a, conv;
   uint64_t t;
+  bool receipt;  // a delivery receipt, not a message
 };
 std::vector<Entry> g_index;
 size_t g_lines = 0;
@@ -48,16 +49,18 @@ bool g_station_soon = false;
 
 uint32_t g_station_at = 0, g_certs_at = 0, g_revs_at = 0;
 
+// One object per line; an 8th field (the message id) marks a delivery
+// receipt (older files have 7 fields: all messages).
 std::string line_of(const wp::Obj& o) {
   return wp::hex(o.o) + "\t" + wp::escape(o.u) + "\t" + wp::hex(o.a) + "\t" + wp::escape(o.v) + "\t" +
-         wp::escape(o.b) + "\t" + wp::hex(o.s) + "\t" + std::to_string(o.t) + "\n";
+         wp::escape(o.b) + "\t" + wp::hex(o.s) + "\t" + std::to_string(o.t) + "\t" + wp::hex(o.m) + "\n";
 }
 
 bool parse(const std::string& line, wp::Obj& o) {
   auto f = wp::split_tabs(line);
   if (f.size() < 7) return false;
   o = wp::Obj{wp::unhex(f[0]), wp::unescape(f[1]), wp::unhex(f[2]), wp::unescape(f[3]), wp::unescape(f[4]),
-              wp::unhex(f[5]), strtoull(f[6].c_str(), nullptr, 10)};
+              wp::unhex(f[5]), strtoull(f[6].c_str(), nullptr, 10), f.size() >= 8 ? wp::unhex(f[7]) : ""};
   return o.o.size() == 16;
 }
 
@@ -86,7 +89,7 @@ void compact() {
   for (const auto& o : all) f.print(line_of(o).c_str());
   f.close();
   g_index.clear();
-  for (const auto& o : all) g_index.push_back({o.o, o.u, o.a, o.v, o.t});
+  for (const auto& o : all) g_index.push_back({o.o, o.u, o.a, o.v, o.t, o.receipt()});
   g_lines = all.size();
   Serial.printf("objects: compacted to %u\n", static_cast<unsigned>(g_lines));
 }
@@ -99,7 +102,7 @@ void keep(const wp::Obj& o) {
   File f = LittleFS.open(kObjsPath, FILE_APPEND);
   f.print(line_of(o).c_str());
   f.close();
-  g_index.push_back({o.o, o.u, o.a, o.v, o.t});
+  g_index.push_back({o.o, o.u, o.a, o.v, o.t, o.receipt()});
   if (++g_lines >= kCompactAt) compact();
   // Deliver: everyone it concerns whose Scout is nearby gets it pushed now;
   // Station gets it at the next chance.
@@ -134,7 +137,9 @@ class OutpostSet : public wp::ObjectSet {
   std::string put(const wp::Obj& obj, bool& created) override {
     created = false;
     if (have(obj.o)) return "";
-    std::string err = g_cache.verify_dispatch(obj.o, obj.u, obj.a, obj.v, obj.b, obj.t, obj.s);
+    std::string err = obj.receipt()
+                          ? g_cache.verify_receipt(obj.o, obj.u, obj.a, obj.v, obj.m, obj.t, obj.s)
+                          : g_cache.verify_dispatch(obj.o, obj.u, obj.a, obj.v, obj.b, obj.t, obj.s);
     if (!err.empty()) return err;
     keep(obj);
     created = true;
@@ -260,11 +265,11 @@ void load() {
   g_index.clear();
   g_lines = 0;
   each_stored([&](const wp::Obj& o) {
-    if (!have(o.o)) g_index.push_back({o.o, o.u, o.a, o.v, o.t});
+    if (!have(o.o)) g_index.push_back({o.o, o.u, o.a, o.v, o.t, o.receipt()});
     g_lines++;
     return true;
   });
-  Serial.printf("objects: %u message(s), %u certificate(s), community key %s, self-test %s\n",
+  Serial.printf("objects: %u object(s), %u certificate(s), community key %s, self-test %s\n",
                 static_cast<unsigned>(g_index.size()), static_cast<unsigned>(g_cache.certs.size()),
                 g_cache.root.empty() ? "not yet" : "pinned", wp::self_test() ? "ok" : "FAILED");
 }
@@ -334,7 +339,7 @@ std::vector<Conversation> conversations_for(const std::string& user) {
   std::map<std::string, Conversation> by_id;
   std::string me = wp::lower(user);
   for (const auto& e : g_index) {
-    if (!wp::in_scope("u:" + me, e.author, e.conv)) continue;
+    if (e.receipt || !wp::in_scope("u:" + me, e.author, e.conv)) continue;
     Conversation& c = by_id[e.conv];
     c.id = e.conv;
     auto p = wp::parties(e.author, e.conv);
@@ -348,10 +353,12 @@ std::vector<Conversation> conversations_for(const std::string& user) {
   return out;
 }
 
-std::vector<wp::Obj> messages(const std::string& conv, size_t max) {
+std::vector<wp::Obj> messages(const std::string& conv, size_t max, std::vector<std::string>* delivered) {
   std::vector<wp::Obj> out;
   each_stored([&](const wp::Obj& o) {
-    if (o.v == conv) out.push_back(o);
+    if (o.v != conv) return true;
+    if (!o.receipt()) out.push_back(o);
+    else if (delivered) delivered->push_back(o.m);
     return true;
   });
   std::stable_sort(out.begin(), out.end(), [](const wp::Obj& x, const wp::Obj& y) { return x.t < y.t; });

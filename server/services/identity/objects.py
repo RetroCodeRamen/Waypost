@@ -19,10 +19,24 @@ First kind: ``dispatch.msg``
     v  conversation id (dm:<a>:<b> for direct messages, room:<slug>)
     b  body text
     t  created, seconds (the author device's clock; informative)
+
+Second kind: ``dispatch.rcpt`` — a delivery receipt (2026-10-05). The
+recipient's device signs it when a message lands there; it travels by peer
+sync like a message, and "delivered" is derived from it (network-model.md §3).
+
+    k  "dispatch.rcpt"
+    o  receipt id: receipt_oid(m, u) — the same for every device of the same
+       person, so two copies of a receipt are one receipt
+    u  the recipient (the receipt's author)
+    a  the recipient's identity id
+    v  the message's conversation id
+    m  the message's object id (16 bytes)
+    t  when it arrived, seconds (the recipient device's clock; informative)
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any
 
@@ -30,16 +44,43 @@ from server.services.identity.certs import CertError
 
 MAGIC = b"WAYPOST-OBJ-1\n"
 KIND_DISPATCH_MSG = "dispatch.msg"
+KIND_DISPATCH_RCPT = "dispatch.rcpt"
 
 FIELDS: dict[str, tuple[str, ...]] = {
     KIND_DISPATCH_MSG: ("k", "o", "u", "a", "v", "b", "t"),
+    KIND_DISPATCH_RCPT: ("k", "o", "u", "a", "v", "m", "t"),
 }
 INT_FIELDS = {"t"}
-BYTES_FIELDS = {"o": 16, "a": 16}
+BYTES_FIELDS = {"o": 16, "a": 16, "m": 16}
+RCPT_MAGIC = b"WAYPOST-RCPT-1\n"
 
 
 def new_oid() -> bytes:
     return os.urandom(16)
+
+
+def receipt_oid(message_oid: bytes, recipient: str) -> bytes:
+    """A receipt's id: SHA-256(magic + message id + lower(recipient))[:16]."""
+    return hashlib.sha256(RCPT_MAGIC + bytes(message_oid) + recipient.lower().encode("utf-8")).digest()[:16]
+
+
+def is_receipt(obj: dict[str, Any]) -> bool:
+    return obj.get("k") == KIND_DISPATCH_RCPT
+
+
+def receipt_problem(obj: dict[str, Any]) -> str:
+    """Rules a signature can't express: the id is derived (one receipt per
+    person per message), and a direct conversation's receipt comes from one
+    of its two people. "" when fine, else an error code."""
+    try:
+        if bytes(obj["o"]) != receipt_oid(bytes(obj["m"]), str(obj["u"])):
+            return "invalid_payload"
+    except (KeyError, TypeError, ValueError):
+        return "invalid_payload"
+    conv = str(obj.get("v", ""))
+    if conv.startswith("dm:") and str(obj["u"]).lower() not in conv[3:].split(":", 1):
+        return "bad_signature"
+    return ""
 
 
 def canonical_bytes(obj: dict[str, Any]) -> bytes:
@@ -109,6 +150,10 @@ class OfflineVerifier:
             return "certificate_expired"
         if str(obj.get("u", "")).lower() != str(cert["u"]).lower():
             return "bad_signature"
+        if is_receipt(obj):
+            problem = receipt_problem(obj)
+            if problem:
+                return problem
         try:
             message = canonical_bytes({k: v for k, v in obj.items() if k != "s"})
         except CertError:

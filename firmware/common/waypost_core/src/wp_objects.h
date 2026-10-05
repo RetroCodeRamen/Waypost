@@ -51,6 +51,13 @@ bool from_value(const waylink::Value& v, Cert& c);
 std::string dispatch_bytes(const std::string& oid, const std::string& user, const std::string& author_id,
                            const std::string& conv, const std::string& body, uint64_t t);
 
+// Delivery receipts (dispatch.rcpt, server/services/identity/objects.py):
+// signed by the recipient when a message lands. The id is derived, so every
+// device of the same person makes the same receipt for a message.
+std::string receipt_oid(const std::string& message_oid, const std::string& recipient);
+std::string receipt_bytes(const std::string& oid, const std::string& user, const std::string& author_id,
+                          const std::string& conv, const std::string& message_oid, uint64_t t);
+
 // Everything this node has been told by Station's community key, checked.
 class CertCache {
  public:
@@ -79,6 +86,11 @@ class CertCache {
   std::string verify_dispatch(const std::string& oid, const std::string& author, const std::string& id,
                               const std::string& conv, const std::string& body, uint64_t t,
                               const std::string& sig) const;
+  // The same for a receipt, plus its rules: the derived id, and a direct
+  // conversation's receipt comes from one of its two people.
+  std::string verify_receipt(const std::string& oid, const std::string& author, const std::string& id,
+                             const std::string& conv, const std::string& message_oid, uint64_t t,
+                             const std::string& sig) const;
 
   // Tab-separated lines (root first) for a flash file; load() re-verifies.
   std::string serialize(const std::string& owner) const;

@@ -62,6 +62,16 @@ class SyncNode(WaylinkPeerNode):
         assert created and not code, code
         return obj
 
+    def acknowledge(self, msg: dict[str, Any], *, t: int = 1_791_000_100) -> dict[str, Any]:
+        """Sign a delivery receipt for a message that arrived here (what the
+        Scout does when a message lands)."""
+        obj = {"k": O.KIND_DISPATCH_RCPT, "o": O.receipt_oid(msg["o"], self.username), "u": self.username,
+               "a": self.identity_id, "v": msg["v"], "m": msg["o"], "t": t}
+        obj["s"] = self.signing_key.sign(O.canonical_bytes(obj))
+        created, code = self.objects.put(obj)
+        assert not code, code
+        return obj
+
     async def sync(self, peer_node_id: str, *, timeout: float = 2.0) -> SyncResult:
         async def request(op: str, payload: dict[str, Any]) -> Optional[Envelope]:
             env = Envelope(src=self.node_id, dst=peer_node_id, svc=SVC_SYNC, op=op,

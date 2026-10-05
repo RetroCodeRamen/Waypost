@@ -69,6 +69,22 @@ CREATE TABLE IF NOT EXISTS courier_queue (
 );
 
 CREATE INDEX IF NOT EXISTS idx_courier_dest ON courier_queue(dest);
+
+-- Signed delivery receipts (dispatch.rcpt, 2026-10-05): kept as objects so
+-- they travel on by peer sync to the sender's devices.
+CREATE TABLE IF NOT EXISTS receipts (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    username TEXT NOT NULL COLLATE NOCASE,
+    author_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    signed_at INTEGER NOT NULL,
+    sig TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_receipts_message ON receipts(message_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_conv ON receipts(conversation_id);
 """
 
 _SLUG_RE = re.compile(r"[^a-z0-9\-]+")
@@ -413,6 +429,46 @@ class DispatchStore:
                 (conversation_id, limit),
             ).fetchall()
             rows = list(reversed(rows))
+        return [dict(r) for r in rows]
+
+    # -- receipts ------------------------------------------------------------
+
+    def add_receipt(self, *, receipt_id: str, message_id: str, username: str, author_id: str,
+                    conversation_id: str, signed_at: int, sig: str) -> bool:
+        """Insert if absent. True when it's new."""
+        cur = self._conn.execute(
+            """INSERT OR IGNORE INTO receipts
+               (id, message_id, username, author_id, conversation_id, signed_at, sig, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (receipt_id, message_id, username, author_id, conversation_id, signed_at, sig, time.time()),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_receipt(self, receipt_id: str) -> Optional[dict[str, Any]]:
+        row = self._conn.execute("SELECT * FROM receipts WHERE id = ?", (receipt_id,)).fetchone()
+        return dict(row) if row else None
+
+    def receipts_for_message(self, message_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute("SELECT * FROM receipts WHERE message_id = ?", (message_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def receipts_in_scope(self, scope: str) -> list[dict[str, Any]]:
+        """Receipts for peer sync: "*", "u:<name>" (in a conversation the
+        person belongs to, or written by them), "c:<id>"."""
+        if scope == "*":
+            rows = self._conn.execute("SELECT * FROM receipts").fetchall()
+        elif scope.startswith("u:"):
+            rows = self._conn.execute(
+                """SELECT DISTINCT r.* FROM receipts r
+                   LEFT JOIN conversation_members cm ON cm.conversation_id = r.conversation_id
+                   WHERE cm.username = ? COLLATE NOCASE OR r.username = ? COLLATE NOCASE""",
+                (scope[2:], scope[2:]),
+            ).fetchall()
+        elif scope.startswith("c:"):
+            rows = self._conn.execute("SELECT * FROM receipts WHERE conversation_id = ?", (scope[2:],)).fetchall()
+        else:
+            rows = []
         return [dict(r) for r in rows]
 
     def get_message(self, message_id: str) -> Optional[dict[str, Any]]:

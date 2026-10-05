@@ -29,6 +29,7 @@
 #include "display.h"
 #include "input.h"
 #include "net.h"
+#include "receipts.h"
 #include "scout_logo.h"
 #include "store.h"
 #include "sync.h"
@@ -91,6 +92,7 @@ void handle_incoming() {
 // keeps at most one request out.
 void background() {
   store::loop();
+  receipts::loop();
   certs::loop();
   apps::beacon_save();
   if (!apps::locked()) apps::check_identity();
@@ -209,6 +211,7 @@ void setup() {
   account::load();
   contacts::load();
   store::load();
+  receipts::load();
   apps::beacon_load();
   certs::load();
   certs::self_test();

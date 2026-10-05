@@ -52,6 +52,8 @@ void catch_up_chat();
 // sync): saved, counted unread, shown if its conversation is open. True
 // when it's new here.
 bool deliver_message(const std::string& conv, const store::Message& m);
+// A delivery receipt arrived for something in `conv`: Dispatch redraws.
+void receipt_arrived(const std::string& conv);
 // Send the oldest queued Dispatch message if Station is in reach (one per
 // call; waits between failed tries unless `force`).
 void flush_outbox(bool force = false);
