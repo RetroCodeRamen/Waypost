@@ -47,11 +47,15 @@ using LoginDone = std::function<void(net::Result r, const std::string& display_n
 // Station's half of a login: challenge, signed answer (the key never
 // leaves the Scout). `done` gets Ok, or Error with the error code
 // (wrong_password, no_identity_yet, unknown_user...).
-void station_login(const std::string& username, Signer sign, LoginDone done) {
+void station_login(const std::string& username, Signer sign, LoginDone done, bool asked = false) {
   std::string dest_hex = net::status().dest_hex;
-  rpc::ask(
+  auto ask = asked ? rpc::ask_now : [](const char* svc, const char* op, std::vector<waylink::Field> f,
+                                        rpc::Callback cb, int attempts, uint32_t timeout_ms) {
+    return rpc::ask(svc, op, std::move(f), std::move(cb), attempts, timeout_ms);
+  };
+  ask(
       "PROFILE", "LOGIN_NONCE", {Field::text("transport_dest", dest_hex)},
-      [username, sign, done, dest_hex](net::Result r, waylink::Reply& reply) {
+      [username, sign, done, dest_hex, ask](net::Result r, waylink::Reply& reply) {
         if (r != net::Result::Ok) {
           done(r, "", reply.error);
           return;
@@ -60,7 +64,7 @@ void station_login(const std::string& username, Signer sign, LoginDone done) {
         // server/services/auth/pairing.py PairingService.login_bytes
         std::string msg = "WAYPOST-LOGIN-1\n" + net::status().node_id + "\n" + my_dest() + "\n" + nonce;
         std::string sig = sign(msg);
-        rpc::ask("PROFILE", "LOGIN",
+        ask("PROFILE", "LOGIN",
                   {Field::text("u", username), Field::bytes("rd", my_dest()), Field::bytes("sig", sig),
                    Field::text("transport_dest", dest_hex)},
                   [username, done](net::Result r, waylink::Reply& reply) {
@@ -155,19 +159,9 @@ class LoginApp : public App {
       _prompt.set_error("Not enough memory to work out the key - restart and try again.");
       return;
     }
-    if (!net::station_known()) {
-      // Signing in offline: the key is real if the password is; Station
-      // checks it when it's next in reach.
-      _working = false;
-      _mode = Mode::Offline;
-      Prompt::Options o;
-      o.max_len = 3;
-      _prompt.open(title(),
-                   "Station isn't in reach, so the password can't be checked yet. "
-                   "Sign in anyway? Type YES (your messages wait until it's checked).",
-                   o);
-      return;
-    }
+    // Station first, even if it was marked quiet: the person is waiting, and
+    // a password checked now beats one checked later. Offline sign-in only
+    // when Station really doesn't answer.
     _prompt.set_note("Checking with Station...");
     std::string seed_copy = _seed;
     station_login(
@@ -183,11 +177,24 @@ class LoginApp : public App {
             return;
           }
           if (r != net::Result::Ok) {
-            _prompt.set_error(std::string("Couldn't reach Station (") + net::describe(r) + "). Try again.");
+            offer_offline();
             return;
           }
           finish(_user, name, false);
-        });
+        },
+        /*asked=*/true);
+  }
+
+  // Signing in offline: the key is real if the password is; Station checks
+  // it when it's next in reach (and signs this Scout out if it's wrong).
+  void offer_offline() {
+    _mode = Mode::Offline;
+    Prompt::Options o;
+    o.max_len = 3;
+    _prompt.open(title(),
+                 "Station didn't answer, so the password can't be checked yet. "
+                 "Sign in anyway? Type YES (your messages wait until it's checked).",
+                 o);
   }
 
   void finish(const std::string& user, const std::string& name, bool offline) {

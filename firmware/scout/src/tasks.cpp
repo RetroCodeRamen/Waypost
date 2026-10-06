@@ -128,6 +128,13 @@ uint32_t ask(const char* svc, const char* op, std::vector<waylink::Field> fields
   return id;
 }
 
+uint32_t ask_now(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
+                 int attempts, uint32_t timeout_ms) {
+  uint32_t id = net::request(svc, op, std::move(fields), attempts, timeout_ms, 0, true);
+  g_waiting[id] = std::move(done);
+  return id;
+}
+
 void cancel(uint32_t id) {
   if (g_waiting.erase(id)) net::forget(id);
 }

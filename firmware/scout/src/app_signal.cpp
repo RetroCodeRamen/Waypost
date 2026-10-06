@@ -40,7 +40,7 @@ class SignalApp : public App {
   void ping() {
     _pinging = true;
     uint32_t start = millis();
-    rpc::ask("CORE", "PING", {},
+    rpc::ask_now("CORE", "PING", {},
               [this, start](net::Result r, waylink::Reply&) {
                 _pinging = false;
                 _pinged = true;

@@ -40,13 +40,16 @@ struct Request {
   uint64_t ts = 0;          // envelope ts (signed messages)
   int attempts = 3;
   uint32_t timeout_ms = 6000;  // per attempt
+  // The person asked for this (PING, sign-in): go out even while Station
+  // is marked quiet after a timeout. Background work waits out the quiet.
+  bool asked = false;
 };
 
 // Queues a request. Returns its id (never 0).
 uint32_t request(Request r);
 // Shorthand for a request to Station with flat fields.
 uint32_t request(const char* svc, const char* op, std::vector<waylink::Field> fields,
-                 int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0);
+                 int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0, bool asked = false);
 // True once the request is finished; fills `r` and `out` and forgets it.
 bool result(uint32_t id, Result& r, waylink::Reply& out);
 // No longer interested (the reply, if it comes, is dropped).

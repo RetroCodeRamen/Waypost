@@ -310,7 +310,7 @@ bool step(Job& j) {
       return true;
     }
     bool to_station = j.hash == g_station_hash;
-    if (to_station && station_quiet()) {
+    if (to_station && station_quiet() && !j.req.asked) {
       finish(j, Result::Timeout);
       return true;
     }
@@ -552,8 +552,9 @@ uint32_t request(Request r) {
 }
 
 uint32_t request(const char* svc, const char* op, std::vector<waylink::Field> fields, int attempts,
-                 uint32_t timeout_ms, uint64_t ts) {
+                 uint32_t timeout_ms, uint64_t ts, bool asked) {
   Request r;
+  r.asked = asked;
   r.svc = svc;
   r.op = op;
   r.fields = std::move(fields);
