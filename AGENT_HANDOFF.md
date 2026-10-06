@@ -38,12 +38,13 @@ Related truth sources (do not duplicate long plans here):
 
 ## Current snapshot (update when wrong)
 
-**Date:** 2026-10-04  
+**Date:** 2026-10-06  
 
-**Direction (2026-10-04):** **no individual device is strictly necessary** — work now follows the roadmap's [Decentralization track](docs/roadmap.md#decentralization-track-dependency-order) (D1 next: Scout keeps its own data). Model: [docs/network-model.md](docs/network-model.md). The snapshot below predates it.  
+**Direction:** **No device is strictly necessary** — [Decentralization track](docs/roadmap.md#decentralization-track-dependency-order) D0–D6 built; D7+ next. Model: [docs/network-model.md](docs/network-model.md).
 
-**Active milestone:** **The real cause of the entire project's LoRa reliability saga is found and fixed (2026-10-03, commits `e88bec5` + `3586bfb`).** Two independent bugs, both now closed: (1) `WaylinkGateway._loop()` silently died on the first unhandled exception during any packet's handling, with no log, ever — fixed, tested, verified live. (2) The embedded radio driver (`firmware/*/lib/lora_interface/`, used by both Outpost and Scout) spoke a different, incompatible wire format than real RNode firmware for any packet needing more than one physical LoRa frame (~254 bytes packed) — this is the actual explanation for "it worked once, then never again" that's been attributed to RF/CSMA flakiness across many sessions. Fixed bit-for-bit against `firmware/RNode_Firmware/RNode_Firmware.ino`'s own real wire format. **Both confirmed live on real hardware, independently, same night:** Scout sent a real chat message requiring fragmentation and got an ack back (first complete two-way on-device exchange this project has ever had); Outpost's `BOARD_SYNC` completed and printed "Station confirms this Outpost is now claimed" for the first time ever. **M7** Scout (T-Deck) 🟢 — launcher + Dispatch (chat, both directions), Fieldbook (reads), **Trailhead** (new: Station's small web), and Signal apps live over real LoRa; Waypost Scout logo boot screen; palette from the README header art (panel is BGR). Open: on-glass confirmation of the display-refresh fix. Station-relayed (one default peer, `WAYPOST_DISPATCH_PEER`), not true P2P yet — see the message board entry for what's deliberately deferred (contact list, no-Station P2P, `PAIR_REDEEM` on-device, catch-up sync for offline periods). **M6** Outpost 🟢 — auto-claim + `BOARD_SYNC` now both confirmed working live over real LoRa, closing out the last open item from 2026-09-25's auto-claim-completion work. **M4** Identity depth **✅ build-complete**. **M8** Groups/Today/Notice-Beacon polish **✅ done**, extended past its own exit criteria — see 2026-09-24 entries. **M1b** Pi — SD card for a Pi 3 arrived but turned out counterfeit (`f3probe`: ~108 MB real capacity behind a fake 250 GB label) — need a real card before resuming; the flash script + downloaded Pi OS image are ready and waiting in `~/Downloads/waypost-pi/`.  
-**Just finished (2026-10-03, later):** Scout is now a complete Cybiko-style shell over LoRa — home launcher + Dispatch, Fieldbook, **Trailhead** (new: the Station's small web of linked text pages), and Signal apps, all live-verified; plus the PONG `ok` bug that meant PING never once passed on-device. See the top message board entry. **Before that:** Found and fixed both of tonight's root causes (gateway-crash + RNode wire-format incompatibility), live-verified on both Outpost and Scout, shipped real on-device chat for Scout. See today's two message board entries for the full traces — the wire-format one in particular is worth reading end to end if touching radio code again, since it explains years... weeks of "sometimes works" behavior project-wide. Before that: Real-hardware debugging of Outpost's `BOARD_SYNC` round trip (2026-09-25) — found and fixed a genuine root-cause bug in the vendored microReticulum library (relative filesystem paths), confirmed auto-claim DB-side over real LoRa. Before that: Full product/architecture/code review (published as an Artifact: https://claude.ai/artifact/D5kgcUgBQAm3Dt7Qu1na71) plus a 4-tier plan to address every finding, all built and committed same session. Before that: Finder — cross-app search, deliberately scoped to respect every service's own privacy rules. Before that: Outpost auto-claim — full design-then-build pass. Before that: reviewed and committed everything Cursor had built and left uncommitted since Cursor ran out of tokens, fixing a real security regression (`BEACON_SYNC` author spoofing) before committing it. Before that: M8 slice — Groups core + Locker/Dispatch integration, closing M8 entirely ([docs/groups-and-permissions.md](docs/groups-and-permissions.md)).
+**Active milestone:** **M1b Pi Station 🟡** — Station runs on Raspberry Pi 3 (`waypost.local`, `https://way.post`), WAYPOST Wi‑Fi AP, RNode on `/dev/waypost-lora`, laptop Station **stopped**. **M7 Scout 🟢** — `firmware/scout/` async firmware (replaces `firmware/pocket/`). **M6 Outpost 🟢** — full node + Corkboard + `/msg` Wi‑Fi. **D-track:** D1–D6 built (local store, identity+certs, signed messages, peer sync, Outpost node, capability Nearby + delivery receipts). **Tests:** 276 passed. **Git:** 75 commits pushed to `origin/main` (2026-10-06).
+
+**Readiness gaps (human/action):** community key backup off-Pi; phone test on WAYPOST Wi‑Fi; Scout sign-out/sign-in once (identity key for signing + receipts); Waygate (openNDS); `WAYPOST_RNS_UPSTREAM`; retire `firmware/pocket/` when human agrees.
 
 **Have today**
 
@@ -64,7 +65,7 @@ Related truth sources (do not duplicate long plans here):
 
 **Don’t have yet**
 
-- M1b on real Pi: run installer, `--enable-ap`, phone joins `WAYPOST` → trust → HTTPS; openNDS (Waygate)
+- M1b finish: Waygate (openNDS); phone joins `WAYPOST` → trust CA → portal (AP works; walkthrough not documented yet)
 - Station clock bootstrap (no RTC) — TLS certs are only 30 days tolerant ([network-time.md](docs/network-time.md))
 - The physical claim test over real LoRa (join `WAYPOST-OUTPOST`, use its `/claim` page — needs a human, see 2026-09-23 message board entry); Station's board still shows RNode's own diagnostics, not a Waypost-branded splash (code's ready in `firmware/heltec`, human chose to hold off — see message board); Beacon origin-outpost extension; session-isolated Wi‑Fi terminal; Pocket firmware (M7)
 - Stalwart integration-vs-cutover decision (M4) — the only thing left in that milestone
@@ -82,7 +83,7 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | Slot | Agent | Status | Branch / notes |
 |------|-------|--------|----------------|
 | M2e RNode LoRa | Cursor | **done** | Over-air PASS 2026-09-22 |
-| M1b Pi stack | Cursor (installer) + Claude (flash tooling) | prep done, **committed**; **blocked on hardware** | Installer + HTTPS ready ([pi-setup.md](docs/pi-setup.md)). SD card arrived 2026-09-26 but `f3probe` found it counterfeit (~108 MB real capacity behind a fake 250 GB label) — don't use it. Verified Pi OS Lite image + `flash-waypost-sd.sh` (device guardrails, cloud-init config generation) sitting ready in `~/Downloads/waypost-pi/` for whenever a real card shows up |
+| M1b Pi stack | Claude + Cursor | **running on Pi 3** 🟡 | `https://way.post`, WAYPOST AP, RNode on Pi, `--import` migrated laptop DB. Open: Waygate, phone test, community-key backup, RNS upstream — see 2026-10-06 message board |
 | M3 peer + multi-hop + failover sim | Cursor | done | Sim exit criteria met; hardware waits on M6/M7 |
 | Docs refresh | Claude | done | `priority-review.md` rewrite + smaller fixes across roadmap/architecture/hardware docs — see message board |
 | M4 pairing codes + device revocation | Claude | **done (slice 1)** | Pairing codes + per-device revoke + honest registration-mode UI shipped |
@@ -114,8 +115,8 @@ Fill these when you start or finish work so the other agent doesn’t collide.
 | M7 Scout slice 3 — launcher + Fieldbook/Trailhead/Signal apps | Claude | **done, committed, live-verified** (trackball pins not yet hand-confirmed) | `6991c5c` Station side (Trailhead service + radio-sized Fieldbook reads), `ce23568` firmware — see message board |
 | M6 Outpost `BOARD_SYNC` reply leg | Claude | **done, live-verified** | Fixed as a side effect of the wire-format fix — first-ever clean completion, confirmed via "Station confirms this Outpost is now claimed" on serial |
 
-**Cursor last session:** M7 Scout slice 0 (naming/splash) + slice 1 (Reticulum + LoRa + CORE/PING on T-Deck) + the 2026-09-25 auto-claim completion work. All now committed by Claude along with the fixes that made them actually work live.  
-**Claude last session:** Scout launcher + Fieldbook/Trailhead/Signal apps, Trailhead service, PONG fix (see top entry). Before that: Found and fixed the two real root causes behind this project's entire LoRa reliability history (gateway silent-death + RNode wire-format incompatibility), live-verified both on real hardware, shipped and live-verified Scout's first real on-device chat feature. Prior: real-hardware microReticulum persistence fix + auto-claim over LoRa; before that: M8 Groups, Finder, 4-tier review remediation, Outpost auto-claim/beacon firmware — see message board.
+**Cursor last session (2026-10-06):** Pushed 75 commits to `origin/main`; README + handoff snapshot refresh; readiness review — see message board.  
+**Claude last session:** Pi Station (M1b), Scout firmware rebuild (`firmware/scout`), D-track D1–D6, delivery receipts, capability Nearby — see message board.
 
 ---
 
@@ -161,6 +162,13 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-10-06 — Cursor (push + readiness review)
+
+**Re:** Human asked to commit/push everything and take lead on next steps.
+**Git:** 75 commits were already on `main` locally — pushed to `origin/main` (`d4e5e4b..a9a764c`). No staged diff; only untracked `image/imgae list.jpeg` (typo filename — left out). **pytest:** 276 passed, 1 skipped.
+**Readiness verdict:** code/tests green; Pi Station is the production hub (don't start laptop Station with the radio). **Human checklist before new features:** (1) back up community key + Pi DB off-device, (2) Scout sign-out/sign-in once on device, (3) phone on WAYPOST Wi‑Fi → trust → portal, (4) one T1 demo (Station unplugged → Scout↔Outpost message → plug back → portal shows it).
+**Next build (Cursor lead):** consolidate docs + Pi ops runbook slice; then Waygate OR full T1 demo script — human picks after checklist.
 
 ### 2026-10-06 — Claude (Station moved onto the Raspberry Pi — M1b)
 

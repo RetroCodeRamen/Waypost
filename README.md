@@ -23,12 +23,12 @@ That is the goal. **It is not there yet.**
 
 | Have today | Don’t have yet |
 |------------|----------------|
-| Laptop Station API + portal prototypes; Pi installer + offline HTTPS ready ([pi-setup](docs/pi-setup.md)) | Pi Station validated on hardware / Waygate captive portal |
-| Heltec Dispatch over air (M2c) + [radio-dev](docs/radio-dev.md); **M2e** encrypted Dispatch over LoRa (Reticulum on RNode-flashed Heltec V3) ✅ | Encrypted radio on the Pi Station by default |
-| **N1** opportunistic queue + Signal/Today sync | Mesh peer path without Station (**M3** 🟡: peer↔peer + multi-hop courier + `MSG_SYNC` + Wi‑Fi↔LoRa failover in sim ✅; hardware pending) |
-| **N2** username/password (portal + Pocket Wi‑Fi) ✅ | Stalwart/OIDC; TLS on the Pi's camp Wi‑Fi (**M1b**, config proven on laptop) |
-| **Scout** (T-Deck) on real LoRa: home launcher, Dispatch chat, Fieldbook wiki, **Trailhead** pages, Signal ([firmware/pocket](firmware/pocket/README.md)) | Scout↔Scout without Station; contact list; GPS / Atlas |
-| Standalone **Outpost** firmware (Heltec V3): Wi‑Fi Corkboard, encrypted Reticulum, auto-claim + `BOARD_SYNC` over real LoRa ([firmware/outpost](firmware/outpost/README.md)) | Outpost on its production board (MakerHawk); multi-hop on real hardware |
+| **Pi Station** (M1b 🟡): portal at `https://way.post`, WAYPOST Wi‑Fi AP, RNode on USB, DB migrated from laptop ([pi-setup](docs/pi-setup.md)) | Waygate captive portal; phone-on-WAYPOST walkthrough |
+| **M2e** encrypted Dispatch over LoRa (Reticulum + RNode) on the Pi ✅ | Reticulum upstream / federation |
+| **Decentralization D0–D6**: local Scout store, username/password identity + certs, signed messages, peer sync, Outpost as node, capability **Nearby** ([network-model](docs/network-model.md)) | D7–D10 (courier budgets, Tier 2 Wi‑Fi, retire unsigned paths) |
+| **Scout** (T-Deck): async firmware ([firmware/scout](firmware/scout/README.md)) — launcher, Dispatch, Beacon, Fieldbook, Trailhead, Signal, Nearby; peer sync over LoRa proven (stand-in second Scout) | Second T-Deck for native Scout↔Scout; GPS / Atlas |
+| **Outpost** (Heltec V3): Corkboard + auto-claim + `/msg` Wi‑Fi Dispatch, object sync ([firmware/outpost](firmware/outpost/README.md)) | MakerHawk production board; Beacon spread at Outpost |
+| **N2** username/password (portal, Scout sign-in, Outpost `/msg`) ✅ · **276** pytest passed | Stalwart/OIDC decision |
 
 Expect breakage, missing pieces, and rapid change. Priorities: **[docs/priority-review.md](docs/priority-review.md)** · plan: **[docs/roadmap.md](docs/roadmap.md)**.
 
