@@ -256,6 +256,7 @@ step "Station API service"
 install -d -m 0755 /etc/systemd/system
 install -m 0644 "$SCRIPT_DIR/systemd/waypost-api.service" /etc/systemd/system/
 install -m 0755 "$SCRIPT_DIR/waypost-set-password" /usr/local/sbin/waypost-set-password
+install -m 0755 "$SCRIPT_DIR/waypost-update" /usr/local/sbin/waypost-update
 if [[ $NO_START -eq 0 ]]; then
 	systemctl daemon-reload
 	systemctl enable waypost-api >/dev/null 2>&1

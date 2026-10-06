@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Update the Station's code and restart it — the quick path for code changes.
+#
+#   sudo waypost-update [REPO_DIR]     (default: ~/waypost of the user running sudo)
+#
+# Only touches /opt/waypost (the code), installs Python packages when
+# requirements.txt changed, and restarts waypost-api. Setup changes (Wi-Fi,
+# HTTPS, DNS, systemd units, /etc) still go through install.sh.
+set -euo pipefail
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+[[ $EUID -eq 0 ]] || { echo "run with sudo: sudo $0" >&2; exit 1; }
+
+PREFIX=/opt/waypost
+home=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
+REPO_DIR=${1:-$home/waypost}
+[[ -f "$REPO_DIR/server/requirements.txt" ]] || { echo "no Waypost repo at $REPO_DIR" >&2; exit 1; }
+
+old_req=$(sha256sum "$PREFIX/server/requirements.txt" 2>/dev/null | cut -d' ' -f1 || true)
+rsync -a --delete \
+	--exclude '.git/' --exclude '.venv/' --exclude 'data/' --exclude '__pycache__/' \
+	--exclude '.pytest_cache/' --exclude '.pio/' --exclude '.env' --exclude '.tmp/' \
+	"$REPO_DIR/" "$PREFIX/"
+chown -R root:root "$PREFIX"
+chmod -R go-w "$PREFIX"
+echo "code: synced from $REPO_DIR"
+
+if [[ "$(sha256sum "$PREFIX/server/requirements.txt" | cut -d' ' -f1)" != "$old_req" ]]; then
+	"$PREFIX/.venv/bin/pip" install -q --disable-pip-version-check -r "$PREFIX/server/requirements.txt"
+	echo "python packages: updated"
+fi
+
+systemctl restart waypost-api
+for _ in $(seq 1 30); do
+	curl -fsS -o /dev/null http://127.0.0.1:8000/api/health && { echo "Station: restarted, answering"; exit 0; }
+	sleep 1
+done
+echo "Station isn't answering yet - check: journalctl -u waypost-api -e" >&2
+exit 1
