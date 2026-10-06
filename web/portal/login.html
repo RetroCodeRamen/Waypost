@@ -186,11 +186,26 @@
       document.getElementById("btn-register").addEventListener("click", function () {
         if (mode !== "register") {
           setMode("register");
-          err.textContent = "Fill username + password (8+ chars), then Create account again.";
+          err.textContent = "Fill username + password (10+ characters), then Create account again.";
           return;
         }
         form.requestSubmit();
       });
+
+      // FastAPI sends a string for refusals, or a list of field problems for
+      // input that doesn't fit (422) — say which, in words.
+      function explain(detail, m) {
+        if (typeof detail === "string" && detail) return detail;
+        if (Array.isArray(detail) && detail.length) {
+          var f = detail[0] || {};
+          var field = (f.loc || [])[f.loc ? f.loc.length - 1 : 0];
+          var min = f.ctx && f.ctx.min_length;
+          if (field === "password" && min) return "Password must be at least " + min + " characters.";
+          if (field === "username") return "Usernames are letters, numbers, - and _ (up to 32).";
+          if (f.msg) return (field ? field + ": " : "") + f.msg;
+        }
+        return m === "register" ? "Couldn't create the account" : "Sign-in failed";
+      }
 
       form.addEventListener("submit", function (e) {
         e.preventDefault();
@@ -218,7 +233,7 @@
           })
           .then(function (res) {
             if (!res.ok) {
-              err.textContent = (res.body && res.body.detail) || "Sign-in failed";
+              err.textContent = explain(res.body && res.body.detail, mode);
               return;
             }
             if (res.body.pending_approval) {
