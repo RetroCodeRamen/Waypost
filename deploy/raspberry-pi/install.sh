@@ -302,6 +302,8 @@ if [[ ! -f "$ETC/wifi-psk" ]]; then
 	note "generated Wi-Fi password in $ETC/wifi-psk"
 fi
 chmod 0600 "$ETC/wifi-psk"
+PSK_LEN=$(wc -c < "$ETC/wifi-psk")
+(( PSK_LEN >= 8 && PSK_LEN <= 63 )) || die "$ETC/wifi-psk must be 8-63 characters (WPA2); it is $PSK_LEN"
 
 install -d -m 0755 /etc/hostapd
 PSK="$(cat "$ETC/wifi-psk")"
