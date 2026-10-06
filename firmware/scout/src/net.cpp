@@ -3,11 +3,13 @@
 // microStore's headers need <string> before them (see pocket's main.cpp).
 #include <string>
 #include <algorithm>
+#include <cstring>
 #include <deque>
 #include <map>
 #include <vector>
 
 #include <Arduino.h>
+#include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -63,6 +65,7 @@ int g_pending = 0;
 std::deque<std::pair<RNS::Bytes, RNS::Bytes>> g_sends;
 std::deque<Incoming> g_incoming;
 Status g_status;
+bool g_look_wanted = false;  // look_around() asked; the net task does it
 uint64_t g_epoch_s = 0;
 uint32_t g_epoch_at_ms = 0;
 
@@ -200,6 +203,28 @@ class PeerWatcher : public RNS::AnnounceHandler {
     }
   }
 };
+
+// -- nearby discovery ("who's there?") ---------------------------------------
+//
+// A PLAIN destination every Waypost node listens on: packets to it are
+// broadcast and never relayed (Reticulum drops PLAIN packets after one hop),
+// so a question reaches exactly who's in radio range. The answer is an
+// announce, which Nearby already reads. Each answer waits a random 0.3-3 s
+// (several nodes answering at once would collide) and a node answers at
+// most every 30 s, however often it's asked.
+const char* const kNearbyAspect = "nearby";
+const char* const kProbe = "WPN1";  // version tag; the rest is ignored
+constexpr uint32_t kAnswerEveryMs = 30000;
+
+RNS::Destination g_nearby_in({RNS::Type::NONE});
+uint32_t g_answer_at = 0;     // when to announce in answer (0 = not asked)
+uint32_t g_announced_at = 0;  // last announce of ours, for the 30 s limit
+
+void on_probe(const RNS::Bytes& data, const RNS::Packet&) {
+  if (data.size() < 4 || memcmp(data.data(), kProbe, 4) != 0) return;
+  if (g_answer_at || (g_announced_at && millis() - g_announced_at < kAnswerEveryMs)) return;
+  g_answer_at = (millis() + 300 + esp_random() % 2700) | 1;
+}
 
 // This Scout's capability record: Dispatch, Beacon, peer sync; whether it
 // can reach Station right now. No name: announces are public.
@@ -460,6 +485,10 @@ bool bring_up() {
   step_log("identity");
 
   g_destination.announce(my_caps(false));
+  g_announced_at = millis() | 1;
+  g_nearby_in = RNS::Destination(RNS::Identity({RNS::Type::NONE}), RNS::Type::Destination::IN,
+                                 RNS::Type::Destination::PLAIN, kAppName, kNearbyAspect);
+  g_nearby_in.set_packet_callback(on_probe);
   step_log("announce");
   Serial.printf("net: ready, destination %s, node %s\n", hex.c_str(), g_node_id.c_str());
   Lock l;
@@ -512,10 +541,31 @@ void task(void*) {
     }
     bool due = millis() - last_announce >= kReannounceMs ||
                (reach != announced_reach && millis() - last_announce >= 2UL * 60UL * 1000UL);
-    if (due) {
+    bool answer = g_answer_at && static_cast<int32_t>(millis() - g_answer_at) >= 0;
+    if (due || answer) {
       g_destination.announce(my_caps(reach));
       announced_reach = reach;
       last_announce = millis();
+      g_announced_at = millis() | 1;
+      g_answer_at = 0;
+      if (answer) Serial.println("net: answered a who's-there");
+    }
+    bool look = false;
+    {
+      Lock l;
+      look = g_look_wanted;
+      g_look_wanted = false;
+    }
+    if (look) {
+      // Ourselves first (so the others know us), then the question.
+      if (!g_announced_at || millis() - g_announced_at >= 10000) {
+        g_destination.announce(my_caps(reach));
+        g_announced_at = last_announce = millis() | 1;
+      }
+      RNS::Destination out(RNS::Identity({RNS::Type::NONE}), RNS::Type::Destination::OUT,
+                           RNS::Type::Destination::PLAIN, kAppName, kNearbyAspect);
+      RNS::Packet(out, RNS::Bytes(kProbe)).send();
+      Serial.println("net: asked who's there");
     }
     if (millis() - last_status >= 250) {
       last_status = millis();
@@ -628,6 +678,13 @@ uint64_t now_ms() {
 }
 
 RNS::Bytes station_dest() { return g_station_hash; }
+
+void look_around() {
+  Lock l;
+  if (g_status.looked_at && millis() - g_status.looked_at < 15000) return;  // one at a time
+  g_look_wanted = true;
+  g_status.looked_at = millis() | 1;
+}
 
 size_t encoded_size(const char* svc, const char* op, const std::vector<waylink::Field>& fields,
                     uint64_t ts) {

@@ -100,3 +100,32 @@ def test_guess_destination_from_announces(monkeypatch):
     forged = RNS.Identity()
     known[d[:2] + waylink_dest(forged)[2:]] = [0, b"", forged.get_public_key(), b"", 0]
     assert ReticulumTransport(interface="tcp").guess_destination("pocket-1-" + d.hex()[:4]) == d.hex()
+
+
+# -- "who's there?" answers -----------------------------------------------------------
+
+
+def test_station_answers_whos_there_once(monkeypatch):
+    import time
+
+    from server.transports import reticulum as R
+
+    t = R.ReticulumTransport(interface="tcp")
+    announced = []
+
+    class Dest:
+        def announce(self, app_data=None):
+            announced.append(app_data)
+
+    t._destination = Dest()
+    t._running = True
+    monkeypatch.setattr(R.random, "random", lambda: 0.0)  # answer after the minimum 0.3 s
+
+    t._on_nearby_probe(b"something else", None)  # not a probe
+    t._on_nearby_probe(R.NEARBY_PROBE, None)
+    t._on_nearby_probe(R.NEARBY_PROBE + b"again", None)  # while one answer is pending
+    time.sleep(0.6)
+    assert len(announced) == 1 and K.split(announced[0])[1].role == K.ROLE_STATION
+    t._on_nearby_probe(R.NEARBY_PROBE, None)  # within 30 s of answering
+    time.sleep(0.6)
+    assert len(announced) == 1

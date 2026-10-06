@@ -83,6 +83,7 @@ struct Peer {
 
 struct Status {
   bool ready = false, failed = false;
+  uint32_t looked_at = 0;      // millis() of the last "who's there?" (0 = never)
   bool station_known = false;  // path known and not gone quiet
   std::string node_id;         // e.g. "pocket-1-e75a"
   std::string dest_hex;        // this Scout's destination
@@ -97,6 +98,11 @@ bool station_known();
 // Wall clock in ms from Station's replies (0 until the first one).
 uint64_t now_ms();
 RNS::Bytes station_dest();
+
+// Nearby discovery: announce this Scout, then ask everyone in radio range
+// ("waypost.nearby", one hop, never relayed) to announce themselves. Their
+// announces fill status().nearby within seconds. Rate-limited inside.
+void look_around();
 
 // Encoded size of a request, as it would go to Station (compose limits).
 size_t encoded_size(const char* svc, const char* op, const std::vector<waylink::Field>& fields,

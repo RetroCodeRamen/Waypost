@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import threading
 import time
 from dataclasses import dataclass
@@ -46,6 +47,11 @@ ASPECT = "waylink"
 # marker substitutes for the pairing-code flow's "a human typed this, so
 # there's real intent behind it" — see docs/security.md.
 AUTO_CLAIM_MARKER = b"WPOST-CLAIM:"
+# "Who's there?" probes (roadmap D6): PLAIN waypost.nearby, payload starts with this.
+NEARBY_ASPECT = "nearby"
+NEARBY_PROBE = b"WPN1"
+NEARBY_ANSWER_EVERY_S = 30.0
+REANNOUNCE_S = 600.0  # Scouts' Nearby forgets a node unheard for 30 min
 
 
 class _OutpostAnnounceHandler:
@@ -304,6 +310,8 @@ class ReticulumTransport(Transport):
             Callable[[str, str, Optional[str]], None]
         ] = None
         self._announce_handler: Optional[_OutpostAnnounceHandler] = None
+        self._announced_at = 0.0  # time.monotonic() of our last announce
+        self._answer_timer: Optional[threading.Timer] = None
 
     def learn_route(self, node_id: str, transport_dest: str) -> None:
         """Map a logical Waylink node_id to a Reticulum destination hash."""
@@ -403,11 +411,19 @@ class ReticulumTransport(Transport):
         self._destination.set_packet_callback(self._on_packet)
         self._destination.announce(app_data=self.announce_data())
 
+        # "Who's there?" (roadmap D6): answer Scouts asking who's in radio
+        # range, and re-announce periodically so Nearby lists keep Station.
+        self._nearby_in = RNS.Destination(None, RNS.Destination.IN, RNS.Destination.PLAIN, APP_NAME, NEARBY_ASPECT)
+        self._nearby_in.set_packet_callback(self._on_nearby_probe)
+        self._announced_at = time.monotonic()
+        self._answer_timer: Optional[threading.Timer] = None
+
         self._announce_handler = _OutpostAnnounceHandler(self)
         RNS.Transport.register_announce_handler(self._announce_handler)
 
         self._loop = asyncio.get_running_loop()
         self._running = True
+        threading.Thread(target=self._reannounce_loop, name="waypost-announce", daemon=True).start()
         logger.info(
             "ReticulumTransport started node=%s hash=%s config=%s",
             self.node_id,
@@ -493,6 +509,41 @@ class ReticulumTransport(Transport):
             metadata={"encrypted": True, "transport": "reticulum"},
         )
         self._loop.call_soon_threadsafe(self._inbox.put_nowait, tp)
+
+    # -- "who's there?" --------------------------------------------------------
+
+    def _announce(self) -> None:
+        with self._lock:
+            dest = self._destination
+            self._announced_at = time.monotonic()
+        if dest is not None:
+            dest.announce(app_data=self.announce_data())
+
+    def _on_nearby_probe(self, data: bytes, packet: object) -> None:
+        """A Scout asked who's in radio range (PLAIN waypost.nearby: one hop,
+        never relayed). Answer with an announce after a random 0.3-3 s, at
+        most every 30 s (firmware/scout/src/net.cpp, the Outpost the same)."""
+        if not bytes(data or b"").startswith(NEARBY_PROBE):
+            return
+        with self._lock:
+            if self._answer_timer is not None or time.monotonic() - self._announced_at < NEARBY_ANSWER_EVERY_S:
+                return
+            self._answer_timer = threading.Timer(0.3 + random.random() * 2.7, self._answer)
+            self._answer_timer.daemon = True
+            self._answer_timer.start()
+
+    def _answer(self) -> None:
+        with self._lock:
+            self._answer_timer = None
+        if self._running:
+            self._announce()
+            logger.info("answered a who's-there (nearby)")
+
+    def _reannounce_loop(self) -> None:
+        while self._running:
+            time.sleep(15)
+            if self._running and time.monotonic() - self._announced_at >= REANNOUNCE_S:
+                self._announce()
 
     async def stop(self) -> None:
         self._running = False

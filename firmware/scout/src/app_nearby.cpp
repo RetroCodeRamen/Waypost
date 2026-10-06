@@ -79,17 +79,25 @@ class NearbyApp : public App {
       }
       return;
     }
-    int n = static_cast<int>(_peers.size());
+    int n = static_cast<int>(_peers.size()) + 1;  // row 0: Look around
     if (e.kind == Kind::Left || e.kind == Kind::Backspace) {
       apps::home();
       return;
     }
+    if (e.kind == Kind::Char && (e.ch == 'l' || e.ch == 'L')) {
+      look();
+      return;
+    }
     if (e.kind == Kind::Up && _sel > 0) _sel--;
     else if (e.kind == Kind::Down && _sel + 1 < n) _sel++;
-    else if ((e.kind == Kind::Select || e.kind == Kind::Enter || e.kind == Kind::Right) && _sel < n) {
+    else if (e.kind == Kind::Select || e.kind == Kind::Enter || e.kind == Kind::Right) {
+      if (_sel == 0) {
+        look();
+        return;
+      }
       _detail = true;
       ui::clear_body();
-      draw_detail(_peers[_sel]);
+      draw_detail(_peers[_sel - 1]);
       return;
     } else {
       return;
@@ -98,23 +106,37 @@ class NearbyApp : public App {
   }
 
   void tick() override {
-    if (!_detail && millis() - _drawn_at >= 5000) draw();  // "x min ago", new arrivals
+    // Answers arrive within seconds of asking: redraw often then.
+    uint32_t every = recently_asked() ? 1000 : 5000;
+    if (!_detail && millis() - _drawn_at >= every) draw();
   }
 
  private:
+  // Announce ourselves and ask everyone in radio range to answer.
+  void look() {
+    net::look_around();
+    draw();
+  }
+
+  bool recently_asked() const {
+    uint32_t at = net::status().looked_at;
+    return at && millis() - at < 15000;
+  }
+
   void draw() {
     _drawn_at = millis();
     _peers.clear();
     for (const auto& p : net::status().nearby)
       if (fresh(p)) _peers.push_back(p);
     std::vector<std::string> rows;
+    rows.push_back(recently_asked() ? "> Looking around... (asked who's in range)" : "> Look around (L)");
     for (const auto& p : _peers) {
       std::string row = label(p);
       if (p.outpost() && p.caps.station == wp::kStDirect) row += "  - reaches Station";
       rows.push_back(row + "   " + ago(p.heard_at));
     }
-    if (rows.empty()) rows.push_back("Nothing heard yet - devices announce every few minutes");
-    if (_sel >= static_cast<int>(_peers.size())) _sel = 0;
+    if (_peers.empty()) rows.push_back("  Nothing heard yet - Look around asks who's here");
+    if (_sel > static_cast<int>(_peers.size())) _sel = 0;
     ui::list(rows, _sel, _top);
     ui::footer(apps::nearby_summary(), ui::kMuted);
   }

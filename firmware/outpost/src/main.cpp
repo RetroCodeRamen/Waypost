@@ -20,10 +20,12 @@
 // <string>/<vector> must come first: microStore's File.h/FileSystem.h use
 // std::string/std::to_string without including <string> themselves, so
 // whichever translation unit includes them first has to supply it.
+#include <cstring>
 #include <string>
 #include <vector>
 
 #include <Arduino.h>
+#include <esp_random.h>
 #include <DNSServer.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -273,7 +275,24 @@ static bool station_reach() {
 // The marker (what Station and older Scouts read) plus the capability
 // record after a NUL (shared/protocol/caps.py). The Outpost's id is already
 // in the marker, so the record carries no name.
+// -- "who's there?" (roadmap D6) -------------------------------------------
+// Scouts ask everyone in radio range by a packet to the PLAIN destination
+// waypost.nearby (never relayed: one hop); every Waypost node answers by
+// announcing itself, after a random 0.3-3 s so answers don't collide, and
+// at most every 30 s. Same as the Scout (firmware/scout/src/net.cpp) and
+// Station (server/transports/reticulum.py).
+static RNS::Destination g_nearby_in({RNS::Type::NONE});
+static uint32_t g_answer_at = 0;
+static uint32_t g_announced_at = 0;
+
+static void on_nearby_probe(const RNS::Bytes& data, const RNS::Packet& /*packet*/) {
+  if (data.size() < 4 || memcmp(data.data(), "WPN1", 4) != 0) return;
+  if (g_answer_at || (g_announced_at && millis() - g_announced_at < 30000)) return;
+  g_answer_at = (millis() + 300 + esp_random() % 2700) | 1;
+}
+
 static void announce_now() {
+  g_announced_at = millis() | 1;
   std::string marker = (!g_claimed && g_auto_claim_enabled) ? std::string(AUTO_CLAIM_MARKER) + g_outpost_id
                                                              : std::string(OUTPOST_MARKER) + g_outpost_id;
   wp::Caps caps;
@@ -362,6 +381,9 @@ static void reticulum_setup() {
       WAYPOST_APP_NAME,
       WAYPOST_ASPECT);
   g_destination.set_packet_callback(on_destination_packet);
+  g_nearby_in = RNS::Destination(RNS::Identity({RNS::Type::NONE}), RNS::Type::Destination::IN,
+                                 RNS::Type::Destination::PLAIN, "waypost", "nearby");
+  g_nearby_in.set_packet_callback(on_nearby_probe);
 
   // Collision-proof id — see the g_outpost_id declaration comment above.
   g_outpost_id = std::string(WAYPOST_OUTPOST_ID) + "-" +
@@ -987,9 +1009,12 @@ void loop() {
     last_reach_check = now;
     reach_changed = station_reach() != g_announced_reach;
   }
-  if (now - last_announce > REANNOUNCE_INTERVAL_MS || (reach_changed && now - last_announce > 120000)) {
+  bool answer = g_answer_at && static_cast<int32_t>(now - g_answer_at) >= 0;
+  if (now - last_announce > REANNOUNCE_INTERVAL_MS || (reach_changed && now - last_announce > 120000) || answer) {
     last_announce = now;
+    g_answer_at = 0;
     announce_now();
+    if (answer) Serial.println("nearby: answered a who's-there");
   }
   // Periodic auto-sync — without this, BOARD_SYNC (and the claimed-state
   // ack it carries) only ever ran when a human visited /refresh. A freshly
