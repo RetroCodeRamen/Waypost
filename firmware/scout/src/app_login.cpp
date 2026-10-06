@@ -18,6 +18,7 @@
 #include "kdf.h"
 #include "prompt.h"
 #include "tasks.h"
+#include "wp_objects.h"
 #include "ui.h"
 
 namespace {
@@ -138,12 +139,13 @@ class LoginApp : public App {
   }
 
   // scrypt takes ~4 s: on the crypto worker, with the screen and keys alive.
-  void sign_in(const std::string& password) {
+  // By value: `password` is the prompt's own text, which is cleared below.
+  void sign_in(std::string password) {
     _working = true;
     _prompt.clear();
     _prompt.set_note("Working out your key (about 5 seconds)...");
     std::string user = _user;
-    tasks::run(tasks::Worker::Crypto, [this, user, pw = std::string(password)]() mutable {
+    tasks::run(tasks::Worker::Crypto, [this, user, pw = std::move(password)]() mutable {
       uint32_t t0 = millis();
       std::string seed = kdf::identity_seed(user, pw);
       std::fill(pw.begin(), pw.end(), '\0');
@@ -154,6 +156,13 @@ class LoginApp : public App {
 
   void got_seed(const std::string& seed) {
     _seed = seed;
+    if (_seed.size() == 32) {
+      // The public half's id (not secret: it's on the person's certificate),
+      // to compare with Station's when a sign-in is refused.
+      RNS::Cryptography::Ed25519PrivateKey key(bytes(_seed));
+      std::string id = wp::identity_id_of(raw(key.public_key()->public_bytes()));
+      Serial.printf("login: %s -> identity id %s\n", _user.c_str(), wp::hex(id).c_str());
+    }
     if (_seed.size() != 32) {
       _working = false;
       _prompt.set_error("Not enough memory to work out the key - restart and try again.");
