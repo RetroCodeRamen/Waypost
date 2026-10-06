@@ -1,7 +1,9 @@
 [Unit]
 Description=Waypost Station API
-After=network.target
+After=network.target waypost-wlan0.service
 Wants=network.target
+# (waypost-wlan0 first, when the access point is on: Reticulum's Wi-Fi TCP
+# server listens on 10.42.0.1)
 
 [Service]
 Type=simple

@@ -45,22 +45,26 @@ async def test_auto_claim_reads_the_marker_not_the_record():
 # -- Reticulum uplinks (WAYPOST_RNS_UPSTREAM) ---------------------------------------
 
 
-def test_uplinks_are_added_replaced_and_removed(tmp_path):
-    from server.transports.reticulum import RNodeRadio, _default_config, apply_uplinks, parse_upstreams
+def test_network_block_is_added_replaced_and_removed(tmp_path):
+    from RNS.vendor.configobj import ConfigObj  # what Reticulum parses it with
+
+    from server.transports.reticulum import RNodeRadio, _default_config, apply_network, parse_upstreams
 
     _default_config(tmp_path, interface="rnode", rnode=RNodeRadio(port="/dev/waypost-lora"))
     cfg = tmp_path / "config"
-    apply_uplinks(cfg, parse_upstreams("hub.example.org:4242, 10.0.0.5:4965, nonsense"))
-    text = cfg.read_text()
-    assert text.count("type = TCPClientInterface") == 2 and "target_host = hub.example.org" in text
-    assert "mode = gateway" in text
-    apply_uplinks(cfg, parse_upstreams("10.0.0.5:4965"))
-    text = cfg.read_text()
-    assert text.count("type = TCPClientInterface") == 1 and "hub.example.org" not in text
-    apply_uplinks(cfg, [])
-    assert "TCPClientInterface" not in cfg.read_text() and "type = RNodeInterface" in cfg.read_text()
+    apply_network(cfg, upstreams=parse_upstreams("hub.example.org:4242, 10.0.0.5:4965, nonsense"),
+                  wifi_device="wlan0")
+    conf = ConfigObj(str(cfg))["interfaces"]
+    assert conf["WAYPOST Wi-Fi"]["devices"] == "wlan0" and conf["WAYPOST Wi-Fi"]["mode"] == "gateway"
+    assert conf["WAYPOST Wi-Fi TCP"]["listen_ip"] == "10.42.0.1"
+    assert conf["Uplink 1"]["target_host"] == "hub.example.org" and "Uplink 2" in conf
+    assert conf["RNode LoRa"]["mode"] == "gateway"
 
-    from RNS.vendor.configobj import ConfigObj  # what Reticulum parses it with
+    apply_network(cfg, upstreams=parse_upstreams("10.0.0.5:4965"), wifi_device="wlan0")
+    conf = ConfigObj(str(cfg))["interfaces"]
+    assert "Uplink 2" not in conf and conf["Uplink 1"]["target_host"] == "10.0.0.5"
+    assert cfg.read_text().count("mode = gateway") == 3  # radio not doubled
 
-    conf = ConfigObj(str(cfg))
-    assert "RNode LoRa" in conf["interfaces"]
+    apply_network(cfg, upstreams=[])
+    conf = ConfigObj(str(cfg))["interfaces"]
+    assert set(conf) == {"RNode LoRa"}

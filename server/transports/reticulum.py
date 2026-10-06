@@ -190,8 +190,11 @@ def _default_config(
     )
 
 
-UPLINK_BEGIN = "  # --- waypost uplinks (managed by Station from WAYPOST_RNS_UPSTREAM) ---"
-UPLINK_END = "  # --- end waypost uplinks ---"
+MANAGED_BEGIN = "  # --- waypost network (managed by Station: WAYPOST_RNS_WIFI, WAYPOST_RNS_UPSTREAM) ---"
+MANAGED_END = "  # --- end waypost network ---"
+# Earlier name of the block (2026-10-06), removed when found.
+_OLD_BEGIN = "  # --- waypost uplinks (managed by Station from WAYPOST_RNS_UPSTREAM) ---"
+_OLD_END = "  # --- end waypost uplinks ---"
 
 
 def parse_upstreams(raw: str) -> list[tuple[str, int]]:
@@ -206,32 +209,48 @@ def parse_upstreams(raw: str) -> list[tuple[str, int]]:
     return out
 
 
-def apply_uplinks(cfg: Path, upstreams: list[tuple[str, int]]) -> None:
-    """Keep the config's uplink block in step with WAYPOST_RNS_UPSTREAM.
+def _strip_block(text: str, begin: str, end: str) -> str:
+    if begin not in text:
+        return text
+    head, _, rest = text.partition(begin)
+    _, _, tail = rest.partition(end)
+    return head.rstrip("\n") + "\n" + tail.lstrip("\n")
 
-    Each uplink is a TCPClientInterface to another Reticulum network (another
-    Station, a hub) over whatever wired network the Station has; Reticulum
-    reconnects by itself when it comes and goes. With any uplink, the radio
-    interface runs in gateway mode so devices on LoRa can find destinations
-    beyond it. Announces from the uplink reach LoRa only within the radio
-    interface's announce cap (2% of airtime by default), so a busy uplink
-    can't swamp the radio.
+
+def apply_network(cfg: Path, *, upstreams: list[tuple[str, int]], wifi_device: str = "",
+                  wifi_addr: str = "10.42.0.1", wifi_port: int = 4242) -> None:
+    """Keep the config's Station-managed interfaces in step with the settings.
+
+    - ``wifi_device`` (WAYPOST_RNS_WIFI, e.g. wlan0): the Station's own Wi-Fi
+      is a Reticulum access point too. An AutoInterface on it (apps there find
+      the Station by themselves) and a TCP server on its address (for apps
+      where you type one in). Only on that network, never on Ethernet.
+    - ``upstreams`` (WAYPOST_RNS_UPSTREAM): TCP links to other Reticulum
+      networks (another Station, a hub) over the wired uplink; Reticulum
+      reconnects as it comes and goes.
+
+    Devices on the Wi-Fi and LoRa reach whatever is beyond the Station: the
+    serving interfaces run in gateway mode (path discovery on behalf of
+    clients). Announces from the Wi-Fi or an uplink reach LoRa only within
+    the radio's announce cap (2% of airtime by default).
     """
     if not cfg.exists():
         return
-    text = cfg.read_text()
-    if UPLINK_BEGIN in text:
-        head, _, rest = text.partition(UPLINK_BEGIN)
-        _, _, tail = rest.partition(UPLINK_END)
-        text = head.rstrip("\n") + "\n" + tail.lstrip("\n")
-    if upstreams:
-        block = [UPLINK_BEGIN]
-        for i, (host, port) in enumerate(upstreams, 1):
-            block += [f"  [[Uplink {i}]]", "    type = TCPClientInterface", "    enabled = Yes",
-                      f"    target_host = {host}", f"    target_port = {port}"]
-        block.append(UPLINK_END)
-        text = text.rstrip("\n") + "\n" + "\n".join(block) + "\n"
-        if "type = RNodeInterface" in text and "mode = gateway" not in text:
+    text = _strip_block(cfg.read_text(), _OLD_BEGIN, _OLD_END)
+    text = _strip_block(text, MANAGED_BEGIN, MANAGED_END)
+    block: list[str] = []
+    if wifi_device:
+        block += ["  [[WAYPOST Wi-Fi]]", "    type = AutoInterface", "    enabled = Yes",
+                  f"    devices = {wifi_device}", "    mode = gateway",
+                  "  [[WAYPOST Wi-Fi TCP]]", "    type = TCPServerInterface", "    enabled = Yes",
+                  f"    listen_ip = {wifi_addr}", f"    listen_port = {wifi_port}", "    mode = gateway"]
+    for i, (host, port) in enumerate(upstreams, 1):
+        block += [f"  [[Uplink {i}]]", "    type = TCPClientInterface", "    enabled = Yes",
+                  f"    target_host = {host}", f"    target_port = {port}"]
+    if block:
+        text = text.rstrip("\n") + "\n" + "\n".join([MANAGED_BEGIN, *block, MANAGED_END]) + "\n"
+        if "type = RNodeInterface" in text and "mode = gateway\n    port" not in text and \
+                "type = RNodeInterface\n    mode = gateway" not in text:
             text = text.replace("type = RNodeInterface", "type = RNodeInterface\n    mode = gateway", 1)
     cfg.write_text(text)
 
@@ -325,7 +344,13 @@ class ReticulumTransport(Transport):
             tcp_port=self.tcp_port,
             rnode=self.rnode,
         )
-        apply_uplinks(self.config_dir / "config", parse_upstreams(os.getenv("WAYPOST_RNS_UPSTREAM", "")))
+        apply_network(
+            self.config_dir / "config",
+            upstreams=parse_upstreams(os.getenv("WAYPOST_RNS_UPSTREAM", "")),
+            wifi_device=os.getenv("WAYPOST_RNS_WIFI", "").strip(),
+            wifi_addr=os.getenv("WAYPOST_RNS_WIFI_ADDR", "10.42.0.1").strip(),
+            wifi_port=int(os.getenv("WAYPOST_RNS_WIFI_PORT", "4242")),
+        )
         self._rns = RNS.Reticulum(str(self.config_dir))
 
         if self.identity_path.exists():

@@ -11,6 +11,10 @@
 # --enable-ap refuses to run from an SSH session that arrives over wlan0.
 # Use Ethernet (or the console) for that step.
 set -euo pipefail
+# The SSH client's own language settings (LC_*) often aren't installed on the
+# Pi; apt and perl then warn about every one. A neutral locale for the run.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+unset LANGUAGE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -206,15 +210,24 @@ WAYPOST_RNS_FREQUENCY=${FREQUENCY:-915000000}
 # WAYPOST_RNS_TXPOWER=14
 # WAYPOST_RNS_SF=8
 # WAYPOST_RNS_CR=5
-# Share Ethernet internet with people on the WAYPOST Wi-Fi when there is any:
-WAYPOST_SHARE_UPLINK=yes
-# Link this Station to other Reticulum networks over Ethernet (host:port, comma-separated):
-# WAYPOST_RNS_UPSTREAM=
 EOF
 	umask 022
 	chown root:waypost "$ETC/waypost.env"
 	chmod 0640 "$ETC/waypost.env"
 	note "wrote $ETC/waypost.env (secret key generated)"
+fi
+
+# Settings added since the file was first written: appended when missing,
+# never changed once there (edit the file to change them).
+ensure_env() {  # ensure_env KEY VALUE COMMENT
+	grep -q "^#\? *$1=" "$ETC/waypost.env" && return 0
+	printf '# %s\n%s=%s\n' "$3" "$1" "$2" >> "$ETC/waypost.env"
+	note "added $1=$2 to $ETC/waypost.env"
+}
+ensure_env WAYPOST_SHARE_UPLINK yes "Share Ethernet internet with people on the WAYPOST Wi-Fi when there is any"
+ensure_env WAYPOST_RNS_UPSTREAM "" "Link to other Reticulum networks over Ethernet: host:port[,host:port]"
+if [[ $ENABLE_AP -eq 1 ]]; then
+	ensure_env WAYPOST_RNS_WIFI wlan0 "The WAYPOST Wi-Fi is a Reticulum access point too (AutoInterface + TCP 10.42.0.1:4242)"
 fi
 
 # ---------------------------------------------------------------------------
