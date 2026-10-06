@@ -24,7 +24,8 @@
 	reverse_proxy 127.0.0.1:8000
 }
 
-https://way.post, https://www.way.post, https://waypost.home.arpa, https://waypost, https://10.42.0.1 {
+# waypost.local: the name the Pi has on a home network (mDNS), for use over Ethernet.
+https://way.post, https://www.way.post, https://waypost.home.arpa, https://waypost, https://waypost.local, https://10.42.0.1 {
 	tls {
 		issuer internal {
 			lifetime 30d
