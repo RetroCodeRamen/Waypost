@@ -53,7 +53,7 @@ Check it:
 ```bash
 systemctl status waypost-api caddy --no-pager
 curl -s http://127.0.0.1:8000/api/health
-cat /etc/waypost/public/waypost-ca.sha256     # CA fingerprint people will compare
+cat /srv/waypost/public/waypost-ca.sha256     # CA fingerprint people will compare
 ```
 
 ## 3. Switch on the WAYPOST access point
@@ -68,7 +68,7 @@ Wi‑Fi password: `sudo cat /etc/waypost/wifi-psk`.
 ## 4. First visit from a phone or laptop
 
 1. Join `WAYPOST`. Your phone should pop a **Waygate** welcome page (off‑grid notice). If it doesn’t, open `http://way.post/` manually.
-2. Tap **Continue** → **Trust this Station** (install the local certificate once per device). Compare the fingerprint with `cat /etc/waypost/public/waypost-ca.sha256` on the Pi.
+2. Tap **Continue** → **Trust this Station** (install the local certificate once per device). Compare the fingerprint with `cat /srv/waypost/public/waypost-ca.sha256` on the Pi.
 3. Sign in or register on the portal at `https://way.post/`. (The Pi’s dnsmasq on `10.42.0.1` resolves `way.post` only on this Wi‑Fi; `waypost.home.arpa` and `waypost` still work as aliases.)
 
 ## Notes and limits

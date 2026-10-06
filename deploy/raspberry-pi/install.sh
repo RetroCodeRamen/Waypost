@@ -21,6 +21,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PREFIX=/opt/waypost
 DATA=/var/lib/waypost
 ETC=/etc/waypost
+# Served to anyone over plain HTTP (the CA cert). Not under $ETC: that holds
+# secrets and is closed to the web server.
+PUBLIC=/srv/waypost/public
 CADDY_ROOT_CRT=/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt
 
 SSID=WAYPOST
@@ -185,7 +188,12 @@ if [[ -n $IMPORT_DIR ]]; then
 	import_one "$IMPORT_DIR/rns-identity" "$DATA/reticulum/identity"
 fi
 install -d -o root -g waypost -m 0750 "$ETC"
-install -d -o root -g root -m 0755 "$ETC/public"
+install -d -o root -g root -m 0755 /srv/waypost "$PUBLIC"
+# Before 2026-10-06 public files sat in $ETC/public, which Caddy could not reach.
+if [[ -d "$ETC/public" ]]; then
+	rm -f "$ETC/public/waypost-ca.crt" "$ETC/public/waypost-ca.sha256"
+	rmdir "$ETC/public" 2>/dev/null || true
+fi
 
 if [[ -f "$ETC/waypost.env" ]]; then
 	note "kept existing $ETC/waypost.env"
@@ -279,12 +287,12 @@ if [[ $NO_START -eq 0 ]]; then
 	for _ in $(seq 1 30); do [[ -f "$CADDY_ROOT_CRT" ]] && break; sleep 1; done
 fi
 if [[ -f "$CADDY_ROOT_CRT" ]]; then
-	install -m 0644 "$CADDY_ROOT_CRT" "$ETC/public/waypost-ca.crt"
-	openssl x509 -in "$ETC/public/waypost-ca.crt" -noout -fingerprint -sha256 \
-		| cut -d= -f2 > "$ETC/public/waypost-ca.sha256"
-	chmod 0644 "$ETC/public/waypost-ca.sha256"
+	install -m 0644 "$CADDY_ROOT_CRT" "$PUBLIC/waypost-ca.crt"
+	openssl x509 -in "$PUBLIC/waypost-ca.crt" -noout -fingerprint -sha256 \
+		| cut -d= -f2 > "$PUBLIC/waypost-ca.sha256"
+	chmod 0644 "$PUBLIC/waypost-ca.sha256"
 	note "CA published at http://<station>/waypost-ca.crt"
-	note "fingerprint $(cat "$ETC/public/waypost-ca.sha256")"
+	note "fingerprint $(cat "$PUBLIC/waypost-ca.sha256")"
 else
 	note "CA not created yet (Caddy not started); re-run after first boot to publish it"
 fi

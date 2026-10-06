@@ -35,12 +35,12 @@ https://way.post, https://www.way.post, https://waypost.home.arpa, https://waypo
 
 http:// {
 	handle /waypost-ca.crt {
-		root * /etc/waypost/public
+		root * /srv/waypost/public
 		header Content-Type application/x-x509-ca-cert
 		file_server
 	}
 	handle /waypost-ca.sha256 {
-		root * /etc/waypost/public
+		root * /srv/waypost/public
 		header Content-Type text/plain
 		file_server
 	}
