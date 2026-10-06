@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Waypost uplink sharing (run every 30 s by waypost-uplink.timer).
+#
+# The Station's Wi-Fi (WAYPOST, wlan0) is for local access to the Station.
+# When Ethernet (eth0) has a working internet connection, also share it with
+# people on that Wi-Fi: forwarding + NAT to eth0, and DNS that answers names
+# normally. Without one, go back to offline mode: no forwarding, and every
+# name answers with the Station (that is what makes phones show the sign-in
+# splash). way.post and the other Station names work in both modes.
+#
+# Set WAYPOST_SHARE_UPLINK=no in /etc/waypost/waypost.env to never share.
+set -uo pipefail
+
+MODE_FILE=/etc/dnsmasq.d/waypost-mode.conf
+STATE=/run/waypost-uplink.state
+SUBNET=10.42.0.0/24
+
+share=yes
+if [[ -r /etc/waypost/waypost.env ]]; then
+	v=$(sed -n 's/^WAYPOST_SHARE_UPLINK=//p' /etc/waypost/waypost.env | tail -1)
+	[[ -n $v ]] && share=${v,,}
+fi
+
+online=no
+if [[ $share == yes ]] && ip route show default dev eth0 2>/dev/null | grep -q .; then
+	# A captive-portal check: 204 only when the internet is really there.
+	code=$(curl -s --interface eth0 --max-time 5 -o /dev/null -w '%{http_code}' \
+		http://connectivitycheck.gstatic.com/generate_204 || true)
+	[[ $code == 204 ]] && online=yes
+fi
+
+if [[ $online == yes ]]; then
+	sysctl -qw net.ipv4.ip_forward=1
+	nft list table ip waypost_uplink >/dev/null 2>&1 || nft -f - <<NFT
+table ip waypost_uplink {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr $SUBNET oifname "eth0" masquerade
+	}
+}
+NFT
+	want="# online: Ethernet has internet; names resolve normally (waypost-uplink)"
+else
+	sysctl -qw net.ipv4.ip_forward=0
+	nft delete table ip waypost_uplink >/dev/null 2>&1 || true
+	want=$'# offline: every name answers with the Station (waypost-uplink)\naddress=/#/10.42.0.1'
+fi
+
+if [[ "$(cat "$MODE_FILE" 2>/dev/null)" != "$want" ]]; then
+	printf '%s\n' "$want" > "$MODE_FILE"
+	systemctl is-active --quiet dnsmasq && systemctl restart dnsmasq
+fi
+
+if [[ "$(cat "$STATE" 2>/dev/null)" != "$online" ]]; then
+	echo "$online" > "$STATE"
+	logger -t waypost-uplink "internet via Ethernet: $online$([[ $share == yes ]] || echo ' (sharing disabled)')"
+fi

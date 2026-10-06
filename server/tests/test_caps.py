@@ -40,3 +40,27 @@ async def test_auto_claim_reads_the_marker_not_the_record():
     t._on_announce(bytes(range(16)), None, data)
     await asyncio.sleep(0)
     assert claimed == [("outpost-1-0e21", bytes(range(16)).hex(), "North Gate")]
+
+
+# -- Reticulum uplinks (WAYPOST_RNS_UPSTREAM) ---------------------------------------
+
+
+def test_uplinks_are_added_replaced_and_removed(tmp_path):
+    from server.transports.reticulum import RNodeRadio, _default_config, apply_uplinks, parse_upstreams
+
+    _default_config(tmp_path, interface="rnode", rnode=RNodeRadio(port="/dev/waypost-lora"))
+    cfg = tmp_path / "config"
+    apply_uplinks(cfg, parse_upstreams("hub.example.org:4242, 10.0.0.5:4965, nonsense"))
+    text = cfg.read_text()
+    assert text.count("type = TCPClientInterface") == 2 and "target_host = hub.example.org" in text
+    assert "mode = gateway" in text
+    apply_uplinks(cfg, parse_upstreams("10.0.0.5:4965"))
+    text = cfg.read_text()
+    assert text.count("type = TCPClientInterface") == 1 and "hub.example.org" not in text
+    apply_uplinks(cfg, [])
+    assert "TCPClientInterface" not in cfg.read_text() and "type = RNodeInterface" in cfg.read_text()
+
+    from RNS.vendor.configobj import ConfigObj  # what Reticulum parses it with
+
+    conf = ConfigObj(str(cfg))
+    assert "RNode LoRa" in conf["interfaces"]

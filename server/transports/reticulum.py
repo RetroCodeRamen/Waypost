@@ -190,6 +190,52 @@ def _default_config(
     )
 
 
+UPLINK_BEGIN = "  # --- waypost uplinks (managed by Station from WAYPOST_RNS_UPSTREAM) ---"
+UPLINK_END = "  # --- end waypost uplinks ---"
+
+
+def parse_upstreams(raw: str) -> list[tuple[str, int]]:
+    """``host:port[,host:port...]`` -> [(host, port)]. Bad entries are skipped."""
+    out: list[tuple[str, int]] = []
+    for item in raw.split(","):
+        host, _, port = item.strip().rpartition(":")
+        if host and port.isdigit() and 0 < int(port) < 65536:
+            out.append((host.strip("[]"), int(port)))
+        elif item.strip():
+            logger.warning("WAYPOST_RNS_UPSTREAM: ignoring %r (want host:port)", item.strip())
+    return out
+
+
+def apply_uplinks(cfg: Path, upstreams: list[tuple[str, int]]) -> None:
+    """Keep the config's uplink block in step with WAYPOST_RNS_UPSTREAM.
+
+    Each uplink is a TCPClientInterface to another Reticulum network (another
+    Station, a hub) over whatever wired network the Station has; Reticulum
+    reconnects by itself when it comes and goes. With any uplink, the radio
+    interface runs in gateway mode so devices on LoRa can find destinations
+    beyond it. Announces from the uplink reach LoRa only within the radio
+    interface's announce cap (2% of airtime by default), so a busy uplink
+    can't swamp the radio.
+    """
+    if not cfg.exists():
+        return
+    text = cfg.read_text()
+    if UPLINK_BEGIN in text:
+        head, _, rest = text.partition(UPLINK_BEGIN)
+        _, _, tail = rest.partition(UPLINK_END)
+        text = head.rstrip("\n") + "\n" + tail.lstrip("\n")
+    if upstreams:
+        block = [UPLINK_BEGIN]
+        for i, (host, port) in enumerate(upstreams, 1):
+            block += [f"  [[Uplink {i}]]", "    type = TCPClientInterface", "    enabled = Yes",
+                      f"    target_host = {host}", f"    target_port = {port}"]
+        block.append(UPLINK_END)
+        text = text.rstrip("\n") + "\n" + "\n".join(block) + "\n"
+        if "type = RNodeInterface" in text and "mode = gateway" not in text:
+            text = text.replace("type = RNodeInterface", "type = RNodeInterface\n    mode = gateway", 1)
+    cfg.write_text(text)
+
+
 class ReticulumTransport(Transport):
     """Encrypted Waylink transport via Reticulum (AutoInterface or RNode)."""
 
@@ -279,6 +325,7 @@ class ReticulumTransport(Transport):
             tcp_port=self.tcp_port,
             rnode=self.rnode,
         )
+        apply_uplinks(self.config_dir / "config", parse_upstreams(os.getenv("WAYPOST_RNS_UPSTREAM", "")))
         self._rns = RNS.Reticulum(str(self.config_dir))
 
         if self.identity_path.exists():

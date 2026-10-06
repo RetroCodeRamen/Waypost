@@ -28,6 +28,8 @@ ENABLE_AP=0
 FORCE_AP=0
 SKIP_APT=0
 NO_START=0
+IMPORT_DIR=""
+
 
 usage() {
 	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
@@ -43,6 +45,11 @@ Options:
   --transport KIND     reticulum (default, RNode on /dev/waypost-lora) or mock (no radio)
   --skip-apt           Do not install OS packages (already installed)
   --no-start           Install files only; do not enable/start services
+  --import DIR         Bring an existing Station along (moving from another machine):
+                       DIR/waypost.db, DIR/community.key, DIR/rns-identity. Each is
+                       used only where this Station doesn't have its own yet, so a
+                       re-run never overwrites. Same identity = Scouts and Outposts
+                       keep working; same database = same accounts.
   -h, --help           Show this help
 EOF
 }
@@ -58,6 +65,7 @@ while [[ $# -gt 0 ]]; do
 		--transport) TRANSPORT="$2"; shift ;;
 		--skip-apt) SKIP_APT=1 ;;
 		--no-start) NO_START=1 ;;
+		--import) IMPORT_DIR="$2"; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
 	esac
@@ -109,7 +117,7 @@ else
 	apt-get update -qq
 	apt-get install -y -qq --no-install-recommends \
 		python3 python3-venv python3-pip rsync openssl ca-certificates curl gpg \
-		hostapd dnsmasq rfkill iw iproute2 sqlite3 >/dev/null
+		hostapd dnsmasq rfkill iw iproute2 nftables sqlite3 >/dev/null
 	# Debian ships Caddy 2.6, which cannot lengthen the local CA intermediate
 	# (needed for clock-drift tolerance) — use Caddy's official repo instead.
 	CADDY_KEYRING=/usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -155,6 +163,19 @@ note "$("$PREFIX/.venv/bin/python" --version) with $(wc -l < "$PREFIX/server/req
 # ---------------------------------------------------------------------------
 step "Data + config directories"
 install -d -o waypost -g waypost -m 0750 "$DATA" "$DATA/data" "$DATA/reticulum" "$DATA/backups"
+if [[ -n $IMPORT_DIR ]]; then
+	# Moving a Station: keep its identity (Reticulum address, community key)
+	# and its database. Never replaces what this Station already has.
+	[[ -d $IMPORT_DIR ]] || die "--import: $IMPORT_DIR is not a directory"
+	import_one() {  # import_one SRC DEST
+		if [[ ! -f $1 ]]; then note "import: $(basename "$1") not in $IMPORT_DIR, skipped"
+		elif [[ -e $2 ]]; then note "import: $2 exists, kept (not overwritten)"
+		else install -o waypost -g waypost -m 0600 "$1" "$2"; note "import: $(basename "$1") -> $2"; fi
+	}
+	import_one "$IMPORT_DIR/waypost.db" "$DATA/data/waypost.db"
+	import_one "$IMPORT_DIR/community.key" "$DATA/data/community.key"
+	import_one "$IMPORT_DIR/rns-identity" "$DATA/reticulum/identity"
+fi
 install -d -o root -g waypost -m 0750 "$ETC"
 install -d -o root -g root -m 0755 "$ETC/public"
 
@@ -181,6 +202,10 @@ WAYPOST_RNS_FREQUENCY=${FREQUENCY:-915000000}
 # WAYPOST_RNS_TXPOWER=14
 # WAYPOST_RNS_SF=8
 # WAYPOST_RNS_CR=5
+# Share Ethernet internet with people on the WAYPOST Wi-Fi when there is any:
+WAYPOST_SHARE_UPLINK=yes
+# Link this Station to other Reticulum networks over Ethernet (host:port, comma-separated):
+# WAYPOST_RNS_UPSTREAM=
 EOF
 	umask 022
 	chown root:waypost "$ETC/waypost.env"
@@ -274,6 +299,12 @@ install -m 0644 "$SCRIPT_DIR/systemd/waypost-wlan0.service" /etc/systemd/system/
 if [[ $ENABLE_AP -eq 1 ]]; then
 	install -d -m 0755 /etc/dnsmasq.d /etc/NetworkManager/conf.d
 	install -m 0644 "$SCRIPT_DIR/dnsmasq/waypost.conf" /etc/dnsmasq.d/waypost.conf
+	# Offline until waypost-uplink finds internet on Ethernet.
+	[[ -f /etc/dnsmasq.d/waypost-mode.conf ]] || \
+		printf '# offline (waypost-uplink)\naddress=/#/10.42.0.1\n' > /etc/dnsmasq.d/waypost-mode.conf
+	install -m 0755 "$SCRIPT_DIR/uplink/waypost-uplink" /usr/local/sbin/waypost-uplink
+	install -m 0644 "$SCRIPT_DIR/systemd/waypost-uplink.service" "$SCRIPT_DIR/systemd/waypost-uplink.timer" \
+		/etc/systemd/system/
 	printf '[keyfile]\nunmanaged-devices=interface-name:wlan0\n' \
 		> /etc/NetworkManager/conf.d/99-waypost-unmanaged-wlan0.conf
 	if [[ $NO_START -eq 0 ]]; then
@@ -282,8 +313,11 @@ if [[ $ENABLE_AP -eq 1 ]]; then
 		systemctl reload NetworkManager 2>/dev/null || true
 		systemctl daemon-reload
 		systemctl unmask hostapd >/dev/null 2>&1 || true
-		systemctl enable waypost-wlan0 hostapd dnsmasq >/dev/null 2>&1
+		systemctl enable waypost-wlan0 hostapd dnsmasq waypost-uplink.timer >/dev/null 2>&1
 		systemctl restart waypost-wlan0 hostapd dnsmasq
+		systemctl start waypost-uplink.timer
+		/usr/local/sbin/waypost-uplink || true
+		note "internet sharing: $(cat /run/waypost-uplink.state 2>/dev/null || echo '?') (follows Ethernet; WAYPOST_SHARE_UPLINK=no to turn off)"
 		note "AP up: SSID $SSID on 10.42.0.1 (password: sudo cat $ETC/wifi-psk)"
 	else
 		note "AP configs installed; services start on next boot"

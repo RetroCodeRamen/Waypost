@@ -1,0 +1,7 @@
+[Unit]
+Description=Waypost: share Ethernet internet over the WAYPOST Wi-Fi when there is any
+After=network-online.target dnsmasq.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/waypost-uplink
