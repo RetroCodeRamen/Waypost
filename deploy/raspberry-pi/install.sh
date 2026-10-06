@@ -98,9 +98,13 @@ if [[ $HAVE_SYSTEMD -eq 0 && $NO_START -eq 0 ]]; then
 fi
 
 ssh_over_wlan0() {
-	local client
-	client="${SSH_CONNECTION%% *}"
-	[[ -n "${SSH_CONNECTION:-}" && -n "$client" ]] || return 1
+	local conn client
+	# sudo drops SSH_CONNECTION; the login record of this terminal still has
+	# the remote address (who -m), with ssh -t.
+	conn="${SSH_CONNECTION:-}"
+	client="${conn%% *}"
+	[[ -n $client ]] || client="$(who -m 2>/dev/null | sed -n 's/.*(\(.*\)).*/\1/p')"
+	[[ -n $client ]] || return 1
 	ip route get "$client" 2>/dev/null | grep -q ' dev wlan0 '
 }
 
