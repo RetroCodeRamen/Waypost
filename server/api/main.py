@@ -350,6 +350,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             outpost = db.corkboard.get_outpost(dst)
             if outpost and outpost.get("transport_dest"):
                 return str(outpost["transport_dest"])
+            # Not bound (or routes lost in a restart): the device's own
+            # announce, matched by the node id's hash prefix.
+            guess = getattr(transport, "guess_destination", None)
+            if callable(guess) and len(dst) != 32:
+                found = guess(dst)
+                if found:
+                    return found
             return dst
 
         gateway._resolve_dest = _resolve_dest  # type: ignore[attr-defined]

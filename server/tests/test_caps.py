@@ -68,3 +68,35 @@ def test_network_block_is_added_replaced_and_removed(tmp_path):
     apply_network(cfg, upstreams=[])
     conf = ConfigObj(str(cfg))["interfaces"]
     assert set(conf) == {"RNode LoRa"}
+
+
+# -- reply routes from announces (guess_destination) --------------------------------
+
+
+def test_guess_destination_from_announces(monkeypatch):
+    import RNS
+
+    from server.transports.reticulum import APP_NAME, ASPECT, ReticulumTransport
+
+    def waylink_dest(ident):
+        return bytes(RNS.Destination.hash(ident, APP_NAME, ASPECT))
+
+    known = {}
+    scout = RNS.Identity()
+    d = waylink_dest(scout)
+    known[d] = [0, b"", scout.get_public_key(), b"", 0]
+    other = RNS.Identity()  # some other app's destination: never matched
+    known[bytes(RNS.Destination.hash(other, "nomadnetwork", "node"))] = [0, b"", other.get_public_key(), b"", 0]
+    monkeypatch.setattr(RNS.Identity, "known_destinations", known)
+
+    t = ReticulumTransport(interface="tcp")
+    assert t.guess_destination("pocket-1-" + d.hex()[:4]) == d.hex()
+    assert t.resolve_destination("pocket-1-" + d.hex()[:4]) == d.hex()  # learned
+    assert t.guess_destination("pocket-1-zzzz") is None
+    assert t.guess_destination("station") is None
+
+    # A forged entry (same prefix, but the hash isn't its key's Waylink
+    # destination) is ignored, so it can't make the match ambiguous or win.
+    forged = RNS.Identity()
+    known[d[:2] + waylink_dest(forged)[2:]] = [0, b"", forged.get_public_key(), b"", 0]
+    assert ReticulumTransport(interface="tcp").guess_destination("pocket-1-" + d.hex()[:4]) == d.hex()

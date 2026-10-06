@@ -315,6 +315,39 @@ class ReticulumTransport(Transport):
             self._dest_cache.pop(node_id, None)
         logger.info("learned_route node=%s dest=%s", node_id, raw)
 
+    def guess_destination(self, node_id: str) -> Optional[str]:
+        """The Waylink destination of a device we have no route for (none
+        bound, or this Station just restarted): node ids end in the first 4
+        hex characters of the device's destination (``pocket-1-e75a``), and
+        Reticulum remembers every announce it heard. Exactly one known
+        ``waypost.waylink`` destination with that prefix -> its hash; none or
+        several -> None (never a guess between two devices)."""
+        tail = node_id.rsplit("-", 1)[-1].lower()
+        if len(tail) != 4 or any(c not in "0123456789abcdef" for c in tail):
+            return None
+        try:
+            import RNS
+        except ImportError:
+            return None
+        found: list[str] = []
+        for dest, entry in list(getattr(RNS.Identity, "known_destinations", {}).items()):
+            hexd = bytes(dest).hex()
+            if not hexd.startswith(tail):
+                continue
+            try:
+                ident = RNS.Identity(create_keys=False)
+                ident.load_public_key(entry[2])
+                expected = RNS.Destination.hash(ident, APP_NAME, ASPECT)
+            except Exception:
+                continue
+            if bytes(expected) == bytes(dest):
+                found.append(hexd)
+        if len(found) != 1:
+            return None
+        logger.info("guessed_route node=%s dest=%s (from announces)", node_id, found[0])
+        self.learn_route(node_id, found[0])
+        return found[0]
+
     def resolve_destination(self, destination: str) -> str:
         """Resolve logical node_id to RNS hash when known; else return as-is."""
         with self._lock:
