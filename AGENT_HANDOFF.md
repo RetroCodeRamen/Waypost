@@ -162,6 +162,31 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-06 — Claude (Station moved onto the Raspberry Pi — M1b)
+
+The human set the direction: the Pi gives out the WAYPOST Wi-Fi for local access to the Station page, and when Ethernet has a wider network it shares it over the Wi-Fi and over Reticulum.
+
+**Built:**
+- `waypost-uplink`: NAT plus normal DNS when eth0 has internet; offline catch-all otherwise.
+- `WAYPOST_RNS_UPSTREAM`: TCP uplinks; the radio goes to gateway mode.
+- `install.sh --import`: moves an existing Station's database, community key and Reticulum identity.
+
+**On hardware:** Pi 3 at `10.0.0.193` (`waypost.local`), Debian 13. The RNode is on the Pi (`/dev/waypost-lora`). The installer ran with `--enable-ap --import`.
+- The laptop Station's identity and database moved over, so the Scout and the Outpost talk to the Pi unchanged (verified in the Pi's log).
+- The portal answers at `https://way.post`. Internet sharing is on.
+- **The laptop Station is stopped:** don't start it with the radio (the radio is on the Pi now).
+
+**Access:**
+- SSH as `aj` with `~/.ssh/waypost_pi_deploy` (no passphrase; the human's own key has one).
+- `sudo` needs the human's password, so root steps go to the human.
+- Wi-Fi password: `sudo cat /etc/waypost/wifi-psk` on the Pi.
+
+**Open:**
+- Pick a Reticulum upstream (`WAYPOST_RNS_UPSTREAM`).
+- `~/waypost-import` on the Pi holds a copy of the community key; it's the only backup now that `/tmp` on the laptop is volatile. Decide on a proper backup, then delete it.
+- Locale warnings over SSH (the laptop sends `LC_*`; the Pi has `en_GB` only).
+- A phone test on the WAYPOST Wi-Fi.
+
 ### 2026-10-05 — Claude (D6: capability records + Scout Nearby)
 
 Announces now carry `<marker> NUL CBOR{r role, s services, st Station reach, n name}` (`shared/protocol/caps.py`, `wp_caps.*`). Station's auto-claim parser reads only the marker part. Station, Outpost and Scout announce a record; Scouts include no name. The Scout has a new **Nearby** app (tile 5) and a home footer line ("Station reachable" / "Station via Outpost …" / "no Station - N nearby"). 4 new tests; all pass.
