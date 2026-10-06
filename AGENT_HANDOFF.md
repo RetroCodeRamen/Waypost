@@ -44,7 +44,7 @@ Related truth sources (do not duplicate long plans here):
 
 **Active milestone:** **M1b Pi Station 🟡** — Station runs on Raspberry Pi 3 (`waypost.local`, `https://way.post`), WAYPOST Wi‑Fi AP, RNode on `/dev/waypost-lora`, laptop Station **stopped**. **M7 Scout 🟢** — `firmware/scout/` async firmware (replaces `firmware/pocket/`). **M6 Outpost 🟢** — full node + Corkboard + `/msg` Wi‑Fi. **D-track:** D1–D6 built (local store, identity+certs, signed messages, peer sync, Outpost node, capability Nearby + delivery receipts). **Tests:** 276 passed. **Git:** 75 commits pushed to `origin/main` (2026-10-06).
 
-**Readiness gaps (human/action):** community key backup off-Pi; phone test on WAYPOST Wi‑Fi; Scout sign-out/sign-in once (identity key for signing + receipts); Waygate (openNDS); `WAYPOST_RNS_UPSTREAM`; retire `firmware/pocket/` when human agrees.
+**Readiness gaps (human/action):** run `sudo waypost-backup` on Pi once (or reinstall `install.sh` for timer) then `./tools/pi/pull-backup.sh`; phone test on WAYPOST Wi‑Fi; Scout sign-out/sign-in once; camp demo T1/T2 ([docs/camp-demo.md](docs/camp-demo.md)); Waygate (openNDS); `WAYPOST_RNS_UPSTREAM`; retire `firmware/pocket/` when human agrees. Ops runbook: [docs/pi-ops.md](docs/pi-ops.md).
 
 **Have today**
 
@@ -162,6 +162,13 @@ Portal login: http://127.0.0.1:8000/login.html
 ---
 
 ## Message board
+
+### 2026-10-06 — Cursor (Pi ops tooling — autonomous slice)
+
+**Re:** Human asked for hands-off work after push/readiness review.
+**Shipped:** `deploy/raspberry-pi/backup-station.sh` + daily `waypost-backup.timer` (wired in `install.sh`); `tools/pi/health-check.sh`, `tools/pi/pull-backup.sh`; [docs/pi-ops.md](docs/pi-ops.md), [docs/camp-demo.md](docs/camp-demo.md); Scout canonical path in [docs/hardware/scout.md](docs/hardware/scout.md) + legacy banner on `firmware/pocket/README.md`; `Waypost-backups/` gitignored.
+**Verified:** `./tools/pi/health-check.sh` green (API, Caddy, AP, RNode, uplink). `./tools/pi/pull-backup.sh` pulled `~/waypost-import` snapshot to `~/Waypost-backups/` (no passwordless sudo on Pi yet — fresh tarballs need human `sudo waypost-backup` once, or Pi reinstall via `install.sh`).
+**Human (one-time):** on Pi, `sudo ./deploy/raspberry-pi/install.sh` (no flags) to install backup timer; `sudo waypost-backup`; re-run `pull-backup.sh`. Then camp demo T1/T2 per [docs/camp-demo.md](docs/camp-demo.md).
 
 ### 2026-10-06 — Cursor (push + readiness review)
 

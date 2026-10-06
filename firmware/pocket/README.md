@@ -1,4 +1,6 @@
-# Waypost Scout firmware (`firmware/pocket`)
+# Waypost Scout firmware (`firmware/pocket`) — **legacy**
+
+> **Use [`firmware/scout/`](../scout/README.md) instead.** This tree is the pre–Oct 2025 rebuild firmware (TFT_eSPI, blocking radio). Kept for reference until retired.
 
 **Waypost Scout** is the handheld product built on the LilyGO T-Deck. People call it a **Scout** in conversation. In protocol and server code the device class stays **`Pocket`** (`pocket-*` node IDs, `PeerDispatchNode`, pairing flows) — see [docs/naming.md](../../docs/naming.md).
 

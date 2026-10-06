@@ -30,7 +30,7 @@ Do not rename protocol identifiers or SQLite bindings from `pocket` to `scout` �
 ## Software (current state, 2026-10-04)
 
 - Runtime: [ADR 0001](../adr/0001-pocket-runtime.md) — Arduino + TFT_eSPI UI of our own over the same vendored **microReticulum** stack as `firmware/outpost/`.
-- Firmware tree: [`firmware/pocket/`](../../firmware/pocket/) (directory name = internal **Pocket** class). Build, flash, configuration, controls, and the USB-serial remote control are in its [README](../../firmware/pocket/README.md).
+- Firmware tree: [`firmware/scout/`](../../firmware/scout/) (canonical; internal **Pocket** class in protocol). Legacy: [`firmware/pocket/`](../../firmware/pocket/). Build, flash, and controls: [scout README](../../firmware/scout/README.md).
 - **Working over real LoRa:** logo boot screen; the radio starts in the background (Station reachable in ~10–20 s) → **sign in** with username + password (identity key derived on the device; `LOGIN_NONCE`/`LOGIN`, 2026-10-05), **PIN lock** (seals the key), **Settings** → 3×3 launcher → **Dispatch** (conversations, contact picker from cached `ROLL_LIST`, chat, live push + ack, catch-up every 3 min), **Beacon** (full-screen alerts over any screen including the lock screen, list, raise), **Fieldbook**, **Trailhead**, **Signal**.
 - Every reply a Scout asks for fits one encrypted Reticulum packet (383 bytes) — see `docs/protocol.md`.
 - **Not yet:** anything without Station — see the plan below.

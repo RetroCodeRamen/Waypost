@@ -355,6 +355,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+step "Backups"
+install -m 0755 "$SCRIPT_DIR/backup-station.sh" /usr/local/sbin/waypost-backup
+install -m 0644 "$SCRIPT_DIR/systemd/waypost-backup.service" \
+	"$SCRIPT_DIR/systemd/waypost-backup.timer" /etc/systemd/system/
+if [[ $NO_START -eq 0 ]]; then
+	systemctl daemon-reload
+	systemctl enable waypost-backup.timer >/dev/null 2>&1
+	systemctl start waypost-backup.timer 2>/dev/null || true
+	/usr/local/sbin/waypost-backup || true
+	note "daily backups: waypost-backup.timer → $DATA/backups/"
+fi
+
+# ---------------------------------------------------------------------------
 step "Done"
 note "Portal (after joining $SSID):  https://way.post/"
 note "First visit on a new device:   Waygate splash → trust cert → sign in"

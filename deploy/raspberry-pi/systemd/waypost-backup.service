@@ -1,0 +1,7 @@
+[Unit]
+Description=Waypost Station backup snapshot
+After=waypost-api.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/waypost-backup

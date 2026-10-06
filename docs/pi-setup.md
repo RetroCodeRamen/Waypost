@@ -77,7 +77,8 @@ Wi‑Fi password: `sudo cat /etc/waypost/wifi-psk`.
 - **Production mode:** `WAYPOST_ENV=production` means no demo users (`aj`/`bob`/`waypost1` are lab-only), and session cookies are HTTPS-only.
 - **One radio:** the udev rule maps the first supported USB radio to `/dev/waypost-lora`. For several radios, pin by `ID_PATH` (see `deploy/raspberry-pi/udev/99-waypost-lora.rules`).
 - **Waygate:** HTTP splash + captive redirects ship in Caddy/dnsmasq templates; full openNDS session gating is still future work.
-- **Not yet:** openNDS network-level login, backups, firewall rules.
+- **Backups:** `sudo waypost-backup` → `/var/lib/waypost/backups/`; daily timer after install. Pull to laptop: [`tools/pi/pull-backup.sh`](../tools/pi/pull-backup.sh). Ops: [pi-ops.md](pi-ops.md).
+- **Not yet:** openNDS network-level login, firewall rules.
 
 ## Troubleshooting
 

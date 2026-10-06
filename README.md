@@ -125,6 +125,8 @@ tools/          Simulators, radio helpers, screenshots
 - [Security](docs/security.md)
 - [Deployment](docs/deployment.md)
 - [Pi Station setup](docs/pi-setup.md)
+- [Pi Station ops (backup, health, restore)](docs/pi-ops.md)
+- [Camp demo script (T1/T2)](docs/camp-demo.md)
 - [Fieldbook (wiki)](docs/fieldbook.md)
 - [Mesh delivery (design)](docs/mesh-delivery.md)
 - [Groups & permissions](docs/groups-and-permissions.md)
