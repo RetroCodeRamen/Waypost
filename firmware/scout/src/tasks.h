@@ -43,12 +43,15 @@ namespace rpc {
 using Callback = std::function<void(net::Result, waylink::Reply&)>;
 
 // UI task: `done` runs on the UI task when the request finishes.
+// ask(): something the person is waiting for (a page, a search, a send): it
+// goes out even while Station is marked quiet after a timeout.
+// ask_background(): jobs nobody is watching (certificates, catch-up, the
+// identity check): they wait the quiet out instead of piling onto the radio.
 uint32_t ask(net::Request r, Callback done);
 uint32_t ask(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
              int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0);
-// The same, for something the person just asked for (net::Request::asked).
-uint32_t ask_now(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
-                 int attempts = 3, uint32_t timeout_ms = 6000);
+uint32_t ask_background(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
+                        int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0);
 void cancel(uint32_t id);  // the callback won't run
 void poll();               // UI task, every frame
 int busy();                // requests with a callback still waiting

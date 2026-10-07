@@ -148,7 +148,7 @@ class DispatchApp : public App {
   void catch_up(int round = 0) {
     if (!account::paired() || (_catching && round == 0)) return;
     _catching = true;
-    rpc::ask("DISPATCH", "MSG_SYNC",
+    rpc::ask_background("DISPATCH", "MSG_SYNC",
               {Field::text("username", account::username()), Field::empty_list("messages")},
               [this, round](net::Result r, waylink::Reply& reply) {
                 if (r != net::Result::Ok) {
@@ -181,7 +181,16 @@ class DispatchApp : public App {
     _sending = true;
     if (apps::current() == this && _mode == Mode::Chat) ui::footer("Sending...", ui::kLive);
     // Retries are safe: the message id is ours, Station keeps one copy.
-    rpc::ask("DISPATCH", "MSG_SEND", send_fields(o),
+    // Just composed (force): the person is watching. Retries: background.
+    net::Request req;
+    req.svc = "DISPATCH";
+    req.op = "MSG_SEND";
+    req.fields = send_fields(o);
+    req.attempts = 2;
+    req.timeout_ms = 8000;
+    req.ts = o.signed_t;
+    req.asked = force;
+    rpc::ask(std::move(req),
               [this, o](net::Result r, waylink::Reply& reply) {
                 _sending = false;
                 if (r == net::Result::Ok && reply.payload().flag("ok")) {
@@ -200,8 +209,7 @@ class DispatchApp : public App {
                   if (!_retry_at) _retry_at = 1;
                 }
                 refresh_view();
-              },
-              2, 8000, o.signed_t);
+              });
   }
 
   void receipt_arrived(const std::string& conv) {

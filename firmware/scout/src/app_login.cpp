@@ -50,9 +50,10 @@ using LoginDone = std::function<void(net::Result r, const std::string& display_n
 // (wrong_password, no_identity_yet, unknown_user...).
 void station_login(const std::string& username, Signer sign, LoginDone done, bool asked = false) {
   std::string dest_hex = net::status().dest_hex;
-  auto ask = asked ? rpc::ask_now : [](const char* svc, const char* op, std::vector<waylink::Field> f,
-                                        rpc::Callback cb, int attempts, uint32_t timeout_ms) {
-    return rpc::ask(svc, op, std::move(f), std::move(cb), attempts, timeout_ms);
+  auto ask = [asked](const char* svc, const char* op, std::vector<waylink::Field> f, rpc::Callback cb,
+                     int attempts, uint32_t timeout_ms) {
+    return asked ? rpc::ask(svc, op, std::move(f), std::move(cb), attempts, timeout_ms)
+                 : rpc::ask_background(svc, op, std::move(f), std::move(cb), attempts, timeout_ms);
   };
   ask(
       "PROFILE", "LOGIN_NONCE", {Field::text("transport_dest", dest_hex)},
@@ -242,7 +243,7 @@ App& apps::login_app() { return instance(); }
 namespace {
 
 void whoami() {
-  rpc::ask(
+  rpc::ask_background(
       "PROFILE", "WHOAMI", {Field::text("transport_dest", net::status().dest_hex)},
       [](net::Result r, waylink::Reply& reply) {
         if (r == net::Result::Ok) {
@@ -299,7 +300,7 @@ void apps::check_identity() {
   if (account::unpair_pending()) {
     // Finish a sign-out done on this Scout before asking who we are —
     // otherwise WHOAMI would hand the old account straight back.
-    rpc::ask("PROFILE", "UNPAIR", {Field::text("transport_dest", net::status().dest_hex)},
+    rpc::ask_background("PROFILE", "UNPAIR", {Field::text("transport_dest", net::status().dest_hex)},
               [](net::Result r, waylink::Reply&) {
                 if (r != net::Result::Ok) {
                   g_identity_busy = false;  // try again in a minute

@@ -175,7 +175,7 @@ void stepped(Res r) {
 }
 
 void fetch_root() {
-  rpc::ask("PROFILE", "CERT_ROOT", {}, [](Res r, waylink::Reply& reply) {
+  rpc::ask_background("PROFILE", "CERT_ROOT", {}, [](Res r, waylink::Reply& reply) {
     if (r == Res::Ok) {
       std::string pk = reply.payload().bytes("pk");
       if (pk.size() != 32) {
@@ -200,7 +200,7 @@ void fetch_identity(const std::string& username, const std::string& id = "") {
   std::vector<Field> f;
   if (!id.empty()) f.push_back(Field::bytes("i", id));
   else if (!username.empty()) f.push_back(Field::text("u", username));
-  rpc::ask("PROFILE", "CERT_GET", f, [](Res r, waylink::Reply& reply) {
+  rpc::ask_background("PROFILE", "CERT_GET", f, [](Res r, waylink::Reply& reply) {
     if (r == Res::Error) r = Res::Ok;  // unknown / no key yet: nothing to cache
     else if (r == Res::Ok) {
       Cert c;
@@ -212,7 +212,7 @@ void fetch_identity(const std::string& username, const std::string& id = "") {
 }
 
 void fetch_revocations(uint64_t offset = 0, int page = 0) {
-  rpc::ask("PROFILE", "CERT_REVOKED", {Field::num("offset", offset)},
+  rpc::ask_background("PROFILE", "CERT_REVOKED", {Field::num("offset", offset)},
             [offset, page](Res r, waylink::Reply& reply) {
               if (r != Res::Ok) {
                 stepped(r);

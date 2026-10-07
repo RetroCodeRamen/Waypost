@@ -395,7 +395,7 @@ void apps::beacon_event(const waylink::Value& compact) {
 bool apps::beacon_showing() { return alert().showing(); }
 
 void apps::check_beacon() {
-  rpc::ask("BEACON", "BEACON_GET", {Field::boolean("compact", true)},
+  rpc::ask_background("BEACON", "BEACON_GET", {Field::boolean("compact", true)},
             [](net::Result r, waylink::Reply& reply) {
               if (r != net::Result::Ok) return;
               const waylink::Value* b = reply.payload().get("beacon");
