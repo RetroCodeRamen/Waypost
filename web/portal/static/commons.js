@@ -4,6 +4,7 @@
   var bodyEl = document.getElementById("body");
   var feedEl = document.getElementById("feed");
   var form = document.getElementById("composer");
+  var avatarEl = document.getElementById("composer-avatar");
   var refreshBtn = document.getElementById("refresh");
   var filterEl = document.getElementById("filter");
   var viewGroupFieldEl = document.getElementById("view-group-field");
@@ -156,6 +157,8 @@
   WaypostAuth.requireAuth().then(function (user) {
     if (!user) return;
     myUsername = user.username;
+    if (avatarEl) avatarEl.textContent = initials(myUsername);
     loadGroups().then(refresh);
+    setInterval(refresh, 60000);
   });
 })();

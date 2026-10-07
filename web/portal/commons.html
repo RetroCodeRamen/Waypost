@@ -10,11 +10,39 @@
 </head>
 <body>
   <div id="wp-page">
-    <section class="app-toolbar commons-compose">
-      <label class="grow">Title <input id="title" placeholder="Optional title" maxlength="120"/></label>
-      <label>View
+    <form id="composer" class="wp-card app-panel commons-composer">
+      <div class="commons-compose-row">
+        <div class="commons-post__avatar" id="composer-avatar" aria-hidden="true">?</div>
+        <div class="commons-compose-main">
+          <label class="sr-only" for="body">New post</label>
+          <textarea id="body" rows="3" maxlength="4000" placeholder="What's happening at camp?" required></textarea>
+          <details class="commons-extra">
+            <summary>Optional title</summary>
+            <input id="title" placeholder="Title (optional)" maxlength="120"/>
+          </details>
+        </div>
+      </div>
+      <div class="commons-composer__actions">
+        <span class="muted" id="hint">Everyone on this Station sees the same timeline · newest first</span>
+        <div class="commons-composer__right">
+          <label class="commons-scope">Post to
+            <select id="scope">
+              <option value="shared">Everyone</option>
+              <option value="group">A group</option>
+            </select>
+          </label>
+          <label id="group-field" hidden>Group
+            <select id="group-id"></select>
+          </label>
+          <button type="submit">Post</button>
+        </div>
+      </div>
+    </form>
+
+    <section class="app-toolbar commons-toolbar">
+      <label>Showing
         <select id="filter">
-          <option value="shared">Everyone</option>
+          <option value="shared">Everyone's posts</option>
           <option value="group">A group</option>
         </select>
       </label>
@@ -23,23 +51,6 @@
       </label>
       <button type="button" id="refresh">Refresh</button>
     </section>
-    <form id="composer" class="wp-card app-panel commons-composer">
-      <label class="sr-only" for="body">New post</label>
-      <textarea id="body" rows="3" maxlength="4000" placeholder="Share something with the community…" required></textarea>
-      <div class="commons-composer__actions">
-        <span class="muted" id="hint">Local feed on the Station · progressive over Waylink later</span>
-        <label>Post to
-          <select id="scope">
-            <option value="shared">Everyone</option>
-            <option value="group">A group</option>
-          </select>
-        </label>
-        <label id="group-field" hidden>Group
-          <select id="group-id"></select>
-        </label>
-        <button type="submit">Post</button>
-      </div>
-    </form>
 
     <div class="wp-card app-panel">
       <ul id="feed" class="commons-feed" aria-live="polite"></ul>
@@ -52,7 +63,7 @@
       active: "commons",
       user: "AJ",
       title: "Commons",
-      subtitle: "Community feed on the Station"
+      subtitle: "Shared timeline for everyone signed in"
     });
   </script>
   <script src="/static/commons.js"></script>

@@ -163,6 +163,12 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-06 — Cursor (Fieldbook + Commons seed content pivot)
+
+**Re:** Human asked to fill Fieldbook with survival/camping reference and a Twitter-like global feed tied to logins.
+**Shipped:** 10 Fieldbook seed pages (first aid, shelter, plants, animals, wayfinding, kayaking, water, fire, index); Commons seed timeline (8 posts from aj/bob/station); Trailhead expanded (`survival`, `commons-feed`) + idempotent missing-only seed; Commons UI refresh (composer-first, optional title, auto-refresh). **Note:** social feed is **Commons** per naming — Trailhead links explain it; not a second feed app.
+**Deploy:** restart `waypost-api` on Pi (or any Station) — seeds add **missing** slugs/IDs only; won't overwrite existing pages/posts.
+
 ### 2026-10-06 — Cursor (Pi ops tooling — autonomous slice)
 
 **Re:** Human asked for hands-off work after push/readiness review.

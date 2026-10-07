@@ -18,7 +18,12 @@ install -d -o waypost -g waypost -m 0750 "$DEST"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-cp -a "$DATA/data/waypost.db" "$TMP/"
+# SQLite's online backup, not cp: Station keeps writing while this runs, and
+# a file copied mid-write can be a corrupt backup nobody notices until it's
+# needed. Then check the copy before keeping it.
+sqlite3 "$DATA/data/waypost.db" ".backup '$TMP/waypost.db'"
+[[ "$(sqlite3 "$TMP/waypost.db" 'PRAGMA integrity_check;')" == "ok" ]] \
+	|| { echo "backup: the copy failed its integrity check - not kept" >&2; exit 1; }
 [[ -f $DATA/data/community.key ]] && cp -a "$DATA/data/community.key" "$TMP/"
 [[ -f $DATA/reticulum/identity ]] && cp -a "$DATA/reticulum/identity" "$TMP/rns-identity"
 
