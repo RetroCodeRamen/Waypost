@@ -144,32 +144,45 @@ class DispatchApp : public App {
     return true;
   }
 
-  // Pages of MSG_SYNC until Station has nothing more for us.
-  void catch_up(int round = 0) {
+  // Pages of MSG_SYNC until Station has nothing more for us. Each request
+  // confirms (`ack`) the messages stored from the previous reply: Station
+  // keeps them pending until then, so a reply lost on the radio (or one
+  // that arrived after a retry and was dropped as stale) comes again instead
+  // of being lost. Duplicates are dropped by id.
+  void catch_up(int round = 0, std::vector<std::string> ack = {}) {
     if (!account::paired() || (_catching && round == 0)) return;
     _catching = true;
-    rpc::ask_background("DISPATCH", "MSG_SYNC",
-              {Field::text("username", account::username()), Field::empty_list("messages")},
-              [this, round](net::Result r, waylink::Reply& reply) {
-                if (r != net::Result::Ok) {
-                  _catching = false;
-                  return;
-                }
-                const waylink::Value* pending = reply.payload().get("pending");
-                int n = 0;
-                if (pending && pending->type == waylink::Value::Array) {
-                  for (const auto& m : pending->items) {
-                    receive(m.text("id"), m.text("conversation_id"), m.text("sender"), m.text("body"));
-                    n++;
-                  }
-                }
-                if (n) Serial.printf("dispatch: caught up %d message(s)\n", n);
-                if (reply.payload().flag("more") && round + 1 < 20) {
-                  catch_up(round + 1);
-                  return;
-                }
-                _catching = false;
-              });
+    net::Request req;
+    req.svc = "DISPATCH";
+    req.op = "MSG_SYNC";
+    req.use_tree = true;
+    req.tree = waylink::Value::make_map();
+    req.tree.set("username", waylink::Value::of_text(account::username()));
+    req.tree.set("messages", waylink::Value::make_array());
+    waylink::Value acks = waylink::Value::make_array();
+    for (const auto& id : ack) acks.push(waylink::Value::of_text(id));
+    req.tree.set("ack", acks);
+    rpc::ask_background_request(std::move(req), [this, round](net::Result r, waylink::Reply& reply) {
+      if (r != net::Result::Ok) {
+        _catching = false;
+        return;
+      }
+      const waylink::Value* pending = reply.payload().get("pending");
+      std::vector<std::string> got;
+      if (pending && pending->type == waylink::Value::Array) {
+        for (const auto& m : pending->items) {
+          receive(m.text("id"), m.text("conversation_id"), m.text("sender"), m.text("body"));
+          got.push_back(m.text("id"));
+        }
+      }
+      if (!got.empty()) Serial.printf("dispatch: caught up %u message(s)\n", static_cast<unsigned>(got.size()));
+      // Confirm these (and fetch more) — until a round brings nothing.
+      if (!got.empty() && round + 1 < 20) {
+        catch_up(round + 1, std::move(got));
+        return;
+      }
+      _catching = false;
+    });
   }
 
   // Sends the oldest queued message if Station is in reach. One at a time;

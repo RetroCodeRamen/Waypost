@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,8 @@ from shared.protocol.envelope import (
     new_id,
 )
 from server.services.commons.constants import OP_POST_CREATE, OP_POST_LIST
+from server.services.commons.service import CommonsService
+from server.services.commons.store import CommonsStore
 
 
 @pytest.fixture()
@@ -235,3 +238,22 @@ def test_waylink_rpc_cbor_supports_sync_service_handlers(client: TestClient):
     reply = decode_cbor(r.content)
     assert not (reply.flags & int(Flags.ERROR))
     assert reply.payload["post"]["body"].startswith("Over the generic")
+
+
+def test_seed_defaults_idempotent():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    svc = CommonsService(CommonsStore(conn))
+    svc.seed_defaults()
+    ids = {p["id"] for p in svc.list_posts(limit=50)}
+    assert "seed-commons-welcome" in ids
+    n = len(svc.list_posts(limit=50))
+    svc.seed_defaults()
+    assert len(svc.list_posts(limit=50)) == n
+
+
+def test_app_bootstraps_seed_posts(client: TestClient):
+    posts = client.get("/api/commons/posts?limit=50").json()["posts"]
+    assert any(p["id"] == "seed-commons-welcome" for p in posts)
+    authors = {p["author"] for p in posts}
+    assert "aj" in authors and "bob" in authors

@@ -29,6 +29,7 @@ from server.services.fieldbook.constants import (
     SEARCH_LIMIT_MAX,
     SNIPPET_CHARS,
 )
+from server.services.fieldbook.seed_content import SEED_PAGES
 from server.services.fieldbook.store import FieldbookStore
 from shared.protocol.envelope import Envelope, Flags
 from shared.protocol.radio import CHUNK_DEFAULT, chunk_utf8, fit_list_reply, fit_text_reply
@@ -113,6 +114,22 @@ class FieldbookService:
     ) -> None:
         self.store = store
         self._get_binding = get_binding or (lambda _node_id: None)
+
+    def seed_defaults(self) -> None:
+        """Add bundled reference pages that are not already in the wiki."""
+        import time
+
+        for slug, title, body in SEED_PAGES:
+            if self.store.get_page(slug):
+                continue
+            self.store.create_page(
+                slug=slug,
+                title=title,
+                body=body,
+                author="station",
+                summary="seed",
+                created_at=time.time(),
+            )
 
     def _bound_username(self, node_id: str) -> Optional[str]:
         binding = self._get_binding(node_id)

@@ -97,7 +97,9 @@ def test_chunk_utf8_offset_past_end_is_empty():
 def test_seed_pages_exist_once():
     svc = _trailhead()
     paths = [p["path"] for p in svc.list_pages()]
-    assert {"home", "getting-started", "camp-info"} <= set(paths)
+    assert {"home", "getting-started", "camp-info", "survival", "commons-feed"} <= set(
+        paths
+    )
     svc.seed_defaults()
     assert len(svc.list_pages()) == len(paths)
 

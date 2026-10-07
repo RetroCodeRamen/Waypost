@@ -50,6 +50,7 @@ using Callback = std::function<void(net::Result, waylink::Reply&)>;
 uint32_t ask(net::Request r, Callback done);
 uint32_t ask(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
              int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0);
+uint32_t ask_background_request(net::Request r, Callback done);  // r.asked is ignored
 uint32_t ask_background(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
                         int attempts = 3, uint32_t timeout_ms = 6000, uint64_t ts = 0);
 void cancel(uint32_t id);  // the callback won't run

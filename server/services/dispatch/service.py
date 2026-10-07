@@ -785,6 +785,7 @@ class DispatchService:
             )
 
         ingested = 0
+        refused = 0
         for m in messages:
             if (
                 not isinstance(m, dict)
@@ -793,7 +794,25 @@ class DispatchService:
                 or m.get("body") is None
             ):
                 continue
-            conv = self.store.ensure_direct(str(m["sender"]), str(username))
+            # Unsigned copies prove nothing about who wrote them: a device may
+            # upload its own person's messages, never someone else's (those
+            # travel signed, by peer sync — anyone could otherwise plant a
+            # message "from" anyone). Reviewed 2026-10-07.
+            if str(m["sender"]).lower() != str(username).lower():
+                refused += 1
+                continue
+            # The message's own conversation, a direct one with this person
+            # in it (ensure_direct(sender, username) here used to pair the
+            # person with themselves and crash on the duplicate member).
+            cid = str(m.get("conversation_id") or "")
+            if not cid.startswith("dm:") or str(username).lower() not in cid[3:].split(":", 1):
+                refused += 1
+                continue
+            a, b = cid[3:].split(":", 1)
+            if a == b:
+                refused += 1
+                continue
+            conv = self.store.ensure_direct(a, b)
             _, created = self.store.add_message(
                 conversation_id=conv["id"],
                 sender=str(m["sender"]),
@@ -804,6 +823,19 @@ class DispatchService:
             )
             if created:
                 ingested += 1
+
+        # Delivery is confirmed by the device, not by sending: `ack` lists the
+        # message ids it stored from earlier replies. Until then they stay
+        # pending and come again (devices drop duplicates by id) — a reply
+        # lost on the radio, or one that arrived after the device had retried
+        # and was thrown away as stale, no longer loses messages.
+        acks_supported = isinstance(payload.get("ack"), list)
+        acked = 0
+        if acks_supported:
+            for mid in payload["ack"][:64]:
+                if isinstance(mid, str) and mid:
+                    self._confirm_delivered(str(username), mid)
+                    acked += 1
 
         # Piggyback this user's pending messages — only as many as fit one
         # radio packet, and only those are confirmed delivered; `more` tells
@@ -837,14 +869,19 @@ class DispatchService:
         else:
             reply, packed = build(candidates, False), len(candidates)
         piggyback = candidates[:packed]
-        for item in piggyback:
-            self._confirm_delivered(str(username), item["id"])
+        if not acks_supported:
+            # Older devices: the reply itself counts as delivery (a reply
+            # lost on the radio loses those notifications).
+            for item in piggyback:
+                self._confirm_delivered(str(username), item["id"])
 
         logger.info(
-            "dispatch_sync courier=%s user=%s ingested=%s piggyback=%s",
+            "dispatch_sync courier=%s user=%s ingested=%s refused=%s acked=%s piggyback=%s",
             env.src,
             username,
             ingested,
+            refused,
+            acked,
             len(piggyback),
         )
         return reply

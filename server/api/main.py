@@ -185,6 +185,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         trailhead = TrailheadService(db.trailhead)
         trailhead.seed_defaults()
+        fieldbook.seed_defaults()
+        commons.seed_defaults()
         finder = FinderService(
             commons=commons,
             noticeboard=noticeboard,

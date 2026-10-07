@@ -81,7 +81,9 @@ def build_locker_router() -> APIRouter:
     ):
         owner_name = actor_username(request, user, owner)
         request.app.state.db.ensure_user(owner_name)
-        raw = await file.read()
+        # At most one byte over the limit: enough to tell it's too big
+        # without holding an oversized upload in memory.
+        raw = await file.read(MAX_UPLOAD_BYTES + 1)
         try:
             item = request.app.state.locker.upload(
                 owner=owner_name,

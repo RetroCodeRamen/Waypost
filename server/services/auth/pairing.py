@@ -43,6 +43,11 @@ logger = logging.getLogger("waypost.pairing")
 
 CODE_TTL_SECONDS = 10 * 60
 CODE_LENGTH = 6
+# A 6-digit code is only safe if it can't be guessed in its 10 minutes:
+# redemption needs no sign-in (it's how a device first binds), so wrong
+# codes are limited Station-wide — after this many in a minute, every
+# redemption waits out the minute (about 35 days to search all codes).
+MAX_BAD_CODES_PER_MINUTE = 20
 _MAX_CREATE_ATTEMPTS = 5
 _DIGITS = "0123456789"
 
@@ -67,6 +72,7 @@ class PairingService:
         self.transport = None  # set once Transport exists, see main.py
         self.identity = None  # IdentityService, set in main.py (Scout login)
         self._nonces: dict[str, tuple[bytes, float]] = {}  # node -> (challenge, expires)
+        self._bad_codes: list[float] = []  # times of recent wrong redemptions
 
     def _learn_route(self, node_id: str, transport_dest: Optional[str]) -> None:
         if not transport_dest or self.transport is None:
@@ -89,8 +95,13 @@ class PairingService:
     def redeem_code(
         self, *, code: str, node_id: str, transport_dest: Optional[str] = None
     ) -> dict[str, Any]:
+        now = time.time()
+        self._bad_codes = [t for t in self._bad_codes if now - t < 60]
+        if len(self._bad_codes) >= MAX_BAD_CODES_PER_MINUTE:
+            raise ValueError("too many wrong pairing codes - try again in a minute")
         row = self.db.get_pairing_code(code.strip())
         if not row:
+            self._bad_codes.append(now)
             raise ValueError("invalid pairing code")
         if row["used_at"]:
             raise ValueError("pairing code already used")

@@ -36,12 +36,14 @@ SEED_PAGES = [
         HOME_PATH,
         "Trailhead",
         """# Welcome to Trailhead
-These pages live on this camp's Waypost Station. Read them on the portal, or on a Scout over the radio.
+Short linked pages on this Station — read on the portal or on a Scout over the radio.
 
 => getting-started Getting started
 => camp-info Camp info
+=> survival Survival quick reference
+=> commons-feed About the Commons feed
 
-Station operators can edit these pages from the portal.""",
+Full articles live in Fieldbook (portal). The shared timeline is Commons.""",
     ),
     (
         "getting-started",
@@ -51,6 +53,8 @@ On a Scout, roll the trackball to pick a link and press it to open the page. Rol
 
 Pages load a little at a time over the radio, so short pages read best.
 
+Open Fieldbook or Commons in the portal for long-form wiki pages and the community feed.
+
 => home Back to Trailhead""",
     ),
     (
@@ -58,6 +62,40 @@ Pages load a little at a time over the radio, so short pages read best.
         "Camp info",
         """# Camp info
 Edit this page from the Station portal: meeting times, water, quiet hours, who to ask for help.
+
+Post updates to everyone on Commons — all signed-in members see the same timeline.
+
+=> home Back to Trailhead""",
+    ),
+    (
+        "survival",
+        "Survival quick reference",
+        """# Survival quick reference
+Radio-sized summaries. See Fieldbook in the portal for full pages.
+
+## First aid
+Stop bleeding with direct pressure. Treat for shock — warm, flat, calm. Hypothermia: dry layers, warm core, no rough handling.
+
+## Shelter
+Off ground. Wind break. Ventilation. Tarp A-frame or lean-to fastest.
+
+## Water
+Boil 1 minute if in doubt. Clear is not safe.
+
+## Fire
+Tinder, kindling, fuel ready before spark. Dry inner wood when wet outside.
+
+=> home Back to Trailhead""",
+    ),
+    (
+        "commons-feed",
+        "Commons — community feed",
+        """# Commons
+The camp's shared timeline — like a simple social feed tied to your login.
+
+Everyone sees the same posts, sorted by time (newest first). Sign in on the portal and open Commons to read or post. No separate account.
+
+Good for trail conditions, meal plans, gear notes, and quick hellos.
 
 => home Back to Trailhead""",
     ),
@@ -69,10 +107,10 @@ class TrailheadService:
         self.store = store
 
     def seed_defaults(self) -> None:
-        """First run only: give a fresh Station something to browse."""
-        if self.store.count_pages() > 0:
-            return
+        """Add bundled pages that are not already present (idempotent)."""
         for path, title, body in SEED_PAGES:
+            if self.store.get_page(path):
+                continue
             self.store.put_page(path=path, title=title, body=body, author="station")
 
     # -- reads -------------------------------------------------------------

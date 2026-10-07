@@ -271,3 +271,35 @@ async def test_message_id_of_someone_elses_message_is_refused(world):
     await _send(dispatch, {"peer": "aj", "body": "hi", "message_id": mid}, src="pocket-1-b0b0")
     r = await _send(dispatch, {"peer": "bob", "body": "hi", "message_id": mid})
     assert r.flags & Flags.ERROR and r.payload["error"] == "message_id_conflict"
+
+
+async def test_sync_with_acks_keeps_messages_until_the_scout_confirms(world):
+    """A reply lost on the radio (or dropped by the Scout as stale after a
+    retry) must not lose messages: with `ack`, Station clears only what the
+    Scout says it stored, and sends the rest again (review 2026-10-07)."""
+    _db, dispatch, _rollcall = world
+    dispatch.unbind_device(SCOUT, username="aj")
+    ids = {dispatch.send_direct(sender="bob", peer="aj", body=f"{i}: {LONG}")["message"]["id"] for i in range(5)}
+    dispatch.bind_device(SCOUT, "aj")
+
+    def sync(ack):
+        return dispatch.handle_rpc(_env(SVC_DISPATCH, OP_MSG_SYNC, {"username": "aj", "messages": [], "ack": ack}))
+
+    first = await sync([])
+    page = [m["id"] for m in first.payload["pending"]]
+    assert page and _fits(first)
+    lost = await sync([])  # the first reply never arrived: same messages again
+    assert [m["id"] for m in lost.payload["pending"]] == page
+
+    stored, ack, rounds = set(), [], 0
+    while True:
+        r = await sync(ack)
+        got = [m["id"] for m in r.payload["pending"]]
+        stored |= set(got)
+        ack = got
+        rounds += 1
+        if not got:
+            break
+        assert rounds < 20
+    assert stored == ids
+    assert dispatch.store.list_pending_for_user("aj") == []

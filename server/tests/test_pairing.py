@@ -357,3 +357,24 @@ def test_registration_mode_route(tmp_path: Path):
     )
     with TestClient(create_app(settings)) as c:
         assert c.get("/api/auth/registration_mode").json() == {"mode": "INVITE_ONLY"}
+
+
+def test_wrong_codes_are_rate_limited(tmp_path):
+    """Redemption needs no sign-in, so guessing must be slow: after
+    MAX_BAD_CODES_PER_MINUTE wrong codes, even the right one waits."""
+    from server.api.db import Database
+    from server.services.auth.pairing import MAX_BAD_CODES_PER_MINUTE, PairingService
+    from server.services.dispatch.service import DispatchService
+
+    db = Database(tmp_path / "p.db")
+    db.ensure_user("aj", "AJ")
+    pairing = PairingService(db, DispatchService(db.dispatch))
+    good = pairing.create_code("aj")["code"]
+    wrong = "000000" if good != "000000" else "111111"
+    for _ in range(MAX_BAD_CODES_PER_MINUTE):
+        with pytest.raises(ValueError, match="invalid"):
+            pairing.redeem_code(code=wrong, node_id="pocket-1-test")
+    with pytest.raises(ValueError, match="too many"):
+        pairing.redeem_code(code=good, node_id="pocket-1-test")
+    pairing._bad_codes.clear()  # a minute later
+    assert pairing.redeem_code(code=good, node_id="pocket-1-test")["username"] == "aj"

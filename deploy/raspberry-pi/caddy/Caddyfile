@@ -21,6 +21,12 @@
 
 (waypost_api) {
 	encode gzip
+	# Largest request Station takes: a Locker upload (25 MiB, server/services/
+	# locker/constants.py) plus form overhead. Refused here, before Station
+	# buffers it — a Pi 3 has under 1 GB of RAM and a small SD card.
+	request_body {
+		max_size 26MB
+	}
 	reverse_proxy 127.0.0.1:8000
 }
 

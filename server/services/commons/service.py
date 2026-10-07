@@ -11,6 +11,7 @@ from server.services.commons.constants import (
     OP_POST_GET,
     OP_POST_LIST,
 )
+from server.services.commons.seed_content import SEED_POSTS
 from server.services.commons.store import CommonsStore
 from shared.protocol.envelope import Envelope, Flags
 
@@ -24,6 +25,22 @@ class CommonsService:
     ) -> None:
         self.store = store
         self._is_group_member = is_group_member or (lambda _gid, _username: False)
+
+    def seed_defaults(self) -> None:
+        """Seed a starter timeline when fixed IDs are not already present."""
+        import time
+
+        now = time.time()
+        for post_id, author, title, body, age_seconds in SEED_POSTS:
+            if self.store.get(post_id):
+                continue
+            self.store.create(
+                author=author,
+                body=body,
+                title=title,
+                post_id=post_id,
+                created_at=now - age_seconds,
+            )
 
     def _can_view(self, post: dict[str, Any], viewer: Optional[str]) -> bool:
         gid = post.get("group_id")

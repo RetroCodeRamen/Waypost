@@ -176,6 +176,10 @@ async def test_queue_then_flush_when_peer_appears():
 
 @pytest.mark.asyncio
 async def test_carry_forward_sync_to_station_dedups():
+    """A device uploads its own person's messages (deduped by id); an
+    unsigned copy it claims someone else wrote is refused — anyone could
+    otherwise plant messages "from" anyone (review 2026-10-07; others'
+    messages travel signed, by peer sync)."""
     mesh = MockMesh()
     dispatch, station_gateway, _corkboard = _station(mesh)
     b = _peer(mesh, "radio-bob", "bob", 6)
@@ -185,27 +189,22 @@ async def test_carry_forward_sync_to_station_dedups():
     await b.start()
     try:
         conv = b.store.ensure_direct("bob", "aj")
-        b.store.add_message(
-            conversation_id=conv["id"],
-            sender="aj",
-            body="need water",
-            delivery_state="DELIVERED",
-        )
-        b.store.queue_courier(
-            b.store.list_messages(conv["id"])[0]["id"], "station"
-        )
-        assert len(b.store.list_courier_pending("station")) == 1
+        b.store.add_message(conversation_id=conv["id"], sender="bob", body="need water",
+                            delivery_state="DELIVERED")
+        b.store.add_message(conversation_id=conv["id"], sender="aj", body="forged by bob's device",
+                            delivery_state="DELIVERED")
+        for m in b.store.list_messages(conv["id"]):
+            b.store.queue_courier(m["id"], "station")
+        assert len(b.store.list_courier_pending("station")) == 2
 
         result = await b.sync_with_station()
         assert result["ok"] is True
-        assert result["synced"] == 1
-        assert b.store.list_courier_pending("station") == []
 
         station_msgs = dispatch.store.list_messages(conv["id"])
         assert any(m["body"] == "need water" for m in station_msgs)
+        assert not any(m["body"] == "forged by bob's device" for m in station_msgs)
 
-        result2 = await b.sync_with_station()
-        assert result2["synced"] == 0
+        await b.sync_with_station()
         station_msgs2 = dispatch.store.list_messages(conv["id"])
         assert sum(1 for m in station_msgs2 if m["body"] == "need water") == 1
     finally:

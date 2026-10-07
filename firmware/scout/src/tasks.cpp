@@ -128,6 +128,11 @@ uint32_t ask(const char* svc, const char* op, std::vector<waylink::Field> fields
   return id;
 }
 
+uint32_t ask_background_request(net::Request r, Callback done) {
+  r.asked = false;
+  return ask(std::move(r), std::move(done));
+}
+
 uint32_t ask_background(const char* svc, const char* op, std::vector<waylink::Field> fields, Callback done,
                         int attempts, uint32_t timeout_ms, uint64_t ts) {
   uint32_t id = net::request(svc, op, std::move(fields), attempts, timeout_ms, ts, /*asked=*/false);

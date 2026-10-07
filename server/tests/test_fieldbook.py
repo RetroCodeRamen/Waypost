@@ -88,9 +88,11 @@ def test_create_get_list(client: TestClient):
     assert [s["heading"] for s in got["outline"]] == ["", "Location", "Maintenance", "Contacts"]
 
     listed = client.get("/api/fieldbook/pages").json()
-    assert listed["count"] == 1
-    assert listed["pages"][0]["slug"] == "well-maintenance"
-    assert "body" not in listed["pages"][0]  # headers only
+    assert listed["count"] >= 1
+    slugs = {p["slug"] for p in listed["pages"]}
+    assert "well-maintenance" in slugs
+    well = next(p for p in listed["pages"] if p["slug"] == "well-maintenance")
+    assert "body" not in well  # headers only
 
 
 def test_duplicate_slug_409_and_bad_slug_400(client: TestClient):
@@ -348,3 +350,24 @@ def test_noop_save_does_not_create_revision():
     page = svc.update_page("p", author="aj", base_revision=1, body="same")
     assert page["revision"] == 1
     assert len(svc.history("p")) == 1
+
+
+def test_seed_defaults_idempotent():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    svc = FieldbookService(FieldbookStore(conn))
+    svc.seed_defaults()
+    slugs = {p["slug"] for p in svc.list_pages()}
+    assert "first-aid" in slugs
+    assert "kayaking" in slugs
+    assert "survival-guide" in slugs
+    n = len(svc.list_pages())
+    svc.seed_defaults()
+    assert len(svc.list_pages()) == n
+
+
+def test_app_bootstraps_fieldbook_pages(client: TestClient):
+    pages = client.get("/api/fieldbook/pages").json()["pages"]
+    slugs = {p["slug"] for p in pages}
+    assert "first-aid" in slugs
+    assert "wayfinding" in slugs
