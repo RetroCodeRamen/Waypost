@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     # announce (no pairing code) — on by default; the Outpost's own physical
     # button is what actually gates whether it advertises itself this way.
     waypost_auto_claim_outposts: bool = True
+    # Radio requests from a bound device must prove they come from it
+    # (shared/protocol/devauth.py). Unset: required in production only, so
+    # lab and test setups binding devices by hand keep working.
+    waypost_require_device_key: Optional[bool] = None
+
+    @property
+    def device_key_required(self) -> bool:
+        if self.waypost_require_device_key is not None:
+            return self.waypost_require_device_key
+        return self.waypost_env == "production"
 
     def ensure_data_dirs(self) -> None:
         self.waypost_data_dir.mkdir(parents=True, exist_ok=True)

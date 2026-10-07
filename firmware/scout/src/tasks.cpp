@@ -1,5 +1,7 @@
 #include "tasks.h"
 
+#include "app.h"
+
 #include <map>
 #include <string>
 
@@ -157,7 +159,14 @@ void poll() {
       ++it;
     }
   }
-  for (auto& f : finished) f.first(f.second.first, f.second.second);
+  for (auto& f : finished) {
+    // Station no longer takes this Scout as signed in (unpaired from the
+    // portal, or its device key isn't accepted): check who we are again,
+    // which signs in afresh when the identity key is open.
+    const std::string& e = f.second.second.error;
+    if (e == "not_paired" || e == "unauthorized_device" || e == "unauthorized_courier") apps::doubt_identity();
+    f.first(f.second.first, f.second.second);
+  }
 }
 
 int busy() { return static_cast<int>(g_waiting.size()); }

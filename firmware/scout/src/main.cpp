@@ -216,6 +216,9 @@ void setup() {
   certs::load();
   certs::self_test();
 
+  net::set_device_key(account::device_key());
+  Serial.printf("device auth: %s, tag self-test %s\n", account::device_key().empty() ? "no key yet" : "key loaded",
+                net::self_test_tag() ? "ok" : "FAILED");
   tasks::start_workers();
   net::start();
   xTaskCreatePinnedToCore(ui_task, "ui", 24576, nullptr, 3, nullptr, 1);

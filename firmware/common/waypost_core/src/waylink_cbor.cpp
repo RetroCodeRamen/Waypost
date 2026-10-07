@@ -531,7 +531,8 @@ RNS::Bytes encode_msg_ack(
     const char* src,
     const char* dst,
     const std::string& rid,
-    const std::string& message_id) {
+    const std::string& message_id,
+    const std::string& mid) {
   RNS::Bytes out;
   CborWriter w(out);
 
@@ -539,7 +540,7 @@ RNS::Bytes encode_msg_ack(
   w.write_text("v");
   w.write_uint(1);
   w.write_text("mid");
-  w.write_text(new_hex_id());
+  w.write_text(mid.empty() ? new_hex_id() : mid);
   w.write_text("rid");
   w.write_text(rid);
   w.write_text("src");

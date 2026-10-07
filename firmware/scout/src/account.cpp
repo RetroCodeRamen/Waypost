@@ -8,6 +8,7 @@
 #include "certs.h"
 #include "contacts.h"
 #include "receipts.h"
+#include "net.h"
 #include "store.h"
 
 namespace account {
@@ -16,10 +17,12 @@ namespace {
 const char* const kUserPath = "/waypost_user";  // "username\ndisplay name"
 const char* const kPinPath = "/waypost_pin";    // 16-byte salt + SHA-256(salt + pin)
 const char* const kUnpairPath = "/waypost_unpair";  // exists = tell Station
+const char* const kDeviceKeyPath = "/waypost_devkey";  // 16 bytes from Station's sign-in reply
 constexpr size_t kSaltLen = 16;
 
 std::string g_username;
 std::string g_display_name;
+std::string g_device_key;
 RNS::Bytes g_pin_record;
 
 RNS::Bytes pin_hash(const RNS::Bytes& salt, const std::string& pin) {
@@ -44,6 +47,9 @@ void load() {
   }
   RNS::Bytes pin;
   if (RNS::Utilities::OS::read_file(kPinPath, pin) == kSaltLen + 32) g_pin_record = pin;
+  RNS::Bytes key;
+  if (!g_username.empty() && RNS::Utilities::OS::read_file(kDeviceKeyPath, key) == 16)
+    g_device_key.assign(reinterpret_cast<const char*>(key.data()), key.size());
   Serial.printf("account: %s, pin %s\n", g_username.empty() ? "(not paired)" : g_username.c_str(),
                 has_pin() ? "set" : "not set");
 }
@@ -59,6 +65,7 @@ void set_user(const std::string& username, const std::string& display_name) {
     contacts::clear();
     store::clear();  // its messages too
     receipts::clear();
+    set_device_key("");  // the new sign-in brings its own
   }
   g_username = username;
   // A different person on this Scout: new signing key, certificates fetched
@@ -73,6 +80,7 @@ void unpair() {
   contacts::clear();
   store::clear();
   receipts::clear();
+  set_device_key("");
   g_username.clear();
   g_display_name.clear();
   remove_file(kUserPath);
@@ -84,6 +92,15 @@ void unpair() {
 bool unpair_pending() { return RNS::Utilities::OS::file_exists(kUnpairPath); }
 
 void clear_unpair_pending() { remove_file(kUnpairPath); }
+
+const std::string& device_key() { return g_device_key; }
+
+void set_device_key(const std::string& key) {
+  g_device_key = key.size() == 16 ? key : "";
+  if (g_device_key.empty()) remove_file(kDeviceKeyPath);
+  else RNS::Utilities::OS::write_file(kDeviceKeyPath, RNS::Bytes(reinterpret_cast<const uint8_t*>(key.data()), key.size()));
+  net::set_device_key(g_device_key);
+}
 
 bool has_pin() { return g_pin_record.size() == kSaltLen + 32; }
 

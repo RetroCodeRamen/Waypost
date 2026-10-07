@@ -104,6 +104,15 @@ RNS::Bytes station_dest();
 // announces fill status().nearby within seconds. Rate-limited inside.
 void look_around();
 
+// The device key Station gave this Scout at sign-in (16 bytes; "" = none).
+// Every request's mid is then tagged with it (shared/protocol/devauth.py),
+// which is how Station knows a request really comes from this Scout.
+void set_device_key(const std::string& key);
+// A mid for a packet built outside the net task (MSG_ACK): tagged when a
+// device key is set.
+std::string new_mid();
+bool self_test_tag();  // the HMAC against Python's pinned vector
+
 // Encoded size of a request, as it would go to Station (compose limits).
 size_t encoded_size(const char* svc, const char* op, const std::vector<waylink::Field>& fields,
                     uint64_t ts);

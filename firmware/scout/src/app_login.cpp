@@ -70,6 +70,10 @@ void station_login(const std::string& username, Signer sign, LoginDone done, boo
                   {Field::text("u", username), Field::bytes("rd", my_dest()), Field::bytes("sig", sig),
                    Field::text("transport_dest", dest_hex)},
                   [username, done](net::Result r, waylink::Reply& reply) {
+                    // Station's device key for this Scout (this reply was
+                    // encrypted to us alone): proves our requests from now on.
+                    std::string dk = reply.payload().bytes("dk");
+                    if (r == net::Result::Ok && dk.size() == 16) account::set_device_key(dk);
                     done(r, reply.payload().text("display_name", username), reply.error);
                   },
                   1, 10000);
@@ -287,6 +291,13 @@ void whoami() {
 }
 
 }  // namespace
+
+void apps::doubt_identity() {
+  if (!account::paired() || g_identity_busy || !g_identity_settled) return;
+  Serial.println("identity: Station doesn't take us as signed in - checking again");
+  g_identity_settled = false;
+  g_identity_tried = false;
+}
 
 void apps::check_identity() {
   if (g_identity_busy) return;

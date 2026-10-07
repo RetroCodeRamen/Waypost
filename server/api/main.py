@@ -22,6 +22,7 @@ from server.api.config import Settings, get_settings
 from server.api.corkboard_routes import build_corkboard_router
 from server.api.dashboard_routes import build_dashboard_router
 from server.api.db import Database
+from shared.protocol import devauth
 from server.api.deps import get_current_user
 from server.api.dispatch_routes import build_dispatch_router
 from server.api.fieldbook_routes import build_fieldbook_router
@@ -362,6 +363,18 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return dst
 
         gateway._resolve_dest = _resolve_dest  # type: ignore[attr-defined]
+
+        # Bound devices prove their radio requests (review 2026-10-07).
+        def _verify_src(env) -> bool:
+            binding = dispatch.store.get_binding(str(env.src))
+            if not binding:
+                return True  # nothing to impersonate: handled as unbound anyway
+            key = binding.get("device_key")
+            if key:
+                return devauth.check(bytes.fromhex(key), str(env.src), str(env.mid))
+            return not settings.device_key_required  # bound before keys: signs in again
+
+        gateway.verify_src = _verify_src  # type: ignore[attr-defined]
 
         # Reload RNS routes from bindings after restart
         try:

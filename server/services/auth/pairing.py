@@ -33,6 +33,7 @@ from server.services.profiles.constants import (
     OP_UNPAIR,
     OP_WHOAMI,
 )
+from shared.protocol import devauth
 from shared.protocol.envelope import Envelope, Flags
 
 if TYPE_CHECKING:
@@ -111,12 +112,15 @@ class PairingService:
             # Lost a race with another redemption of the same code between
             # the read above and now — the atomic claim is the real guard.
             raise ValueError("pairing code already used")
+        # The key this device proves its radio requests with (shared/protocol/
+        # devauth.py); handed back only in the reply to this redemption.
+        key = devauth.new_key()
         binding = self.dispatch.bind_device(
-            node_id, row["username"], transport_dest=transport_dest
+            node_id, row["username"], transport_dest=transport_dest, device_key=key.hex()
         )
         # Must happen before handle_rpc returns — see module docstring.
         self._learn_route(node_id, transport_dest)
-        return binding
+        return dict(binding, device_key=key.hex())
 
     async def handle_rpc(self, env: Envelope) -> Envelope:
         """Waylink parity for radio-only devices — same single-use code,
@@ -158,9 +162,10 @@ class PairingService:
             return env.make_response(
                 op=OP_PAIR_REDEEM, payload={"error": str(exc)}, error=True
             )
+        key = bytes.fromhex(binding.pop("device_key"))
         return env.make_response(
             op=OP_PAIR_REDEEM,
-            payload={"ok": True, **binding},
+            payload={"ok": True, **binding, "dk": key},
             flags=Flags.RESPONSE | Flags.ACK,
         )
 
@@ -227,12 +232,16 @@ class PairingService:
             return err("no_identity_yet")
         if not C.verify_signing_key(known[0], sig, self.login_bytes(str(env.src), dest, nonce)):
             return err("wrong_password")
-        binding = self.dispatch.bind_device(str(env.src), user["username"], transport_dest=dest.hex())
+        # A fresh device key: this reply is encrypted to the device's own
+        # destination, so only it learns the key its requests are proven with.
+        key = devauth.new_key()
+        binding = self.dispatch.bind_device(str(env.src), user["username"], transport_dest=dest.hex(),
+                                            device_key=key.hex())
         self._learn_route(str(env.src), dest.hex())
         return env.make_response(
             op=OP_LOGIN,
             payload={"ok": True, "username": user["username"],
-                     "display_name": (user.get("display_name") or user["username"])[:40]},
+                     "display_name": (user.get("display_name") or user["username"])[:40], "dk": key},
             flags=Flags.RESPONSE | Flags.ACK,
         )
 

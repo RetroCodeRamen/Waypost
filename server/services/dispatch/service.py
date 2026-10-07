@@ -79,9 +79,10 @@ class DispatchService:
         username: str,
         *,
         transport_dest: Optional[str] = None,
+        device_key: Optional[str] = None,
     ) -> dict[str, Any]:
         binding = self.store.bind_device(
-            node_id, username, transport_dest=transport_dest
+            node_id, username, transport_dest=transport_dest, device_key=device_key
         )
         flushed = self._flush_pending_for_user(username, node_id)
         binding["flushed"] = flushed

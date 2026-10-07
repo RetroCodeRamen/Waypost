@@ -17,6 +17,9 @@ from shared.protocol.envelope import (
     encode_cbor,
 )
 
+# Ops that don't need a verified device: signing in (it proves the person).
+UNVERIFIED_OK = {("PROFILE", "LOGIN_NONCE"), ("PROFILE", "LOGIN"), ("PROFILE", "PAIR_REDEEM")}
+
 logger = logging.getLogger("waypost.gateway")
 
 Handler = Callable[[Envelope], Awaitable[Optional[Envelope]]]
@@ -139,6 +142,19 @@ class WaylinkGateway:
             self.transport.name,
         )
 
+        # A request that doesn't prove it comes from the device it names
+        # (shared/protocol/devauth.py) is handled as from an unknown device:
+        # handlers look bindings up by src, so they find none. Its reply
+        # still goes to the device it named — the real one, if anyone —
+        # so a genuine device that lost its key hears "not_paired" and signs
+        # in again. Sign-in itself is exempt: it proves the person instead.
+        original_src = None
+        verify = getattr(self, "verify_src", None)
+        if callable(verify) and (env.svc, env.op) not in UNVERIFIED_OK and env.src and not verify(env):
+            logger.info("unverified_device src=%s svc=%s op=%s", env.src, env.svc, env.op)
+            original_src = env.src
+            env.src = "unverified:" + str(env.src)
+
         handler = self._handlers.get((env.svc, env.op))
         if handler is None and env.flags & int(Flags.RESPONSE):
             # Never answer a response — avoids error ping-pong between nodes.
@@ -156,6 +172,8 @@ class WaylinkGateway:
             else:
                 reply = result
 
+        if reply is not None and original_src is not None:
+            reply.dst = original_src
         if reply is not None:
             await self.send_envelope(reply)
 

@@ -23,6 +23,11 @@ void unpair();
 bool unpair_pending();
 void clear_unpair_pending();
 
+// The key Station gave this Scout at sign-in (16 raw bytes, "" = none),
+// proving its radio requests (net::set_device_key). Kept with the account.
+const std::string& device_key();
+void set_device_key(const std::string& key);
+
 bool has_pin();
 void set_pin(const std::string& pin);
 bool check_pin(const std::string& pin);

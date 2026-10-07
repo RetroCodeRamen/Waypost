@@ -212,7 +212,8 @@ RNS::Bytes encode_msg_ack(
     const char* src,
     const char* dst,
     const std::string& rid,
-    const std::string& message_id);
+    const std::string& message_id,
+    const std::string& mid = "");  // "" = a random one; a Scout passes its tagged mid
 
 // -- Decoding: pull what OutpostNode.sync_corkboard needs out of the reply --
 

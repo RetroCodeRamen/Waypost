@@ -17,6 +17,7 @@
 #include <microStore/Adapters/LittleFSFileSystem.h>
 #include <microStore/FileSystem.h>
 #include <microReticulum.h>
+#include <SHA256.h>
 
 #ifndef WAYPOST_POCKET_ID
 #define WAYPOST_POCKET_ID "pocket-1"
@@ -48,7 +49,11 @@ constexpr int kInFlight = 1;
 
 SemaphoreHandle_t g_lock = nullptr;
 struct Lock {
-  Lock() { xSemaphoreTake(g_lock, portMAX_DELAY); }
+  // Created on first use: setup() hands over the device key before start().
+  Lock() {
+    if (!g_lock) g_lock = xSemaphoreCreateMutex();
+    xSemaphoreTake(g_lock, portMAX_DELAY);
+  }
   ~Lock() { xSemaphoreGive(g_lock); }
 };
 
@@ -66,6 +71,7 @@ std::deque<std::pair<RNS::Bytes, RNS::Bytes>> g_sends;
 std::deque<Incoming> g_incoming;
 Status g_status;
 bool g_look_wanted = false;  // look_around() asked; the net task does it
+std::string g_device_key;    // devauth (g_lock)
 uint64_t g_epoch_s = 0;
 uint32_t g_epoch_at_ms = 0;
 
@@ -302,8 +308,33 @@ void refresh_paths() {
 
 // -- requests ---------------------------------------------------------------------
 
+// shared/protocol/devauth.py: mid = 8 random hex + HMAC-SHA256(key,
+// "WAYPOST-DEV-1\n" + src + "\n" + nonce)[:4] as hex.
+std::string tagged_mid(const std::string& key, const std::string& src) {
+  std::string nonce = waylink::new_hex_id().substr(0, 8);
+  if (key.size() != 16) return nonce + waylink::new_hex_id().substr(0, 8);
+  std::string msg = "WAYPOST-DEV-1\n" + src + "\n" + nonce;
+  SHA256 sha;
+  uint8_t mac[32];
+  sha.resetHMAC(key.data(), key.size());
+  sha.update(msg.data(), msg.size());
+  sha.finalizeHMAC(key.data(), key.size(), mac, sizeof(mac));
+  static const char* hexd = "0123456789abcdef";
+  std::string tag;
+  for (int i = 0; i < 4; i++) {
+    tag += hexd[mac[i] >> 4];
+    tag += hexd[mac[i] & 15];
+  }
+  return nonce + tag;
+}
+
+std::string current_key() {
+  Lock l;
+  return g_device_key;
+}
+
 void send_attempt(Job& j, const RNS::Destination& dest) {
-  std::string mid = waylink::new_hex_id();
+  std::string mid = tagged_mid(current_key(), g_node_id);
   j.rid = waylink::new_hex_id();
   j.attempt++;
   j.sent = true;
@@ -679,6 +710,33 @@ uint64_t now_ms() {
 
 RNS::Bytes station_dest() { return g_station_hash; }
 
+void set_device_key(const std::string& key) {
+  Lock l;
+  g_device_key = key.size() == 16 ? key : "";
+}
+
+std::string new_mid() {
+  std::string node;
+  {
+    Lock l;
+    node = g_status.node_id;
+  }
+  return tagged_mid(current_key(), node);
+}
+
+bool self_test_tag() {
+  // server/tests/test_device_auth.py VECTOR_TAG
+  std::string key;
+  for (int i = 0; i < 16; i++) key += static_cast<char>(i);
+  std::string msg = "WAYPOST-DEV-1\npocket-1-e75a\n0a1b2c3d";
+  SHA256 sha;
+  uint8_t mac[32];
+  sha.resetHMAC(key.data(), key.size());
+  sha.update(msg.data(), msg.size());
+  sha.finalizeHMAC(key.data(), key.size(), mac, sizeof(mac));
+  return mac[0] == 0x19 && mac[1] == 0x01 && mac[2] == 0xd3 && mac[3] == 0x91;
+}
+
 void look_around() {
   Lock l;
   if (g_status.looked_at && millis() - g_status.looked_at < 15000) return;  // one at a time
@@ -700,7 +758,7 @@ size_t encoded_size(const char* svc, const char* op, const std::vector<waylink::
 }
 
 void start() {
-  g_lock = xSemaphoreCreateMutex();
+  if (!g_lock) g_lock = xSemaphoreCreateMutex();
   g_station_hash.assignHex(WAYPOST_STATION_DEST_HASH);
   // Core 0 (the UI task is on core 1). Big stack: Reticulum's crypto.
   xTaskCreatePinnedToCore(task, "net", 32768, nullptr, 2, nullptr, 0);

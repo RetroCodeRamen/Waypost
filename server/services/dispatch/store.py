@@ -139,6 +139,10 @@ class DispatchStore:
             self._conn.execute("ALTER TABLE messages ADD COLUMN author_id TEXT")
         if "signed_at" not in msg_cols:
             self._conn.execute("ALTER TABLE messages ADD COLUMN signed_at INTEGER")
+        # The key a bound device proves its requests with (shared/protocol/
+        # devauth.py), hex; NULL for bindings made before 2026-10-07.
+        if "device_key" not in cols:
+            self._conn.execute("ALTER TABLE device_bindings ADD COLUMN device_key TEXT")
 
     def bind_device(
         self,
@@ -146,17 +150,19 @@ class DispatchStore:
         username: str,
         *,
         transport_dest: Optional[str] = None,
+        device_key: Optional[str] = None,
     ) -> dict[str, Any]:
         now = time.time()
         self._conn.execute(
             """
-            INSERT INTO device_bindings (node_id, username, created_at, transport_dest)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO device_bindings (node_id, username, created_at, transport_dest, device_key)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(node_id) DO UPDATE SET
                 username = excluded.username,
-                transport_dest = COALESCE(excluded.transport_dest, device_bindings.transport_dest)
+                transport_dest = COALESCE(excluded.transport_dest, device_bindings.transport_dest),
+                device_key = COALESCE(excluded.device_key, device_bindings.device_key)
             """,
-            (node_id, username, now, transport_dest),
+            (node_id, username, now, transport_dest, device_key),
         )
         self._conn.commit()
         out = {"node_id": node_id, "username": username}
@@ -170,7 +176,7 @@ class DispatchStore:
 
     def get_binding(self, node_id: str) -> Optional[dict[str, Any]]:
         row = self._conn.execute(
-            "SELECT node_id, username, created_at, transport_dest FROM device_bindings WHERE node_id = ?",
+            "SELECT node_id, username, created_at, transport_dest, device_key FROM device_bindings WHERE node_id = ?",
             (node_id,),
         ).fetchone()
         return dict(row) if row else None

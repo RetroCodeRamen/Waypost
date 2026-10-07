@@ -47,6 +47,8 @@ bool locked();
 // Scout was bound elsewhere (portal/API), or drops a stale one if it was
 // unpaired. Called from loop().
 void check_identity();
+// Station answered as if this Scout isn't signed in: check again soon.
+void doubt_identity();
 
 // A live chat message pushed by Station: Dispatch records it, acks it, and
 // counts it as unread when another app has the screen.

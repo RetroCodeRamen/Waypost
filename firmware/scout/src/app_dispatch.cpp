@@ -670,8 +670,8 @@ App& apps::dispatch_app() { return instance(); }
 void apps::deliver_chat(const waylink::IncomingChatMessage& msg) {
   // Ack so Station marks it delivered; if the ack is lost Station keeps it
   // pending and the next catch-up brings it again (deduped by id).
-  net::send(RNS::Bytes(), waylink::encode_msg_ack(net::status().node_id.c_str(),
-                                                  net::kStationNodeId, msg.rid, msg.message_id));
+  net::send(RNS::Bytes(), waylink::encode_msg_ack(net::status().node_id.c_str(), net::kStationNodeId,
+                                                  msg.rid, msg.message_id, net::new_mid()));
   instance().receive(msg.message_id, msg.conversation_id, msg.sender, msg.body);
 }
 
