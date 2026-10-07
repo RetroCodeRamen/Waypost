@@ -30,9 +30,14 @@ if [[ "$(sha256sum "$PREFIX/server/requirements.txt" | cut -d' ' -f1)" != "$old_
 fi
 
 systemctl restart waypost-api
-for _ in $(seq 1 30); do
-	curl -fsS -o /dev/null http://127.0.0.1:8000/api/health && { echo "Station: restarted, answering"; exit 0; }
+echo -n "Station: restarting (15-20 s on a Pi 3)"
+for _ in $(seq 1 60); do
+	if curl -fs -o /dev/null http://127.0.0.1:8000/api/health 2>/dev/null; then
+		echo; echo "Station: restarted, answering"; exit 0
+	fi
+	echo -n "."
 	sleep 1
 done
+echo
 echo "Station isn't answering yet - check: journalctl -u waypost-api -e" >&2
 exit 1
