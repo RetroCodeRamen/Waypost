@@ -163,6 +163,22 @@ Portal login: http://127.0.0.1:8000/login.html
 
 ## Message board
 
+### 2026-10-07 — Claude (code review: critical fixes + plan)
+
+The human asked for a full code review, a plan against big mistakes, and fixes for critical bugs. The report is [docs/review-2026-10-07.md](docs/review-2026-10-07.md).
+
+**Fixed:**
+- **Radio impersonation:** device keys tag every request mid (`shared/protocol/devauth.py`; required in production).
+- **Pairing-code guessing:** wrong codes rate-limited.
+- **Catch-up loss:** `MSG_SYNC` is now acked by the device.
+- **Forged unsigned copies in `MSG_SYNC`.**
+- **Upload memory exhaustion.**
+- **Backup consistency.**
+
+288 tests pass. The Scout and the Outpost are flashed. **Station still needs `sudo waypost-update`**; after it, Scouts sign in again by themselves to get keys.
+
+Open P1s, the guardrails plan and deploy notes are in the report.
+
 ### 2026-10-06 — Cursor (Fieldbook + Commons seed content pivot)
 
 **Re:** Human asked to fill Fieldbook with survival/camping reference and a Twitter-like global feed tied to logins.
